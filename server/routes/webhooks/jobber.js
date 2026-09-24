@@ -1585,6 +1585,7 @@ router.post('/jobber/request-update', async (req, res) => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STAGE WEBHOOKS — QUOTE_CREATE, QUOTE_UPDATE, JOB_CREATE (Canvass-stage)
+//                  + QUOTE_APPROVED (3d Phase 1a Commit 0, 2026-09-24)
 // ═══════════════════════════════════════════════════════════════════════════
 //
 // WHY THEY EXIST, AND WHY THEY ARE NOT URGENT. Measured live by Danny on Accent's
@@ -1597,16 +1598,25 @@ router.post('/jobber/request-update', async (req, res) => {
 // measurement to the other; the two are recorded together in PRE_LAUNCH_CHECKLIST.md
 // precisely so nobody does.
 //
-// THE TRANSITIONS THESE COVER, and there are only three worth a webhook:
+// THE TRANSITIONS THESE COVER:
 //   inspection  <- a quote is created            QUOTE_CREATE
 //   not_sold    <- every quote becomes archived  QUOTE_UPDATE
 //   sold        <- a job is created              JOB_CREATE
 // `paid` already arrives through the INVOICE_UPDATE subscription, which this file has
 // handled since long before this phase.
+// ⚠ QUOTE_APPROVED IS SUBSCRIBED AND MOVES NO STAGE OF ITS OWN — an approved quote is
+// still 'inspection' until a job exists. It is routed anyway, for the reason its own
+// route records: it was subscribed against a path that did not exist and 404'd silently.
+// Phase 1a Commit 5 is what gives it work to do (R5j — capture, then attribute).
+// ⚠ THIS PARAGRAPH SAID "there are only three worth a webhook" UNTIL 2026-09-24, above a
+// list that is now four lines long. The count is removed rather than replaced: nothing
+// updates a number written above the list it counts, which is why it went stale the first
+// time a topic was added.
 //
 // ⚠ THEY WRITE A STAGE AND NOTHING ELSE. No syncSingleClient, no pipeline_cache, no
 // pending referral, no email, no admin alert. That is the TWO-PIPELINES fence, and it
-// is asserted over these three topics by name rather than assumed.
+// is asserted over each of these topics by name rather than assumed from the shared
+// handler.
 //
 // ⚠ AND THEY NEVER CREATE A jobber_clients ROW — the same guard the request path
 // carries, extended here deliberately rather than by habit. Row CREATION belongs to the
@@ -1792,6 +1802,40 @@ router.post('/jobber/quote-update', async (req, res) => {
   if (!verifyJobberWebhookSignature(req, res)) return;
   res.status(200).json({ received: true });
   handleStageWebhook(req, 'quote-update');
+});
+
+// POST /webhooks/jobber/quote-approved — Jobber topic QUOTE_APPROVED
+//
+// ⚠ IT EXISTS BECAUSE ITS ABSENCE WAS A SILENT 404 IN PRODUCTION. Danny subscribed
+// QUOTE_APPROVED on 2026-09-24 pointing at this exact path before any route served it.
+// Nothing in this file dispatches on the payload's topic — routing is by URL only — so an
+// unsubscribed path is not "an unhandled topic", it is an unmatched route: Express's
+// finalhandler answered 404 and **every event was dropped without a trace**. No HMAC check
+// ran (verifyJobberWebhookSignature is the first statement INSIDE each route body, never
+// middleware), no jobber_webhook_events row was claimed, and no error_log row was written,
+// because expressErrorHandler is a four-argument error handler that an unmatched route
+// never reaches. The subscription was deleted and is re-added after this deploys.
+//
+// ⚠ ITS OWN ROUTE AND ITS OWN TOPIC LITERAL, NOT quote-update's — THAT IS THE WHOLE POINT
+// OF A SEPARATE ROUTE. jobber_webhook_events' key is
+// (contractor_id, topic, item_id, occurred_at), so sharing quote-update's literal would
+// make a genuine QUOTE_APPROVED and a genuine QUOTE_UPDATE for the same quote at the same
+// occurred_at collide, and claimWebhookDelivery would discard the second as a duplicate
+// delivery. Jobber plausibly emits both for one approval. Asserted by name in
+// stageWebhooks.test.js, with the paired case proving both are claimed.
+//
+// ⚠ AND IT NEEDS NO HANDLER CHANGE, WHICH IS LOAD-BEARING RATHER THAN LUCKY:
+// fetchStageSubjectClient branches on `topic.startsWith('quote')`, so 'quote-approved'
+// takes the quote(id:) branch, and the sales recompute is gated on `topic === 'job-create'`,
+// so it correctly does not fire. **Both depend on this literal's spelling** — renaming it
+// silently sends approvals down the job(id:) branch.
+//
+// ⚠ STAGE ONLY, LIKE ITS THREE SIBLINGS. It captures no facts and runs no attribution;
+// that is Phase 1a Commit 5 (R5i/R5j), deliberately not this commit.
+router.post('/jobber/quote-approved', async (req, res) => {
+  if (!verifyJobberWebhookSignature(req, res)) return;
+  res.status(200).json({ received: true });
+  handleStageWebhook(req, 'quote-approved');
 });
 
 // POST /webhooks/jobber/job-create — Jobber topic JOB_CREATE

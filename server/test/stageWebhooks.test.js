@@ -338,3 +338,132 @@ describe('Canvass-stage — delivery semantics', () => {
     assert.equal(await stageOf(), null, 'and no stage is written');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3d PHASE 1a COMMIT 0 — QUOTE_APPROVED GETS ITS OWN ROUTE
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// ⚠ THE DEFECT THIS CLOSES PRODUCED NO ERROR ANYWHERE. Danny subscribed QUOTE_APPROVED on
+// 2026-09-24 at /webhooks/jobber/quote-approved before any route served it. Nothing in
+// the webhook file dispatches on the payload's topic — routing is by URL — so this was an
+// unmatched route, not an unhandled topic: 404 from Express's finalhandler, no HMAC check
+// (the verifier is the first statement INSIDE each route body, never middleware), no
+// claim row, and no error_log row (expressErrorHandler is a four-argument error handler an
+// unmatched route never reaches). Every event was dropped silently and unrecoverably.
+//
+// ⚠ AND THE TOPIC LITERAL IS THE POINT, NOT THE PATH. jobber_webhook_events' key is
+// (contractor_id, topic, item_id, occurred_at), and the topic stored is the ROUTE's
+// hardcoded literal rather than the payload's. Reusing 'quote-update' would therefore make
+// a real QUOTE_APPROVED and a real QUOTE_UPDATE for one quote at one instant collide, and
+// the second would be discarded as a duplicate delivery. That is what the paired case
+// below fires, and it is the guard-proof's target.
+describe('3d Phase 1a Commit 0 — QUOTE_APPROVED has its own route and its own topic', () => {
+
+  const APPROVED_PATH = '/webhooks/jobber/quote-approved';
+
+  const topicsOf = async () => {
+    const { rows } = await pool.query(
+      `SELECT topic FROM jobber_webhook_events WHERE contractor_id = $1 ORDER BY topic`,
+      [TENANT]
+    );
+    return rows.map((r) => r.topic);
+  };
+
+  it('[RED] a signed QUOTE_APPROVED delivery is accepted and writes the stage', async () => {
+    // ⚠ THE STAGE ASSERTED IS 'inspection', NOT a value unique to this topic — an approved
+    // quote moves no stage of its own, and the handler is shared. What this proves is that
+    // the route EXISTS and reaches the same stage write, which is exactly what 404'd.
+    await seedMirrorRow();
+    installStageFetches(related({ quotes: [activeQuote()] }));
+
+    const res = await post(APPROVED_PATH, envelope({ topic: 'QUOTE_APPROVED', itemId: 'q-1' }));
+    await waitFor(async () => (await stageOf()) !== null);
+
+    assert.equal(res.status, 200, 'the path that 404d in production must now answer 2xx');
+    assert.equal(await stageOf(), 'inspection');
+  });
+
+  it('[RED] and the stage is not a constant — the same door reads "not_sold" on archived quotes', async () => {
+    // The paired discriminator, the same one the three original topics carry: one topic
+    // resolving to one value is also what a handler writing a hardcoded stage produces.
+    await seedMirrorRow();
+    installStageFetches(related({ quotes: [archivedQuote()] }));
+
+    await post(APPROVED_PATH, envelope({ topic: 'QUOTE_APPROVED', itemId: 'q-2' }));
+    await waitFor(async () => (await stageOf()) !== null);
+
+    assert.equal(await stageOf(), 'not_sold');
+  });
+
+  it('[RED] its claim row carries topic "quote-approved", NOT "quote-update"', async () => {
+    await seedMirrorRow();
+    installStageFetches(related({ quotes: [activeQuote()] }));
+
+    await post(APPROVED_PATH, envelope({ topic: 'QUOTE_APPROVED', itemId: 'q-1' }));
+    await waitFor(async () => (await countOf('jobber_webhook_events')) > 0);
+
+    // ⚠ ASSERTED AS THE WHOLE SET, NOT WITH A CONTAINS. A `includes('quote-approved')`
+    // would stay green if the handler ALSO wrote a 'quote-update' row, which is half the
+    // defect this route exists to prevent.
+    assert.deepEqual(await topicsOf(), ['quote-approved']);
+  });
+
+  it('[RED] a duplicate delivery of the SAME QUOTE_APPROVED event is claimed once', async () => {
+    await seedMirrorRow();
+    const occurredAt = new Date().toISOString();
+    installStageFetches(related({ quotes: [activeQuote()] }));
+
+    await post(APPROVED_PATH, envelope({ topic: 'QUOTE_APPROVED', itemId: 'q-1', occurredAt }));
+    await waitFor(async () => (await stageOf()) !== null);
+
+    // Second delivery, byte-identical. Jobber is at-least-once.
+    await post(APPROVED_PATH, envelope({ topic: 'QUOTE_APPROVED', itemId: 'q-1', occurredAt }));
+    await waitFor(async () => (await countOf('jobber_webhook_events')) > 0);
+
+    assert.equal(await countOf('jobber_webhook_events'), 1, 'one claim row for one event');
+  });
+
+  it('[RED] ⚠ QUOTE_UPDATE and QUOTE_APPROVED for the SAME quote at the SAME occurredAt are BOTH claimed', async () => {
+    // ⚠ THE CASE THE SEPARATE ROUTE EXISTS FOR, AND THE GUARD-PROOF'S TARGET. Jobber
+    // plausibly emits both for one approval. Sharing quote-update's topic literal makes
+    // the two rows collide on (contractor_id, topic, item_id, occurred_at) and the second
+    // is swallowed as a duplicate — a real event lost, with a log line calling it a dupe.
+    await seedMirrorRow();
+    const occurredAt = '2026-09-24T14:00:00.000Z';
+    installStageFetches(related({ quotes: [activeQuote()] }));
+
+    await post('/webhooks/jobber/quote-update', envelope({
+      topic: 'QUOTE_UPDATE', itemId: 'q-1', occurredAt,
+    }));
+    await waitFor(async () => (await countOf('jobber_webhook_events')) >= 1);
+
+    await post(APPROVED_PATH, envelope({ topic: 'QUOTE_APPROVED', itemId: 'q-1', occurredAt }));
+    await waitFor(async () => (await countOf('jobber_webhook_events')) >= 2);
+
+    assert.deepEqual(
+      await topicsOf(),
+      ['quote-approved', 'quote-update'],
+      'both deliveries must be claimed under their own topic — neither swallowed'
+    );
+  });
+
+  it('[RED] a bad signature to the new path is rejected exactly as quote-update rejects one', async () => {
+    await seedMirrorRow();
+    installStageFetches(related({ quotes: [activeQuote()] }));
+
+    const { body } = signJobberWebhook(envelope({ topic: 'QUOTE_APPROVED', itemId: 'q-1' }));
+    const bad = await httpPost(port, APPROVED_PATH, body, { 'x-jobber-hmac-sha256': 'not-the-signature' });
+
+    assert.equal(bad.status, 401);
+    assert.equal(await stageOf(), null, 'and no stage is written');
+    assert.equal(await countOf('jobber_webhook_events'), 0, 'and no delivery is claimed');
+
+    // ⚠ THE PARITY HALF, ON THE SAME FIXTURE. Without it this passes against a path that
+    // rejects EVERYTHING — including a correctly signed request — which is the failure a
+    // 401 assertion cannot tell apart from working verification.
+    const good = await post(APPROVED_PATH, envelope({ topic: 'QUOTE_APPROVED', itemId: 'q-1' }));
+    await waitFor(async () => (await stageOf()) !== null);
+    assert.equal(good.status, 200);
+    assert.equal(await stageOf(), 'inspection');
+  });
+});

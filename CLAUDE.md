@@ -385,7 +385,24 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1696 server tests across 282 suites, and 1342 React tests across 80 files** (measured 2026-09-22 by the correction-path commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1696 · suites 282 · pass 1696 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1702 server tests across 283 suites, and 1342 React tests across 80 files** (measured 2026-09-24 by the QUOTE_APPROVED route commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1702 · suites 283 · pass 1702 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE QUOTE_APPROVED ROUTE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1696 → 1702 is **+6**, one new describe appended to the EXISTING
+  `stageWebhooks.test.js`; suites 282 → 283 is that describe. React did not move — no `src/` file
+  was touched — and was re-measured rather than carried. **All four predicted before the run, and
+  the gate was green on its first run.**
+  ⚠ **COUNTED WITH `grep -c`, AND THE FILE'S ONE LOOP WAS CHECKED FOR POSITION RATHER THAN
+  COUNTED.** 17 `it(` lines, of which **one sits inside a three-entry `for` that WRAPS the
+  `it()`** (the fence asserted per topic by name), so 16 × 1 + 1 × 3 = 19 for the file — and the
+  delta is +6 because the loop is pre-existing and this commit added none. **Reading "17 lines" as
+  17 cases would have been low by two**, which is the direction that looks identical to a suite
+  that partly failed to register.
+  ⚠ **AND THE GUARD-PROOF'S RED RUN IS WHY THE DEDUPE KEY'S TOPIC IS LOAD-BEARING.** Pointing the
+  new route's literal at `'quote-update'` — the ACTUAL defect, a shared topic in
+  `jobber_webhook_events`' key, not a different spelling of the fix — took **2** red and printed
+  `[quote-update] duplicate delivery for q-1 — already claimed, skipping`: a real QUOTE_APPROVED
+  swallowed under a log line calling it a duplicate. Reverted to byte-identical, re-run green.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CORRECTION-PATH COMMIT ITSELF, BECAUSE IT SHIPS TESTS.* It read **1696 / 282 / 1342 / 80**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE CORRECTION-PATH COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
   Server 1683 → 1696 is **+13**, one new file (`clientAssignmentCorrection.test.js`); suites 280 →
   282 is that file's **two** top-level describes. React 1331 → 1342 is **+11 = 10 + 1 PHANTOM**, and
