@@ -385,8 +385,37 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1892 server tests across 309 suites, and 1358 React tests across 82 files** (measured 2026-09-25 by the capture-then-decide commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1892 · suites 309 · pass 1892 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CAPTURE-THEN-DECIDE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1901 server tests across 312 suites, and 1358 React tests across 82 files** (measured 2026-09-25 by the per-client-lock commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1901 · suites 312 · pass 1901 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PER-CLIENT-LOCK COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1892 → 1901 is **+9**, one new file (`clientLock.test.js`); suites 309 → 312 is that
+  file's **three** top-level describes. React did not move — no `src/` file was touched — and was
+  re-measured. **All four predicted before the run and matched.** Counted with an anchored
+  `^\s*it\(`; every `for` sits in a hook or an `it()` body and wraps no case.
+  ⚠ **A LOCK CANNOT BE TESTED BY CALLING THE LOCKED FUNCTION ONCE, AND THAT IS WHY THIS FILE
+  USES REAL CONCURRENCY.** A single caller is serialised by definition, so every assertion would
+  pass against no lock at all. Two of the cases assert on ELAPSED TIME, each PAIRED with its
+  opposite on the same machinery — same client must take over 550ms, different clients under 500 —
+  because "different clients never wait" has no observable other than the ordering itself.
+  ⚠ **AND THE FIRST WRITING OF THE CENTRAL CASE TESTED SOMETHING POSTGRES ALREADY GUARANTEES.**
+  It ran two identical capture-then-decide units concurrently and asserted neither read a partial
+  fact set — and removing the lock left it GREEN, for two reasons that are both about Postgres:
+  the units INSERTed the same keys so the unique index already serialised them, and **a
+  transaction never exposes a half-written capture anyway** under READ COMMITTED.
+  **The anomaly the lock actually prevents is a LOST UPDATE, not a dirty read**: a slow unit
+  decides from the facts as they were, a fast unit then captures a new job and commits 'sold', and
+  the slow unit finally writes the 'inspection' it computed earlier on top of it. Rewritten around
+  that, the injection takes it red. **A guard-proof that will not fire is a finding about the
+  test, not a formality.**
+  ⚠ **AND TWO KEY INJECTIONS BROKE THE QUERY INSTEAD OF THE KEY, TAKING 8 OF 9 CASES RED.**
+  Dropping one component from `pg_advisory_xact_lock(hashtext($1), hashtext($2))` while still
+  binding two parameters made Postgres refuse it outright — *"bind message supplies 2 parameters,
+  but prepared statement requires 1"*. **8 red from a one-line change is a tell, not a result**,
+  and it is the same invalid-injection shape recorded in 4c. Repaired to bind only what the SQL
+  uses; each then takes exactly its own case red.
+  ⚠ **THE HOLD TIME IS MEASURED, NOT ESTIMATED** — median 9.3ms, max 15.4ms over 7 runs for a
+  full page of every connection, recorded at the constant with the caveat that Railway is slower
+  because app and Postgres are separate services.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CAPTURE-THEN-DECIDE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
   Server 1874 → 1892 is **+18 = 16 + 2**: sixteen in one new file (`captureThenDecide.test.js`)
   and **two in an EXISTING describe** in `captureFetchContract.test.js`, where the mechanical
   reads-vs-selects fence gained a fourth writer over its two selections. Suites 307 → 309 is the

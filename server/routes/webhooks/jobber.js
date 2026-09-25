@@ -37,6 +37,7 @@ const { attributeFromRequest } = require('../../utils/requestAttribution');
 const { captureClientFacts } = require('../../utils/factCapture');
 const { decideFromFacts } = require('../../utils/attributionDecide');
 const { runAttributionEngine } = require('../../utils/attributionEngine');
+const { withClientLock } = require('../../utils/clientLock');
 const { isInvoicePaid, PAID_STATUS } = require('../../utils/invoicePaid');
 const {
   fetchFullClient,
@@ -551,9 +552,23 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData) {
   let pipelineStage = null;
   if (relatedData) {
     try {
-      await captureClientFacts(pool, { contractorId, client: relatedData });
-      const decided = await decideFromFacts(pool, { contractorId, jobberClientId: fullClient.id });
-      pipelineStage = decided.currentStatus;
+      // ⚠ CAPTURE AND DECIDE ARE ONE LOCKED TRANSACTION (Commit 6), keyed on
+      // (contractor, client) so different clients never wait on each other. Without it two
+      // events for the same client interleave: capture A writes half its facts and decide B
+      // reads them, storing a stage taken from a fact set that never existed.
+      // ⚠ THE IDENTITY UPSERT BELOW STAYS OUTSIDE THE LOCK ON PURPOSE. It writes name, email,
+      // phone and the archived flags from the FETCH — none of which is part of the decision —
+      // and it is the write that must still happen when capture fails (Danny's ruling,
+      // 2026-09-25). The decided stage is carried out of the lock and into it; a null stage is
+      // COALESCEd there, so a failed capture leaves the stored stage standing.
+      // ⚠ AND THE JOBBER FETCH IS ALREADY DONE BY THE TIME THIS RUNS — a pooled connection must
+      // never be held across a call to Jobber. See server/utils/clientLock.js.
+      pipelineStage = await withClientLock(pool, { contractorId, jobberClientId: fullClient.id }, async (tx) => {
+        await captureClientFacts(tx, { contractorId, client: relatedData });
+        // `tx`, not `pool` — a read on another connection would sit outside the lock.
+        const decided = await decideFromFacts(tx, { contractorId, jobberClientId: fullClient.id });
+        return decided.currentStatus;
+      });
     } catch (capErr) {
       await logError({
         req: null,
@@ -2027,8 +2042,27 @@ async function handleStageWebhook(req, topic) {
     // ⚠ CAPTURE, THEN DECIDE (Commit 5) — was `classifyPipelineStatus(relatedData)`, a decision
     // from the live fetch. A failed capture writes NO stage and returns (rule 2): this handler's
     // entire job is the decision, so unlike upsertAndTagClient there is nothing else to preserve.
+    // ⚠ CAPTURE, DECIDE AND THE STAGE WRITE ARE ONE LOCKED TRANSACTION (Commit 6), keyed on
+    // (contractor, client). Unlike upsertAndTagClient there is nothing here that is not part of
+    // the decision, so the UPDATE goes inside the lock too — which is what makes a concurrent
+    // event unable to observe facts written but not yet decided from.
+    // ⚠ THE JOBBER FETCHES ARE ABOVE, OUTSIDE THE LOCK, and the engine below is outside it too
+    // because it calls fetchAttributionData. See server/utils/clientLock.js.
+    let stage, factClient, result;
     try {
-      await captureClientFacts(pool, { contractorId, client: relatedData });
+      ({ stage, factClient, result } = await withClientLock(pool, { contractorId, jobberClientId }, async (tx) => {
+        await captureClientFacts(tx, { contractorId, client: relatedData });
+        const decided = await decideFromFacts(tx, { contractorId, jobberClientId });
+        // ⚠ UPDATE ONLY. See the block at the top of this section: a zero-row result is the
+        // expected quiet outcome for a client the sync has not mirrored yet, not an error.
+        const upd = await tx.query(
+          `UPDATE jobber_clients
+              SET pipeline_stage = $3
+            WHERE contractor_id = $1 AND jobber_client_id = $2`,
+          [contractorId, jobberClientId, decided.currentStatus]
+        );
+        return { stage: decided.currentStatus, factClient: decided.client, result: upd };
+      }));
     } catch (capErr) {
       await logError({
         req,
@@ -2039,17 +2073,6 @@ async function handleStageWebhook(req, topic) {
       });
       return;
     }
-
-    const { currentStatus: stage, client: factClient } = await decideFromFacts(pool, { contractorId, jobberClientId });
-
-    // ⚠ UPDATE ONLY. See the block at the top of this section: a zero-row result is the
-    // expected quiet outcome for a client the sync has not mirrored yet, not an error.
-    const result = await pool.query(
-      `UPDATE jobber_clients
-          SET pipeline_stage = $3
-        WHERE contractor_id = $1 AND jobber_client_id = $2`,
-      [contractorId, jobberClientId, stage]
-    );
     console.log(`[${topic}] ${itemId} -> client ${jobberClientId} stage ${stage} (${result.rowCount} row(s), contractor: ${contractorId})`);
 
     // ── SALES RECOMPUTE (Canvass-stage, Ruling 1) ───────────────────────────

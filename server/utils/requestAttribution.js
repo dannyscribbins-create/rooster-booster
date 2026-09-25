@@ -41,6 +41,7 @@ const { runAttributionEngine } = require('./attributionEngine');
 // would reintroduce a second definition of "what stage is this client".
 const { captureClientFacts } = require('./factCapture');
 const { decideFromFacts } = require('./attributionDecide');
+const { withClientLock } = require('./clientLock');
 const { logError: realLogError } = require('../middleware/errorLogger');
 
 // ── THE ANCHOR (ruling R2) ───────────────────────────────────────────────────
@@ -119,8 +120,26 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
   // The fact tables may be partially written or stale, and a decision taken from them would be
   // confidently wrong. Returning here leaves the client untouched; the next REQUEST_UPDATE or
   // the hourly sweep retries, and the row in error_log says why it has not happened yet.
+  // ⚠ CAPTURE, DECIDE AND THE STAGE WRITE ARE ONE LOCKED TRANSACTION (Commit 6).
+  // They are three steps over shared state, so two events for the SAME client could interleave:
+  // capture A writes half its facts, decide B reads them, and B stores a decision taken from a
+  // fact set that never existed. The advisory lock is keyed on (contractor, client), so different
+  // clients never wait on each other — see server/utils/clientLock.js for why it is a DATABASE
+  // lock rather than an in-process queue.
+  // ⚠ THE JOBBER FETCH IS ABOVE THIS BLOCK AND STAYS THERE. Holding a pooled connection across a
+  // network call to Jobber would exhaust the pool on a slow Jobber rather than delaying one
+  // client, and runAttributionEngine below calls fetchAttributionData — which is a Jobber fetch,
+  // so the engine stays OUTSIDE the lock for the same reason.
+  let currentStatus, factClient;
   try {
-    await captureClientFacts(pool, { contractorId, client: fullClient });
+    ({ currentStatus, factClient } = await withClientLock(pool, { contractorId, jobberClientId }, async (tx) => {
+      await captureClientFacts(tx, { contractorId, client: fullClient });
+      // ⚠ `tx`, NOT `pool`. Passing the pool here would run the read on a DIFFERENT connection,
+      // outside the transaction and outside the lock — it would look serialised and not be.
+      const decided = await decideFromFacts(tx, { contractorId, jobberClientId });
+      await writeStage(tx, contractorId, jobberClientId, decided.currentStatus);
+      return { currentStatus: decided.currentStatus, factClient: decided.client };
+    }));
   } catch (capErr) {
     await logError({
       req: null,
@@ -137,7 +156,7 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
   // way; taking the status from facts while passing the LIVE client would give the replay and
   // the live door two different engine inputs from one set of rows, which is the parity the
   // fence in this arc exists to hold.
-  const { currentStatus, client: factClient } = await decideFromFacts(pool, { contractorId, jobberClientId });
+  // decided inside the locked transaction above, together with the stage write
 
   // ── THE STAGE WRITE (Canvass-stage Part 2; the seventh zero REVERSED) ───────
   //
@@ -166,12 +185,9 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
   // has no client payload to fill it with. If no row exists yet, nothing is written and
   // the next client-webhook or nightly sync supplies both the row and the stage.
   // ⚠ A zero-row UPDATE is the EXPECTED quiet outcome here, not an error to log.
-  await pool.query(
-    `UPDATE jobber_clients
-        SET pipeline_stage = $3
-      WHERE contractor_id = $1 AND jobber_client_id = $2`,
-    [contractorId, jobberClientId, currentStatus]
-  );
+  // ⚠ THE WRITE ITSELF MOVED INTO writeStage() AND RUNS INSIDE THE LOCK (Commit 6). The comment
+  // block above is unchanged and still governs: UPDATE-only, a zero-row result is the expected
+  // quiet outcome, and this path must never CREATE a jobber_clients row.
 
   await runAttributionEngine(pool, {
     contractorId,
@@ -193,6 +209,23 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
   });
 
   return 'attributed';
+}
+
+/**
+ * Writes the decided stage. UPDATE-only, and a zero-row result is the expected quiet outcome.
+ * Inputs: a transaction, the contractor, the client, the decided status.
+ * Output: nothing.
+ * ⚠ IT TAKES A TRANSACTION, NOT THE POOL, BECAUSE IT RUNS INSIDE THE PER-CLIENT LOCK. Called
+ * with the pool it would write on another connection — outside the lock, and therefore able to
+ * land between another event's capture and decide, which is the interleaving Commit 6 removes.
+ */
+async function writeStage(tx, contractorId, jobberClientId, currentStatus) {
+  await tx.query(
+    `UPDATE jobber_clients
+        SET pipeline_stage = $3
+      WHERE contractor_id = $1 AND jobber_client_id = $2`,
+    [contractorId, jobberClientId, currentStatus]
+  );
 }
 
 module.exports = { attributeFromRequest };
