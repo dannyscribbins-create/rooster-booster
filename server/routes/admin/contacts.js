@@ -849,7 +849,18 @@ router.get('/api/admin/jobber-clients', requirePermission('contacts'), async (re
 
   if (paying) {
     // No new param — reuses $1
-    // 'paying_client' is the lifetime tag written by deriveAndSaveTags() whenever a client has any paid invoice — never removed
+    // 'paying_client' is written by deriveAndSaveTags() when isInvoicePaid() holds for any of the
+    // client's invoices, and REMOVED on the same pass when none does.
+    // ⚠ THIS COMMENT SAID "the LIFETIME tag … never removed" UNTIL 3d Phase 1a Commit 4b, AND THAT
+    // IS NOW INVERTED RATHER THAN MERELY OLD — it told the next reader this filter answers "has
+    // this client EVER paid", when it answers "does this client have a settled invoice TODAY".
+    // WHEN IT RECOMPUTES — every path that calls deriveAndSaveTags, verified at HEAD:
+    //   jobberIncrementalSync  daily, 0 2 * * * UTC
+    //   fullJobberImport       manual, from CRM Settings
+    //   webhooks/jobber        client-create, client-update, invoice-paid, job-update
+    // ⚠ NOT THE 30-MINUTE PIPELINE SYNC. crm/pipelineSync.js does not call deriveAndSaveTags at
+    // all, so the frequent job is the one that CANNOT clear a stale tag. Worst case for a client
+    // whose invoice is edited outside those four webhook topics is one day.
     extraWhere += ` AND EXISTS (
       SELECT 1 FROM contact_tags ct_pay
       WHERE ct_pay.jobber_client_id = jc.jobber_client_id

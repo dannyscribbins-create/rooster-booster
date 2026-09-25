@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { AD, TAG_COLORS } from '../../constants/adminTheme';
+import { AD, TAG_COLORS, tagLabel } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { TagPill } from './TagCloudFilter';
 import AssignedRepCard from './AssignedRepCard';
@@ -537,7 +537,12 @@ export default function AdminContactDetailDrawer({ contactId, jobberClientId, on
                           fontSize: 11, fontFamily: AD.fontSans, color: AD.textSecondary,
                         }}
                       >
-                        {tag}
+                        {/* ⚠ THIS IS WHERE paying_client AND invoice:paid SIT SIDE BY SIDE AS BARE
+                            STRINGS, which is the confusion 4b's labels exist to remove: the first
+                            is RoofMiles' own decision, the second a verbatim mirror of Jobber's
+                            status, and they do NOT always agree. key={tag} above still keys on the
+                            stored value. */}
+                        {tagLabel(tag)}
                       </span>
                     ))}
                   </div>

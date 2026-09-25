@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { AD, TAG_COLORS } from '../../constants/adminTheme';
+import { AD, TAG_COLORS, tagLabel } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { AdminPageHeader, Btn, Badge } from './AdminComponents';
 import AdminCampaignDetail from './AdminCampaignDetail';
@@ -934,7 +934,7 @@ function ResultsModal({ campaignId, totalContacts, inAppCount, contacts, loading
                               whiteSpace: 'nowrap',
                             }}
                           >
-                            {tag}
+                            {tagLabel(tag)}
                           </span>
                         );
                       })}
@@ -4046,7 +4046,9 @@ export default function AdminCampaigns({ setLoggedIn }) {
                             }}
                           >
                             <i className="ph ph-warning" style={{ fontSize: 11 }} />
-                            {tag}
+                            {/* Display only — audienceFilterTags still holds the stored tag, and
+                                the title attribute above describes the stored one. */}
+                            {tagLabel(tag)}
                           </span>
                         ))}
                       </div>

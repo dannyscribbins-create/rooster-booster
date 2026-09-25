@@ -208,3 +208,38 @@ export const TAG_COLORS = {
   'SMS Sent':            { bg: '#E0F7FA', text: '#00695C', border: '#B2EBF2' },   // 5.94:1
   default:               { bg: '#F3F4F6', text: '#374151', border: '#E5E7EB' },
 };
+
+// ── TAG DISPLAY LABELS (3d Phase 1a Commit 4b) ───────────────────────────────
+//
+// Danny's ruling: wherever the admin panel shows a tag name to someone building an audience or
+// reading a client, `paying_client` must read "Paid client" and `invoice:paid` must read
+// "Jobber status: Paid".
+//
+// ⚠ THIS IS DISPLAY TEXT ONLY. THE STORED TAG STRING DOES NOT CHANGE, AND IT MUST NOT.
+// `paying_client` and `invoice:paid` are what `contact_tags.tag` holds, what every audience
+// filter matches on, and what `deriveAndSaveTags` writes. Renaming the stored value would
+// silently empty every saved audience built on the old name. Relabelling is the whole change.
+//
+// ⚠ AND THE TWO LABELS SAY DIFFERENT THINGS ON PURPOSE — THAT IS THE POINT OF THE RULING.
+// `paying_client` is RoofMiles' own decision (isInvoicePaid: status paid AND balance 0 AND
+// total > 0), recomputed on every derivation. `invoice:paid` is a VERBATIM MIRROR of Jobber's
+// invoice status and nothing more. Both used to read as bare identifiers, so an admin building
+// an audience had no way to tell which one they were choosing — and they do not agree: a $0
+// or unsettled invoice carries `invoice:paid` and NOT `paying_client`. Naming the source in
+// the label is what keeps the two distinguishable at the point of choosing.
+//
+// ⚠ KEYED ON THE EXACT STORED TAG, NOT A PREFIX. `invoice:` has five values and only one is
+// relabelled here; a prefix rule would rewrite the other four with a word that is false of them.
+export const TAG_LABELS = {
+  paying_client:   'Paid client',
+  'invoice:paid':  'Jobber status: Paid',
+};
+
+/**
+ * The text to SHOW for a stored tag. Input: the stored tag string. Output: its display label,
+ * or the tag itself when it has none — so an unlabelled tag renders exactly as it does today.
+ * ⚠ Never use the return value as a filter key, a map key, or anything sent to the server.
+ */
+export function tagLabel(tag) {
+  return TAG_LABELS[tag] || tag;
+}

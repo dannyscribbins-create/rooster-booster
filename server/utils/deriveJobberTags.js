@@ -1,4 +1,4 @@
-const { removeTagsByPrefix, upsertTag, replaceTagGroup } = require('./tags');
+const { removeTagsByPrefix, upsertTag, replaceTagGroup, removeExactTag } = require('./tags');
 const { logError } = require('../middleware/errorLogger');
 const { isInvoicePaid } = require('./invoicePaid');
 
@@ -326,14 +326,25 @@ async function deriveAndSaveTags(pool, contractorId, jobberClientId, clientData,
       await removeTagsByPrefix(pool, identifier, contractorId, 'value:');
     }
 
-    // ── PAYING CLIENT (lifetime — never removed) ──────────────────────────────
-    const hasAnyPaidInvoice = allInvoices.some(
-      // ⚠ THE ONE DEFINITION (4a) — this drives the invoice:paid tag, which drives campaign
-      // audiences, so a looser definition here mails people the app does not consider paying.
-      isInvoicePaid
-    );
+    // ── PAYING CLIENT — RECOMPUTED, added AND removed (4b) ────────────────────
+    //
+    // ⚠ THIS WAS "lifetime — never removed" UNTIL COMMIT 4b, AND THAT IS NOW FALSE RATHER THAN
+    // MERELY OLD. Danny ruled the tag must reflect the truth TODAY: an upsert-only tag records
+    // that a client was paying ONCE and can never say they stopped. After 4a tightened the
+    // definition, a client whose only paid invoice turns out to be $0 or unsettled would have
+    // kept a marker the app no longer stands behind — and campaign audiences read it.
+    //
+    // ⚠ IT NOW WORKS EXACTLY AS value:* ALREADY DID. That group uses replaceTagGroup, which
+    // removes before it writes, which is why `value:` was already self-correcting while
+    // `paying_client` was not. The asymmetry was the defect.
+    //
+    // ⚠ REMOVAL IS EXACT, NOT BY PREFIX. removeTagsByPrefix('paying_client') would also take a
+    // future `paying_client_since`; removeExactTag matches the one tag and nothing else.
+    const hasAnyPaidInvoice = allInvoices.some(isInvoicePaid);
     if (hasAnyPaidInvoice) {
       await upsertTag(pool, identifier, contractorId, 'paying_client', 'jobber_crm');
+    } else {
+      await removeExactTag(pool, identifier, contractorId, 'paying_client');
     }
 
     // ── CUSTOM FIELD TAGS (most recent job's custom fields) ──────────────────

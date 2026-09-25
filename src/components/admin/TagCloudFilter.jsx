@@ -1,4 +1,4 @@
-import { AD, TAG_COLORS } from '../../constants/adminTheme';
+import { AD, TAG_COLORS, tagLabel } from '../../constants/adminTheme';
 
 // ── TagPill ───────────────────────────────────────────────────────────────────
 // Shared pill component used in both TagCloudFilter and AdminContactDetailDrawer.
@@ -13,7 +13,9 @@ export function TagPill({ tag, source, onRemove }) {
       fontSize: 11, fontFamily: AD.fontSans, fontWeight: 500,
       whiteSpace: 'nowrap', flexShrink: 0,
     }}>
-      {tag}
+      {/* tagLabel, never the raw tag: paying_client reads "Paid client". The stored string is
+          unchanged and is still what onRemove and every filter act on. */}
+      {tagLabel(tag)}
       {onRemove && source === 'admin' && (
         <button
           onClick={onRemove}
@@ -70,7 +72,8 @@ export default function TagCloudFilter({ tagSummary = [], selectedTags = [], onS
                 transition: 'all 0.12s', whiteSpace: 'nowrap',
               }}
             >
-              {tag}
+              {/* Display text only — toggleTag(tag) above still carries the STORED tag. */}
+              {tagLabel(tag)}
               {showCounts && (
                 <span style={{ fontSize: 10, opacity: 0.65 }}>
                   {contact_count}

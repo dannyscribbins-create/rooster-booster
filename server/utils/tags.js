@@ -92,6 +92,40 @@ async function backfillTagsForContacts(pool, contractorId, contactIds, jobberCrm
 // ── JOBBER CLIENT TAG UTILITIES ───────────────────────────────────────────────
 
 // identifier: { jobber_client_id } or { contact_id }
+/**
+ * Removes ONE exact tag from a client or contact.
+ * Inputs: a db/pool, an identifier ({ jobber_client_id } or { contact_id }), the contractor id,
+ *         and the exact tag string.
+ * Output: nothing. Swallows and logs, like its siblings — a tag failure must not abort a sync.
+ *
+ * ⚠ removeTag ABOVE CANNOT DO THIS JOB, WHICH IS WHY THIS EXISTS RATHER THAN BEING A DUPLICATE.
+ * That one takes a bare contactId and matches `contact_id = $1` only; deriveAndSaveTags works
+ * from `{ jobber_client_id }`, so it would have deleted nothing and said nothing — the shape of
+ * failure this repo keeps recording. This mirrors removeTagsByPrefix's identifier handling
+ * exactly, and differs from it only in matching the tag EXACTLY rather than by prefix.
+ * ⚠ EXACT, NOT A PREFIX: `paying_client` must not be removed by a sweep that would also take a
+ * hypothetical `paying_client_since`, and a prefix match is how that happens silently.
+ * ⚠ contractor_id is in the predicate, always — a tag delete without it is cross-tenant.
+ */
+async function removeExactTag(pool, identifier, contractorId, tag) {
+  try {
+    const jcid = identifier.jobber_client_id || null;
+    const cid  = identifier.contact_id || null;
+    await pool.query(
+      `DELETE FROM contact_tags
+       WHERE tag = $1
+         AND contractor_id = $2
+         AND (
+           ($3::text IS NOT NULL AND jobber_client_id = $3)
+           OR ($4::uuid IS NOT NULL AND contact_id = $4)
+         )`,
+      [tag, contractorId, jcid, cid]
+    );
+  } catch (err) {
+    await logError({ req: null, error: err, source: `removeExactTag(${tag})` });
+  }
+}
+
 // Removes all tags matching prefix for the given client.
 async function removeTagsByPrefix(pool, identifier, contractorId, prefix) {
   try {
@@ -145,4 +179,4 @@ async function replaceTagGroup(pool, identifier, contractorId, prefix, newTag, s
   await upsertTag(pool, identifier, contractorId, newTag, source);
 }
 
-module.exports = { applyTag, removeTag, backfillTagsForContacts, removeTagsByPrefix, upsertTag, replaceTagGroup };
+module.exports = { applyTag, removeTag, removeExactTag, backfillTagsForContacts, removeTagsByPrefix, upsertTag, replaceTagGroup };

@@ -5,7 +5,7 @@ import {
   WarningCircle, Prohibit, ChatSlash, ClockCountdown, ClockClockwise,
   Lightning, CalendarCheck, LinkSimple, User, Storefront,
 } from '@phosphor-icons/react';
-import { AD } from '../../constants/adminTheme';
+import { AD, tagLabel } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import AdminContactDetailDrawer from './AdminContactDetailDrawer';
 
@@ -126,9 +126,18 @@ function RowTagPill({ tag, source }) {
     );
   }
 
-  const displayText = source === 'jobber_crm' && tag.includes(':')
-    ? tag.split(':').slice(1).join(':').replace(/_/g, ' ')
-    : tag;
+  // ⚠ THE LABEL IS CONSULTED BEFORE THE PREFIX IS STRIPPED, AND THE ORDER IS THE POINT.
+  // This pill carries NO group heading, so stripping leaves `invoice:paid` rendering as a bare
+  // "paid" with nothing saying whose judgement that is — and `paying_client`, which has no
+  // prefix to strip, rendering as the raw identifier beside it. TAG_LABELS is keyed on the FULL
+  // stored tag, so it must be asked first; every other invoice:* value falls through to the
+  // strip exactly as before.
+  const labelled = tagLabel(tag);
+  const displayText = labelled !== tag
+    ? labelled
+    : source === 'jobber_crm' && tag.includes(':')
+      ? tag.split(':').slice(1).join(':').replace(/_/g, ' ')
+      : tag;
 
   return <span style={pillStyle}>{displayText}</span>;
 }

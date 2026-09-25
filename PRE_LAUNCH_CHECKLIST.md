@@ -5610,10 +5610,82 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       after 4a it can disagree with the app's actual definition: a client whose latest invoice has
       status `paid` with a NON-ZERO balance, or with total 0, gets `invoice:paid` but NOT
       `paying_client`. Two tags that look synonymous and are not.
-      **The markers the helper DOES drive are `paying_client` (lifetime, never removed) and the
+      **The markers the helper DOES drive are `paying_client` and the
       `value:under_5k` / `value:5k_to_15k` / `value:over_15k` bracket.**
+      ⚠ **THIS LINE READ "`paying_client` (lifetime, never removed)" UNTIL COMMIT 4b, AND THAT IS
+      NOW INVERTED RATHER THAN MERELY OLD** — 4b made the tag add-or-remove on Danny's ruling. The
+      sentence it belonged to is unaffected: the two tags still disagree, and that is still the
+      open question. Corrected here because a reader deciding the rename would otherwise weigh a
+      lifetime tag against a mirror, which is not the choice in front of them.
       **What to decide:** whether `invoice:paid` should be renamed (e.g. `invoice_status:paid`) so
       the mirror cannot be mistaken for the decision, or left and documented for audience authors.
+
+- [ ] ⚠ **`paying_client` CANNOT BE USED TO BUILD AN AUDIENCE AT ALL, AND 4b's LABEL THEREFORE
+      CANNOT BE SEEN WHERE IT MATTERS MOST** (found 2026-09-25 in Commit 4b while enumerating the
+      render sites; deliberately NOT changed — it is more than display text, which is the boundary
+      Danny set on 4b).
+      `GET /api/admin/jobber-client-tag-summary` builds the audience tag cloud from **two** queries
+      and `paying_client` satisfies neither. The prefixed query requires `tag LIKE '%:%'`;
+      `paying_client` has no colon. The system query requires `source = 'system'`;
+      `deriveAndSaveTags` writes it with source `jobber_crm`. So the tag exists on the client, is
+      readable by the `?paying=true` filter on the contacts list, is rendered on the client
+      drawer — and **is absent from the audience builder in both `AdminCampaigns.jsx` and
+      `AdminContactsTab.jsx`.** It is not in `ROOFMILES_GROUPS` either.
+      ⚠ **THE CONSEQUENCE IS THE INVERSE OF WHAT 4a's NOTE ASSUMED.** That note worried that
+      audiences could read `invoice:paid` AS a paid marker. They can — and the reason is partly
+      that **the real marker is not offered to them.** An audience author reaching for "clients who
+      have paid" finds only the mirror.
+      **What to decide:** whether `paying_client` becomes a third group in the tag summary (a
+      no-colon `jobber_crm` branch), or is given a prefix, or is added to `ROOFMILES_GROUPS` as an
+      explicit pill. Each is a server or data change, not a label.
+
+- [ ] ⚠ **NOTHING BACKFILLS THE STALE `paying_client` ROWS 4a's TIGHTENING CREATED** (raised
+      2026-09-25 by Commit 4b; deliberately NOT done, because a bulk tag delete on live data needs
+      a ruling and a backup).
+      Before 4a, status alone wrote `paying_client`, so clients whose only "paid" invoice has a
+      NON-ZERO balance or a total of 0 carry the tag today. 4b removes it — **but only on that
+      client's next tag derivation.** Every such row is stale until then, and the frequent job
+      cannot clear it (see the entry below).
+      **What to decide:** whether to run a one-off recompute, or accept the drift and let the
+      derivations catch up. Danny has a before/after snapshot from 4a that scopes the set.
+
+- [ ] ⚠ **THE 30-MINUTE PIPELINE SYNC DOES NOT DERIVE TAGS, SO THE FREQUENT JOB IS THE ONE THAT
+      CANNOT CLEAR A STALE TAG** (recorded 2026-09-25 by Commit 4b; a KNOWN ACCEPTED STATE, not a
+      defect to close).
+      Verified at HEAD: `grep -c deriveAndSaveTags server/crm/pipelineSync.js` is **0**. Every path
+      that recomputes tags is one of `jobberIncrementalSync` (daily, `0 2 * * *` UTC),
+      `fullJobberImport` (manual), or the `client-create` · `client-update` · `invoice-paid` ·
+      `job-update` webhooks. So an invoice edit that fires none of those four topics leaves
+      `paying_client` up to a day stale, while `pipeline_cache` is at most 30 minutes stale.
+      ⚠ **RECORDED SO IT IS NOT MISREAD AS A BUG IN 4b.** Add-or-remove is only as fresh as the
+      derivation that runs it; the removal is correct and the cadence is the limit.
+
+- [x] **✅ DONE — `paying_client` IS RECOMPUTED, NOT ACCUMULATED** (3d Phase 1a Commit 4b,
+      2026-09-25, on Danny's ruling that the tag must reflect the truth TODAY). It is now ADDED
+      when `isInvoicePaid()` holds for some invoice and REMOVED when none does, exactly as
+      `value:*` already worked through `replaceTagGroup`.
+      ⚠ **THE DEFECT WAS AN ASYMMETRY 4a MADE VISIBLE, NOT A MISSING FEATURE.** `value:*` removed
+      before it wrote and was self-correcting; `paying_client` was upsert-only and could only ever
+      say a client HAD paid. Once 4a tightened the definition, every client whose "paid" invoice
+      turns out to be $0 or unsettled carries a marker the app no longer stands behind — and
+      campaign audiences read it.
+      **Removal is EXACT, via a new `removeExactTag()` in `server/utils/tags.js`.**
+      `removeTag()` could not do it — that one matches `contact_id` only, while
+      `deriveAndSaveTags` works from `{ jobber_client_id }`, so it would have deleted nothing and
+      said nothing. `removeTagsByPrefix()` would also take a future `paying_client_since`.
+      **Labels, per the same ruling:** `TAG_LABELS` / `tagLabel()` in `src/constants/adminTheme.js`
+      render `paying_client` as "Paid client" and `invoice:paid` as "Jobber status: Paid".
+      ⚠ **THE FIRST ENUMERATION OF THE RENDER SITES FOUND FIVE; THERE ARE NINE.** The four it
+      missed were found by a shape sweep rather than by reading, and one of them —
+      `AdminContactsTab`'s row pill — is the worst case in the set: it STRIPS the prefix, so
+      `invoice:paid` rendered as a bare "paid" with no group heading to say whose judgement that
+      was. **Budget for N-1 as the expected outcome of a search.**
+      ⚠ **THREE OF THE NINE WERE DELIBERATELY LEFT RENDERING THE VALUE, AND IT IS A JUDGEMENT CALL
+      DANNY MAY OVERRULE** — the grouped clouds in `AdminCampaigns.jsx` and `AdminContactsTab.jsx`
+      and the Tag Visibility grid in `CRMSettings.jsx` print the prefix as the heading immediately
+      above, so applying the full label there would print "Invoice / Jobber status: Paid". The
+      ambiguity the ruling targets cannot arise in those three: they show only prefixed tags, and
+      `paying_client` is absent from all of them (see the entry above).
 
 - [x] **✅ DONE — ALL SEVEN STATUS-ONLY SITES NOW USE THE ONE HELPER** (3d Phase 1a Commit 4a,
       2026-09-25, on Danny's ruling that the whole app agree so the paid marker means a truly

@@ -385,8 +385,32 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1852 server tests across 304 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the one-definition-of-paid commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1852 · suites 304 · pass 1852 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE ONE-DEFINITION-OF-PAID COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1862 server tests across 305 suites, and 1353 React tests across 81 files** (measured 2026-09-25 by the paying-client recompute commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1862 · suites 305 · pass 1862 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYING-CLIENT RECOMPUTE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  **BOTH HALVES MOVED, AND BOTH BY ONE WHOLE NEW FILE.** Server 1852 → 1862 is **+10**, the `it(`
+  lines of one new file (`payingClientRecompute.test.js`); suites 304 → 305 is that file's single
+  describe. React 1342 → 1353 is **+11** in one new file (`tagLabels.test.jsx`), and 80 → 81 is that
+  file. **All four predicted before the run and matched.**
+  ⚠ **NO PHANTOM, AND THE WALKER'S EXCLUSION WAS READ RATHER THAN REMEMBERED.** The new React file
+  sits in `src/constants`, which IS one of the four roots `adminBranding.test.jsx` walks — but its
+  walker carries `if (/\.test\.(js|jsx|mjs)$/.test(entry.name)) continue;`, confirmed at that line,
+  so a new TEST file adds nothing there. The only non-test `src/` files this commit touches already
+  existed, so the arithmetic closes at exactly 11.
+  ⚠ **AND `grep -c "it("` REPORTED 14 FOR AN 11-CASE FILE, WHICH IS THE SUBSTRING TRAP IN THE
+  COUNTING TOOL ITSELF.** Three matches were `split(` — *spl-it(*. The runner said 11 and the
+  anchored count agrees; **the bare needle was wrong in the direction that is dangerous**, since a
+  prediction three too HIGH reads as a suite that partly failed to register. Anchor the count on
+  `^\s*it\(`, and this is why the prediction is COUNTED and then checked against the runner rather
+  than trusted from either alone.
+  ⚠ **A GUARD-PROOF FOUND TWO VACUOUS CASES IN MY OWN NEW FILE, AND THE PREDICTION IS WHAT EXPOSED
+  THEM.** Restoring upsert-only was predicted to take **6** red and took **4**. The two that stayed
+  green — the exact-removal case and the tenancy case — both asserted `paying_client` was ABSENT
+  after a derivation that had **never added it**, so each was satisfied by a tag that had never
+  existed. Both now derive a paid invoice first and ASSERT the precondition; the proof then took
+  exactly 6. **A negative case whose precondition was never established is CLAUDE.md's shape #9
+  wearing a fixture, and the only thing that surfaced it was a red count that disagreed with the
+  prediction by two.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE ONE-DEFINITION-OF-PAID COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
   Server 1842 → 1852 is **+10 = 7 + 2 + 1**: seven in a new file (`oneDefinitionOfPaid.test.js`),
   two appended to an EXISTING describe in `referralRules.test.js`, and one appended to an EXISTING
   describe in `captureFetchContract.test.js`. Suites 302 → 304 is **the new file's TWO describes
