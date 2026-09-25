@@ -1,81 +1,309 @@
 'use strict';
 
-// ── SHARED FULL-CLIENT FETCH ─────────────────────────────────────────────────
-// Extracted from server/routes/webhooks/jobber.js in Canvass-3.7, unchanged.
+// ── SHARED FULL-CLIENT FETCH — THE CAPTURE-PATH FETCH CONTRACT ───────────────
+// Extracted from server/routes/webhooks/jobber.js in Canvass-3.7; rewritten in 3d Phase 1a
+// Commit 2 to page to exhaustion, to carry the money fields a sale's value needs, and to
+// treat a GraphQL error as a FAILURE rather than an absence.
 //
-// ⚠ RELOCATED VERBATIM. The function body below — query text, selection set, retry
-// options, error message — is byte-for-byte what lived in the webhook router, per
-// CLAUDE.md's rule that a relocation must be mechanically checkable and must never carry
-// a correction in the same commit. Nothing was "tidied" on the way across. The webhook
-// router now imports it from here and keeps its own `_fetchFullClient` test seam around it.
+// WHY IT LIVES HERE: server/cron/jobs/repRequestSweep.js needs the same fetch, and a cron job
+// importing a route file is the wrong direction — routes may import utils, never the reverse.
+// The alternative was a second copy of this query, which is precisely what CLAUDE.md's
+// "duplicate logic must be extracted to a shared utility" forbids, and a selection set
+// duplicated across two files is one of the cheaper ways to ship a client object that is
+// missing a field its consumer silently defaults.
 //
-// WHY IT MOVED: server/cron/jobs/repRequestSweep.js needs the same fetch, and a cron job
-// importing a route file is the wrong direction — routes may import utils, never the
-// reverse. The alternative was a second copy of this query, which is precisely what
-// CLAUDE.md's "duplicate logic must be extracted to a shared utility" forbids, and a
-// selection set duplicated across two files is one of the cheaper ways to ship a client
-// object that is missing a field its consumer silently defaults.
+// ⚠ THREE THINGS THIS MODULE GUARANTEES, AND EACH ONE REPLACED A DEFECT:
+//   1. A GraphQL error is a THROWN failure. Jobber answers a failed query with HTTP 200 plus
+//      an errors array, and jobberShouldRetry reads only error.response.status — so
+//      retryWithBackoff resolves happily on exactly the failure we are most likely to hit.
+//   2. NO FIXED CAP SILENTLY DROPS RECORDS. Every connection is paged to exhaustion (N3).
+//      The old selection read jobs(first: 10) and invoices(first: 5); a long-time client with
+//      eleven jobs lost one, and nothing said so.
+//   3. THE INVOICE SET IS AUTHORITATIVE AND IS KEYED BY INVOICE ID. Invoices are paged off
+//      Client.invoices rather than read through each job's nested connection, because
+//      Invoice.jobs is itself a CONNECTION — one invoice can cover several jobs. Each job's
+//      invoices.nodes is then REBUILT from that set, so a job can never lose an invoice to a
+//      nested cap, and an invoice covering three jobs is stored once and appears under each.
+//
+// ⚠ EVERY FIELD BELOW IS VERIFIED AT THE PINNED VERSION 2026-05-12 by introspection Danny ran
+// in Jobber's Developer Center. GraphQL has no optional field — an unknown field fails the
+// WHOLE query, not itself — so a selection is a claim about the schema and this one is sourced.
+//
+// ⚠ MONEY IS A Float IN JOBBER AND IS DOLLARS, NOT CENTS (e.g. 29724.8). It is passed through
+// unconverted here. Rounding to NUMERIC(12,2) belongs to whatever stores it, and must go via a
+// decimal/string path rather than cents arithmetic.
+//
+// ⚠ AND "PAID" IS invoiceBalance = 0, NOT total MINUS paymentsTotal. Danny's ruling; the
+// balance is authoritative and the subtraction is a reconstruction that drifts.
+//
+// ⚠ A VOIDED INVOICE IS STILL FETCHED, DELIBERATELY. 2026-05-12 added the enum value `voided`
+// to InvoiceStatusTypeEnum, and a voided invoice's STATUS is a fact worth having. Nothing in
+// this module treats it as paid, and nothing downstream may count it toward a sale's value.
 
 const axios = require('axios');
 const { retryWithBackoff } = require('./retryWithBackoff');
 const { jobberShouldRetry } = require('./retryHelpers');
 
-// Fetches complete client data from Jobber by ID, including quotes/jobs/invoices
-// needed for accurate pipeline status classification. Called from webhook handlers
-// so classifyPipelineStatus gets full data rather than the sparse webhook payload.
+const JOBBER_GRAPHQL_URL = 'https://api.getjobber.com/api/graphql';
+const JOBBER_API_VERSION = '2026-05-12';
+
+// Page size per round trip. Introspection reported the throttle at maximumAvailable 10000 and
+// restoreRate 500/s, so 50 nodes per connection per round is comfortably inside it while
+// keeping the number of round trips low for the common small client.
+const PAGE_SIZE = 50;
+
+// Nested job ids per invoice. This is the ONE remaining nested cap and it is not a record
+// cap: it bounds how many jobs a SINGLE invoice may name. A cap that could silently drop a
+// job id would break the invoice-to-sale link, so it THROWS rather than truncating — see
+// assertInvoiceJobsComplete below.
+const INVOICE_JOBS_PAGE_SIZE = 50;
+
+// A runaway guard, not a record cap. Reaching it means the connection is larger than any real
+// client and something is wrong with the cursor — so it THROWS rather than returning a short
+// answer, which is the whole point of N3.
+const MAX_PAGES = 200;
+
+// ── THE QUERIES ──────────────────────────────────────────────────────────────
+// Exported so the boundary fence in server/test/captureFetchContract.test.js can difference
+// what the consumers READ against what these actually SELECT. That fence exists because
+// loadContractorBranding() once omitted two columns its resolver read, and every surface
+// silently fell back to a default: a test that injects the value itself cannot discover that
+// nothing upstream supplies it.
 //
-// ⚠ `createdAt` ON THE JOB NODES IS LOAD-BEARING AND WAS MISSING UNTIL CANVASS-STAGE.
-// This selection read `id jobStatus` only, which made it the ONE fetch of four that
-// could not date a sale — and it is the fetch the REQUEST path and repRequestSweep use.
-// The gap was found by asking the question per writer rather than once: the webhook
-// router's fetchClientRelatedData, jobberIncrementalSync's GetClientRelated and
-// fullJobberImport's Step C all carried it; this did not.
-// ⚠ The field is PROVEN at 2026-05-12 — those three shipped queries select
-// `job.createdAt` under that exact version header, it was equally proven at the previous
-// pin 2026-02-17, and Danny's 2026-05-12 introspection lists `createdAt` on the Job type —
-// so this is not a 3.6b-style unknown-field risk, where a field absent at our version
-// fails the WHOLE query.
-// ⚠ `first: 10` IS STILL A CAP, AND IT IS NOT ENOUGH FOR SALE GROUPING. Dating one
-// sale needs only the earliest job; grouping sales needs EVERY job, and a client with
-// more than ten silently loses some. See PRE_LAUNCH_CHECKLIST.md on paging jobs
-// oldest-first — this line fixes the missing FIELD, not the cap.
-async function fetchFullClient(clientId, token) {
-  const response = await retryWithBackoff(
-    () => axios.post(
-      'https://api.getjobber.com/api/graphql',
-      {
-        query: `query GetClient($id: EncodedId!) {
-          client(id: $id) {
+// ⚠ NO BACKTICK MAY APPEAR IN A COMMENT INSIDE THESE TEMPLATE LITERALS. One closes the
+// string, the remainder parses as an expression, and the file still loads.
+
+const CLIENT_SCALARS = `
             id firstName lastName createdAt isArchived
             customFields { ... on CustomFieldText { label valueText } }
             phones { number description }
-            emails { address description }
-            quotes(first: 10) { nodes { id quoteStatus lastTransitioned { approvedAt } salesperson { id } } }
-            jobs(first: 10) {
-              nodes {
-                id jobStatus createdAt
-                invoices(first: 5) { nodes { invoiceStatus } }
-              }
+            emails { address description }`;
+
+const QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id }`;
+
+const JOB_FIELDS = `id jobStatus createdAt`;
+
+const INVOICE_FIELDS = `id invoiceStatus createdAt issuedDate dueDate
+                amounts { total invoiceBalance paymentsTotal }
+                jobs(first: ${INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }`;
+
+const BASE_QUERY = `query GetClient($id: EncodedId!) {
+          client(id: $id) {${CLIENT_SCALARS}
+            quotes(first: ${PAGE_SIZE}) {
+              nodes { ${QUOTE_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
+            jobs(first: ${PAGE_SIZE}) {
+              nodes { ${JOB_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
+            invoices(first: ${PAGE_SIZE}) {
+              nodes { ${INVOICE_FIELDS} }
+              pageInfo { hasNextPage endCursor }
             }
           }
-        }`,
-        variables: { id: clientId },
-      },
+        }`;
+
+const QUOTES_PAGE_QUERY = `query GetClientQuotesPage($id: EncodedId!, $after: String) {
+          client(id: $id) {
+            quotes(first: ${PAGE_SIZE}, after: $after) {
+              nodes { ${QUOTE_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }`;
+
+const JOBS_PAGE_QUERY = `query GetClientJobsPage($id: EncodedId!, $after: String) {
+          client(id: $id) {
+            jobs(first: ${PAGE_SIZE}, after: $after) {
+              nodes { ${JOB_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }`;
+
+const INVOICES_PAGE_QUERY = `query GetClientInvoicesPage($id: EncodedId!, $after: String) {
+          client(id: $id) {
+            invoices(first: ${PAGE_SIZE}, after: $after) {
+              nodes { ${INVOICE_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }`;
+
+/**
+ * The one sanctioned Jobber POST for the capture path.
+ * Inputs: query string, variables object, bearer token, a label for error messages.
+ * Output: the axios response.
+ * ⚠ Every caller must pass its result through assertNoJobberGraphQLErrors.
+ */
+async function capturePost(query, variables, token) {
+  return retryWithBackoff(
+    () => axios.post(
+      JOBBER_GRAPHQL_URL,
+      { query, variables },
       {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
+          'X-JOBBER-GRAPHQL-VERSION': JOBBER_API_VERSION,
         },
       }
     ),
     { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
   );
-
-  if (!response.data?.data?.client) {
-    throw new Error(`fetchFullClient: no client returned for id ${clientId}`);
-  }
-  return response.data.data.client;
 }
 
-module.exports = { fetchFullClient };
+/**
+ * Turns a 200-with-errors response into a thrown, DISTINGUISHABLE failure.
+ * Inputs: the axios response, a label naming what was being fetched.
+ * Output: nothing on success; throws otherwise.
+ *
+ * ⚠ THE DISTINGUISHABILITY IS THE POINT, NOT THE THROW. A caller has to be able to tell
+ * "Jobber said no" from "this client genuinely has no data", because the second is a normal
+ * quiet outcome and the first must never be written as one. The thrown error carries
+ * `jobberGraphQLErrors`, so a caller can branch on the KIND of failure rather than on a
+ * message string.
+ */
+function assertNoJobberGraphQLErrors(response, label) {
+  const errors = response?.data?.errors;
+  if (Array.isArray(errors) && errors.length > 0) {
+    const err = new Error(`${label}: Jobber GraphQL error: ${errors.map((e) => e?.message).join('; ')}`);
+    err.jobberGraphQLErrors = errors;
+    throw err;
+  }
+}
+
+/**
+ * An invoice may name several jobs, and losing one would break the invoice-to-sale link.
+ * Inputs: the invoice nodes.
+ * Output: nothing; throws if any invoice has more job ids than one page can carry.
+ * ⚠ THROWS RATHER THAN TRUNCATING, because a silently short job set reads as a correct
+ * invoice that simply belongs to fewer sales.
+ */
+function assertInvoiceJobsComplete(invoiceNodes, label) {
+  for (const inv of invoiceNodes) {
+    if (inv?.jobs?.pageInfo?.hasNextPage) {
+      throw new Error(
+        `${label}: invoice ${inv.id} names more than ${INVOICE_JOBS_PAGE_SIZE} jobs — `
+        + 'the job set would be truncated and the invoice-to-sale link would be wrong'
+      );
+    }
+  }
+}
+
+/**
+ * Pages one of a client's connections to exhaustion.
+ * Inputs: the follow-up query, the client id, the bearer token, the connection's field name,
+ *         the first page already fetched, and a label.
+ * Output: every node across every page, in Jobber's order.
+ * ⚠ A missing endCursor with hasNextPage true is a THROW, never a quiet stop — that is the
+ * shape that returns a short answer and looks complete.
+ */
+async function pageClientConnection({ query, clientId, token, field, firstPage, label }) {
+  const nodes = [...(firstPage?.nodes || [])];
+  let pageInfo = firstPage?.pageInfo;
+  let pages = 1;
+
+  while (pageInfo?.hasNextPage) {
+    if (!pageInfo.endCursor) {
+      throw new Error(`${label}: ${field} reported hasNextPage with no endCursor after ${pages} page(s)`);
+    }
+    if (pages >= MAX_PAGES) {
+      throw new Error(`${label}: ${field} exceeded ${MAX_PAGES} pages — refusing to return a partial set`);
+    }
+
+    const response = await capturePost(query, { id: clientId, after: pageInfo.endCursor }, token);
+    assertNoJobberGraphQLErrors(response, `${label} (${field} page ${pages + 1})`);
+
+    const connection = response.data?.data?.client?.[field];
+    if (!connection) {
+      throw new Error(`${label}: ${field} connection absent on page ${pages + 1}`);
+    }
+    nodes.push(...(connection.nodes || []));
+    pageInfo = connection.pageInfo;
+    pages += 1;
+  }
+
+  return nodes;
+}
+
+/**
+ * Fetches complete client data from Jobber by ID — quotes, jobs and invoices, all paged to
+ * exhaustion — for pipeline classification, tag derivation and the attribution engine.
+ *
+ * Inputs: the Jobber client id, a bearer token.
+ * Output: a client object in the CONNECTION shape its consumers read —
+ *         client.quotes.nodes, client.jobs.nodes, job.invoices.nodes — plus
+ *         client.invoices.nodes as the authoritative, invoice-id-keyed set.
+ * Throws: on a GraphQL error, on an absent client, and on any paging anomaly.
+ *
+ * ⚠ THE CONNECTION SHAPE IS LOAD-BEARING AND IS NOT A STYLE CHOICE. classifyPipelineStatus
+ * reads client.jobs?.nodes and job.invoices?.nodes; hand it the FLATTENED object built for
+ * deriveAndSaveTags and every branch reads an empty array, so it returns 'lead' for the whole
+ * book with no error and the dependent stat sits at zero forever.
+ */
+async function fetchFullClient(clientId, token) {
+  const label = `fetchFullClient ${clientId}`;
+
+  const response = await capturePost(BASE_QUERY, { id: clientId }, token);
+  assertNoJobberGraphQLErrors(response, label);
+
+  const client = response.data?.data?.client;
+  if (!client) {
+    throw new Error(`fetchFullClient: no client returned for id ${clientId}`);
+  }
+
+  const [quoteNodes, jobNodes, invoiceNodes] = await Promise.all([
+    pageClientConnection({ query: QUOTES_PAGE_QUERY, clientId, token, field: 'quotes', firstPage: client.quotes, label }),
+    pageClientConnection({ query: JOBS_PAGE_QUERY, clientId, token, field: 'jobs', firstPage: client.jobs, label }),
+    pageClientConnection({ query: INVOICES_PAGE_QUERY, clientId, token, field: 'invoices', firstPage: client.invoices, label }),
+  ]);
+
+  assertInvoiceJobsComplete(invoiceNodes, label);
+
+  return {
+    ...client,
+    quotes: { nodes: quoteNodes },
+    jobs: { nodes: attachInvoicesToJobs(jobNodes, invoiceNodes) },
+    invoices: { nodes: invoiceNodes },
+  };
+}
+
+/**
+ * Rebuilds each job's invoices.nodes from the authoritative invoice set.
+ * Inputs: the job nodes, the invoice nodes (each carrying jobs.nodes of job ids).
+ * Output: the job nodes, each with an invoices.nodes array.
+ *
+ * ⚠ ONE INVOICE CAN COVER SEVERAL JOBS, so it appears under each of them here and MUST be
+ * counted once when a value is computed. The invoice set above is the thing keyed by invoice
+ * id; this view is keyed by job and deliberately contains duplicates.
+ */
+function attachInvoicesToJobs(jobNodes, invoiceNodes) {
+  const byJobId = new Map();
+  for (const inv of invoiceNodes) {
+    for (const j of (inv?.jobs?.nodes || [])) {
+      if (!j?.id) continue;
+      if (!byJobId.has(j.id)) byJobId.set(j.id, []);
+      byJobId.get(j.id).push(inv);
+    }
+  }
+  return jobNodes.map((job) => ({ ...job, invoices: { nodes: byJobId.get(job.id) || [] } }));
+}
+
+module.exports = {
+  fetchFullClient,
+  assertNoJobberGraphQLErrors,
+  assertInvoiceJobsComplete,
+  pageClientConnection,
+  capturePost,
+  attachInvoicesToJobs,
+  JOBBER_API_VERSION,
+  PAGE_SIZE,
+  MAX_PAGES,
+  // Exported for the boundary fence only.
+  BASE_QUERY,
+  QUOTES_PAGE_QUERY,
+  JOBS_PAGE_QUERY,
+  INVOICES_PAGE_QUERY,
+};

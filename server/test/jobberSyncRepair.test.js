@@ -386,14 +386,35 @@ describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token p
     // which is the precise failure T11c below records and was built to prevent.
     // Only the FILE changed here. The assertion, the needle and the non-vacuity checks
     // are untouched.
+    // ⚠ RE-ANCHORED AGAIN IN 3d PHASE 1a COMMIT 2, AND THE HARNESS IS WHY THIS WAS SAFE.
+    // Commit 2 rewrote fetchFullClient to page to exhaustion, which moved the query text OUT
+    // of the function body and into the module constant BASE_QUERY. The old slice ran from
+    // /async function fetchFullClient\(/ to /\nmodule\.exports/ and therefore no longer
+    // contained the query at all — so this test went RED on
+    // "harness: the slice must contain the GraphQL query". ⚠ THAT IS THE NON-VACUITY CHECK
+    // DOING EXACTLY ITS JOB: it failed LOUDLY on a moved target instead of slicing past the
+    // query and asserting nothing, which is the precise failure T11c below records.
+    // ⚠ THE PROPERTY UNDER TEST DID NOT CHANGE AND WAS NEVER BROKEN — fetchFullClient still
+    // selects isArchived, in CLIENT_SCALARS. Verified independently of this test before the
+    // re-anchor, by reading the exported BASE_QUERY directly.
+    // ⚠ AND THE NEW ANCHOR IS STRONGER, NOT LOOSER. It reads the EXPORTED query text — the
+    // string that actually goes on the wire — so it can no longer be satisfied or defeated by
+    // where in the file the query happens to be written. The chain from the function to that
+    // query is asserted separately below, so "the constant selects isArchived" cannot pass
+    // while fetchFullClient sends some other query.
+    const { BASE_QUERY } = require('../utils/jobberClientFetch');
+
     const body = sliceBetween(
       read('utils/jobberClientFetch.js'),
       /async function fetchFullClient\(/,
       /\nmodule\.exports/
     );
     assert.ok(body.length > 200, 'harness: the fetchFullClient slice is too short to be the real body');
-    assert.ok(/client\(id: \$id\)/.test(body), 'harness: the slice must contain the GraphQL query');
-    assert.equal(SELECTS_IS_ARCHIVED.test(body), true,
+    assert.ok(/BASE_QUERY/.test(body), 'harness: fetchFullClient must send BASE_QUERY, or this test is checking a query nothing uses');
+
+    assert.ok(BASE_QUERY.length > 200, 'harness: BASE_QUERY is too short to be the real query');
+    assert.ok(/client\(id: \$id\)/.test(BASE_QUERY), 'harness: BASE_QUERY must be the client query');
+    assert.equal(SELECTS_IS_ARCHIVED.test(BASE_QUERY), true,
       'fetchFullClient must select isArchived, or the webhook path can never know a client was archived');
   });
 

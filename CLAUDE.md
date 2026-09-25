@@ -385,8 +385,34 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1702 server tests across 283 suites, and 1342 React tests across 80 files** (measured 2026-09-24 by the QUOTE_APPROVED route commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1702 · suites 283 · pass 1702 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE QUOTE_APPROVED ROUTE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1752 server tests across 287 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the capture-fetch-contract commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1752 · suites 287 · pass 1752 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CAPTURE-FETCH-CONTRACT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1702 → 1752 is **+50**, one new file (`captureFetchContract.test.js`); suites 283 → 287
+  is that file's **four** top-level describes. React did not move — no `src/` file was touched —
+  and was re-measured rather than carried. **All four predicted before the run and matched.**
+  ⚠ **COUNTED WITH `grep -c`, AND THE ONE LOOP PAIR THAT MULTIPLIES WAS SEPARATED FROM THE THREE
+  THAT DO NOT.** 27 `it(` lines, of which **one sits inside a NESTED pair of `for` loops that
+  WRAPS the `it()`** — the boundary fence asserts per (query × field) BY NAME — so 2 × 12 = 24
+  from that line, plus 26 × 1 = **50**. The other three `for` loops sit inside `it()` bodies and
+  emit nothing. **Reading "27 lines" as 27 cases would have been low by 23**, which is the
+  direction that looks identical to a suite that partly failed to register.
+  ⚠ **THE GATE WENT RED FIRST, AND THE FAILURE WAS A NON-VACUITY CHECK DOING EXACTLY ITS JOB.**
+  `jobberSyncRepair.test.js`'s **T11b** slices `fetchFullClient`'s body and asserts it selects
+  `isArchived`. This commit moved the query text OUT of the function into a module constant, so
+  the slice no longer contained the query and the test failed on *"harness: the slice must
+  contain the GraphQL query"* — **it failed LOUDLY on a moved target instead of slicing past the
+  query and asserting nothing**, which is the precise vacuity T11c records. **The property was
+  never broken** (`isArchived` is in `CLIENT_SCALARS`, verified independently before the
+  re-anchor). Re-anchored on the EXPORTED query text, which is stronger — it reads the string
+  that goes on the wire — plus a separate assertion that the function actually sends that
+  constant, so the two halves cannot drift apart. **Guard-proofed: removing `isArchived` takes
+  T11b red.** Contributes 0 to the count; it was edited, not added.
+  ⚠ **AND THE HARNESS REPORTED exit 0 WHILE THE LOG'S OWN `EXIT=` LINE READ 1** — the third
+  recorded instance of that disagreement. **Read the `EXIT=` written into the log, never the
+  harness's summary of it.** On that red run the React step never ran at all, because the gate
+  chains with `&&` — so a tail would have shown no React numbers and no reason.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE QUOTE_APPROVED ROUTE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.* It read **1702 / 283 / 1342 / 80**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE QUOTE_APPROVED ROUTE COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 1696 → 1702 is **+6**, one new describe appended to the EXISTING
   `stageWebhooks.test.js`; suites 282 → 283 is that describe. React did not move — no `src/` file
   was touched — and was re-measured rather than carried. **All four predicted before the run, and

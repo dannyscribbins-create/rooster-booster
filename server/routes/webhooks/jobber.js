@@ -29,7 +29,14 @@ const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
 const { refreshTokenIfNeeded, getFreshContractorAccessToken, fetchRequestById, fetchAttributionData } = require('../../crm/jobber');
 const { attributeFromRequest } = require('../../utils/requestAttribution');
-const { fetchFullClient } = require('../../utils/jobberClientFetch');
+const {
+  fetchFullClient,
+  assertNoJobberGraphQLErrors,
+  assertInvoiceJobsComplete,
+  pageClientConnection,
+  capturePost,
+  attachInvoicesToJobs,
+} = require('../../utils/jobberClientFetch');
 
 // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
 // Returns true if the request passes verification, false and sends 401 otherwise.
@@ -72,7 +79,10 @@ function verifyJobberWebhookSignature(req, res) {
 // ── INVOICE + JOBS FETCH (Referral Rules Engine) ──────────────────────────────
 // Fetches a single invoice with full job data, custom fields, and invoice amounts.
 // Used exclusively by the referral rules engine inside the invoice-paid handler.
-// fetchFullClient() is intentionally NOT modified — this is a separate fetch.
+// fetchFullClient() is a SEPARATE fetch and this one does not replace it. ⚠ That sentence used
+// to read "fetchFullClient() is intentionally NOT modified", which a reader today would take as
+// a standing rule: Commit 2 DID widen fetchFullClient, for its own reasons. What stays true is
+// that these two fetches are distinct and neither is derived from the other.
 //
 // GraphQL field names verified via live Jobber GraphQL explorer on 2026-04-30:
 //   - amounts.total = whole dollars (NOT cents). 3595 = $3,595. Do NOT divide by 100.
@@ -126,6 +136,10 @@ async function fetchInvoiceWithJobs(invoiceId, token) {
     { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
   );
 
+  // ⚠ ORDER MATTERS: read the errors array BEFORE the absence check. Both produce a throw, but
+  // only this one says WHY — a 200-with-errors otherwise surfaced as "no invoice returned",
+  // which reads as a deleted invoice rather than a failed query.
+  assertNoJobberGraphQLErrors(response, `fetchInvoiceWithJobs ${invoiceId}`);
   if (!response.data?.data?.invoice) {
     throw new Error(`fetchInvoiceWithJobs: no invoice returned for id ${invoiceId}`);
   }
@@ -161,18 +175,57 @@ async function fetchClientJobsForJobUpdate(clientId, token) {
     ),
     { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
   );
+  // ⚠ SAME DEFECT AS fetchClientRelatedData CARRIED, FIXED HERE FOR THE SAME REASON RATHER
+  // THAN LEFT AS A KNOWN INSTANCE. This ended `|| []`, so a 200-with-errors produced an EMPTY
+  // job list — and job-update compares the current job against its siblings, so "no siblings"
+  // is a confident wrong answer rather than a missing one. The ERRORS RULE is "every Jobber
+  // fetch in the capture path", not "the one the design named".
+  assertNoJobberGraphQLErrors(response, `fetchClientJobsForJobUpdate ${clientId}`);
   return response.data?.data?.client?.jobs?.nodes || [];
 }
 
-// ── CLIENT RELATED DATA FETCH (for tag derivation) ────────────────────────────
-// Fetches jobs, quotes, and requests for a single client — used by tag derivation
-// after CLIENT_CREATE, CLIENT_UPDATE, JOB_UPDATE, and INVOICE_UPDATE events.
-async function fetchClientRelatedData(clientId, token) {
-  const response = await retryWithBackoff(
-    () => axios.post(
-      'https://api.getjobber.com/api/graphql',
-      {
-        query: `query GetClientRelated($id: EncodedId!) {
+// ── CLIENT RELATED DATA FETCH (for tag derivation and stage classification) ───
+// Fetches jobs, quotes, requests and invoices for a single client — used by tag derivation
+// after CLIENT_CREATE, CLIENT_UPDATE, JOB_UPDATE and INVOICE_UPDATE, and by the three stage
+// webhooks to classify a pipeline stage.
+//
+// ⚠ IT USED TO END `return response.data?.data?.client || null;` AND THAT WAS THE LIVE DEFECT
+// THIS COMMIT EXISTS FOR. Jobber answers a FAILED query with HTTP 200 plus an errors array, and
+// jobberShouldRetry reads only error.response.status — so retryWithBackoff resolved happily,
+// `data.client` was null, and the function returned the SAME `null` it returns for a client that
+// genuinely has no data. The stage webhook reads that null as "not observed" and logs a calm
+// "no related data, no stage written" line, so a broken fetch was indistinguishable from a quiet
+// client and never reached error_log at all.
+//
+// ⚠ SO THE CONTRACT IS NOW TWO-VALUED, AND THE DISTINCTION IS THE PRODUCT:
+//   · THROWS  — Jobber said no. The error carries `jobberGraphQLErrors`. Every caller logs it.
+//   · null    — a clean 200 whose `data.client` is null. The client is genuinely absent, which
+//               is a normal quiet outcome and stays one.
+// A caller may treat null as an absence. It may NEVER treat a throw as one.
+//
+// ⚠ AND NO FIXED CAP SILENTLY DROPS RECORDS (N3). jobs, quotes, requests and invoices are all
+// paged to exhaustion. This selection read jobs(first: 50), quotes(first: 20),
+// requests(first: 20) and an UNBOUNDED nested `invoices { nodes }` — so a long-time client lost
+// jobs past the fiftieth with nothing to say so, and the tag derived from "the latest job" was
+// computed from a truncated list.
+//
+// ⚠ THE INVOICE MONEY FIELDS ARE HERE BECAUSE A SALE'S VALUE NEEDS THEM, and they are verified
+// at 2026-05-12: amounts { total invoiceBalance paymentsTotal }. "Paid" is invoiceBalance = 0
+// by ruling, never total minus paymentsTotal. A VOIDED invoice is fetched like any other — its
+// status is a fact — and nothing here treats it as paid.
+const RELATED_JOB_FIELDS = `id jobStatus jobType completedAt createdAt
+                customFields {
+                  ... on CustomFieldText { label valueText }
+                  ... on CustomFieldDropdown { label valueDropdown }
+                }`;
+
+const RELATED_INVOICE_FIELDS = `id invoiceStatus createdAt issuedDate dueDate
+                amounts { total invoiceBalance paymentsTotal }
+                jobs(first: 50) { nodes { id } pageInfo { hasNextPage } }`;
+
+const RELATED_QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id }`;
+
+const RELATED_BASE_QUERY = `query GetClientRelated($id: EncodedId!) {
           client(id: $id) {
             isCompany isLead
             tags { nodes { label } }
@@ -181,33 +234,86 @@ async function fetchClientRelatedData(clientId, token) {
               ... on CustomFieldDropdown { label valueDropdown }
             }
             jobs(first: 50) {
-              nodes {
-                id jobStatus jobType completedAt createdAt
-                invoices { nodes { id invoiceStatus createdAt amounts { total } } }
-                customFields {
-                  ... on CustomFieldText { label valueText }
-                  ... on CustomFieldDropdown { label valueDropdown }
-                }
-              }
+              nodes { ${RELATED_JOB_FIELDS} }
+              pageInfo { hasNextPage endCursor }
             }
-            quotes(first: 20) { nodes { id quoteStatus createdAt } }
-            requests(first: 20) { nodes { id requestStatus createdAt } }
+            quotes(first: 50) {
+              nodes { ${RELATED_QUOTE_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
+            requests(first: 50) {
+              nodes { id requestStatus createdAt }
+              pageInfo { hasNextPage endCursor }
+            }
+            invoices(first: 50) {
+              nodes { ${RELATED_INVOICE_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
           }
-        }`,
-        variables: { id: clientId },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
-        },
-      }
-    ),
-    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
-  );
+        }`;
 
-  return response.data?.data?.client || null;
+const RELATED_JOBS_PAGE_QUERY = `query GetClientRelatedJobsPage($id: EncodedId!, $after: String) {
+          client(id: $id) {
+            jobs(first: 50, after: $after) {
+              nodes { ${RELATED_JOB_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }`;
+
+const RELATED_QUOTES_PAGE_QUERY = `query GetClientRelatedQuotesPage($id: EncodedId!, $after: String) {
+          client(id: $id) {
+            quotes(first: 50, after: $after) {
+              nodes { ${RELATED_QUOTE_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }`;
+
+const RELATED_REQUESTS_PAGE_QUERY = `query GetClientRelatedRequestsPage($id: EncodedId!, $after: String) {
+          client(id: $id) {
+            requests(first: 50, after: $after) {
+              nodes { id requestStatus createdAt }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }`;
+
+const RELATED_INVOICES_PAGE_QUERY = `query GetClientRelatedInvoicesPage($id: EncodedId!, $after: String) {
+          client(id: $id) {
+            invoices(first: 50, after: $after) {
+              nodes { ${RELATED_INVOICE_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }`;
+
+async function fetchClientRelatedData(clientId, token) {
+  const label = `fetchClientRelatedData ${clientId}`;
+
+  const response = await capturePost(RELATED_BASE_QUERY, { id: clientId }, token);
+  assertNoJobberGraphQLErrors(response, label);
+
+  const client = response.data?.data?.client;
+  // A clean 200 with no client is a genuine absence and stays one.
+  if (!client) return null;
+
+  const [jobNodes, quoteNodes, requestNodes, invoiceNodes] = await Promise.all([
+    pageClientConnection({ query: RELATED_JOBS_PAGE_QUERY, clientId, token, field: 'jobs', firstPage: client.jobs, label }),
+    pageClientConnection({ query: RELATED_QUOTES_PAGE_QUERY, clientId, token, field: 'quotes', firstPage: client.quotes, label }),
+    pageClientConnection({ query: RELATED_REQUESTS_PAGE_QUERY, clientId, token, field: 'requests', firstPage: client.requests, label }),
+    pageClientConnection({ query: RELATED_INVOICES_PAGE_QUERY, clientId, token, field: 'invoices', firstPage: client.invoices, label }),
+  ]);
+
+  assertInvoiceJobsComplete(invoiceNodes, label);
+
+  return {
+    ...client,
+    jobs: { nodes: attachInvoicesToJobs(jobNodes, invoiceNodes) },
+    quotes: { nodes: quoteNodes },
+    requests: { nodes: requestNodes },
+    invoices: { nodes: invoiceNodes },
+  };
 }
 
 // ── TEST SEAMS ─────────────────────────────────────────────────────────────────
@@ -606,8 +712,18 @@ router.post('/jobber/client-create', async (req, res) => {
 
       // Upsert into jobber_clients and derive tags. The former 'if (token)' guard
       // here is gone: a falsy token now returns above, so it was unreachable.
-      const relatedData = await _fetchClientRelatedData(clientId, token).catch(err => {
-        console.warn(`[jobber-webhook] client-create fetchClientRelatedData failed: ${err.message}`);
+      // ⚠ A FAILED FETCH IS LOGGED AS A FAILURE, NOT PASSED ON AS AN ABSENCE. It used to
+      // console.warn and return null, which upsertAndTagClient reads as "nothing observed" —
+      // so a Jobber outage looked exactly like a client with no jobs and never reached
+      // error_log. N5: this is why error_log rises after this ships.
+      const relatedData = await _fetchClientRelatedData(clientId, token).catch(async err => {
+        await logError({
+          req,
+          contractorId,
+          error: new Error(`[client-create] fetchClientRelatedData failed for ${clientId}: ${err.message}`),
+          source: 'POST /webhooks/jobber/client-create — fetchClientRelatedData',
+          alert: false,
+        });
         return null;
       });
       await upsertAndTagClient(contractorId, fullClient, relatedData);
@@ -752,8 +868,15 @@ router.post('/jobber/client-update', async (req, res) => {
 
       // Upsert into jobber_clients and derive tags. The former 'if (token)' guard
       // here is gone: a falsy token now returns above, so it was unreachable.
-      const relatedData = await _fetchClientRelatedData(clientId, token).catch(err => {
-        console.warn(`[jobber-webhook] client-update fetchClientRelatedData failed: ${err.message}`);
+      // ⚠ Logged as a failure, never passed on as an absence — see client-create above.
+      const relatedData = await _fetchClientRelatedData(clientId, token).catch(async err => {
+        await logError({
+          req,
+          contractorId,
+          error: new Error(`[client-update] fetchClientRelatedData failed for ${clientId}: ${err.message}`),
+          source: 'POST /webhooks/jobber/client-update — fetchClientRelatedData',
+          alert: false,
+        });
         return null;
       });
       await upsertAndTagClient(contractorId, fullClient, relatedData);
@@ -1103,8 +1226,15 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       // Runs unconditionally — keeps jobber_clients and contact_tags in sync on every paid invoice.
       ;(async () => {
         try {
-          const relatedData = await _fetchClientRelatedData(clientId, token).catch(err => {
-            console.warn(`[invoice-paid] fetchClientRelatedData failed: ${err.message}`);
+          // ⚠ Logged as a failure, never passed on as an absence — see client-create above.
+          const relatedData = await _fetchClientRelatedData(clientId, token).catch(async err => {
+            await logError({
+              req: null,
+              contractorId,
+              error: new Error(`[invoice-paid] fetchClientRelatedData failed for ${clientId}: ${err.message}`),
+              source: 'POST /webhooks/jobber/invoice-paid — fetchClientRelatedData',
+              alert: false,
+            });
             return null;
           });
           if (relatedData) {
@@ -1422,8 +1552,15 @@ router.post('/jobber/job-update', async (req, res) => {
       console.log(`[job-update] job_completed_at set for client ${clientId} (contractor: ${contractorId})`);
 
       // Upsert into jobber_clients and derive tags for the affected client
-      const relatedData = await _fetchClientRelatedData(clientId, token).catch(err => {
-        console.warn(`[job-update] fetchClientRelatedData failed: ${err.message}`);
+      // ⚠ Logged as a failure, never passed on as an absence — see client-create above.
+      const relatedData = await _fetchClientRelatedData(clientId, token).catch(async err => {
+        await logError({
+          req,
+          contractorId,
+          error: new Error(`[job-update] fetchClientRelatedData failed for ${clientId}: ${err.message}`),
+          source: 'POST /webhooks/jobber/job-update — fetchClientRelatedData',
+          alert: false,
+        });
         return null;
       });
       if (relatedData) {
@@ -1747,8 +1884,11 @@ async function handleStageWebhook(req, topic) {
     }
 
     if (!relatedData) {
-      // A null related fetch means "not observed", never "no stage" — the same reading
-      // upsertAndTagClient's COALESCE encodes. Write nothing.
+      // ⚠ null NOW MEANS ONE THING ONLY: a clean 200 whose client is genuinely absent. Since
+      // Commit 2 a GraphQL error THROWS and is caught above as a recorded skip, so this branch
+      // can no longer be reached by a failed fetch. It used to be, and that is exactly how a
+      // Jobber outage got written as "nothing observed" with a calm log line and no error_log
+      // row. Write nothing — the same reading upsertAndTagClient's COALESCE encodes.
       console.log(`[${topic}] ${itemId} -> client ${jobberClientId} returned no related data, no stage written`);
       return;
     }
@@ -1855,3 +1995,17 @@ module.exports = router;
 // test seam — inert in production, never called outside server/test/
 router._setTestOverrides  = _setTestOverrides;
 router._resetTestOverrides = _resetTestOverrides;
+
+// ⚠ THE REAL CAPTURE-PATH FETCHES AND THEIR QUERY TEXT, exported for the contract fence in
+// server/test/captureFetchContract.test.js. The fence has to exercise the ACTUAL functions and
+// read the ACTUAL selection text: a test that stubs the fetch and injects the value cannot
+// discover that nothing upstream selects it, which is how loadContractorBranding() shipped a
+// query missing two columns its resolver read. Inert in production.
+router._captureFetches = { fetchClientRelatedData, fetchClientJobsForJobUpdate, fetchInvoiceWithJobs };
+router._captureQueries = {
+  RELATED_BASE_QUERY,
+  RELATED_JOBS_PAGE_QUERY,
+  RELATED_QUOTES_PAGE_QUERY,
+  RELATED_REQUESTS_PAGE_QUERY,
+  RELATED_INVOICES_PAGE_QUERY,
+};

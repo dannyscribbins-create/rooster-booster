@@ -5510,6 +5510,33 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       Jobber's changelog **returns HTTP 403 to automated fetches** and must be read in a browser,
       so no session can verify a bump's precondition unaided — it must ask.
 
+- [ ] ⚠ **38 CITATIONS ROTTED BY THE CAPTURE-FETCH-CONTRACT COMMIT, AND THEY MUST BE REPAIRED BY
+      ROLE RATHER THAN BY DELTA** (raised 2026-09-25, measured by
+      `npm run citecheck -- --changed-files` at that commit's working tree).
+      **The two rotting edits:** `server/routes/webhooks/jobber.js` grew by ~130 lines (the paged
+      `fetchClientRelatedData`, the four caller log blocks, the test-seam exports) and `CLAUDE.md`
+      by 26 (the test-count entry). Both are the *"adding a comment block is a citation-rotting
+      edit"* class — an insertion moves every line beneath it, and **every one of the 38 still
+      resolves to real code**, which is the silent variety.
+      **Where they are:** 30 point into `webhooks/jobber.js` — `TENANT_RESOLUTION_REBUILD_SPEC.md`
+      (6), `PRE_LAUNCH_CHECKLIST.md` (8), `SECURITY_HARDENING_SPEC.md` (2),
+      `MEMBER_RANK_ECONOMY_SPEC.md` (2), `CLAUDE_REGISTRY.md` (1) and others; 8 point into
+      `CLAUDE.md`'s `:436` / `:501` / `:502` from `CDL_3c_PHASE05_RULINGS.md` (7 of them) and
+      elsewhere.
+      ⚠ **DO NOT ADD THE DELTA. THIS IS THE EXACT SHAPE THAT ALREADY BURNED THIS REPO ONCE:** the
+      commit that shipped `--changed-files` flagged ELEVEN of its own citations and **all eleven
+      had already been wrong beforehand**, so adding the offset would have certified eleven wrong
+      numbers as repaired. The procedure is CLAUDE.md's: read the cited content at the OLD line in
+      the OLD revision, confirm it is what the citing sentence describes, and only then move it —
+      and **prefer re-citing BY ROLE** (the handler, the function), which cannot drift.
+      ⚠ **AND SOME OF THESE MUST NOT BE SHIFTED AT ALL.** `docs/GROUND_TRUTH_2026-08-21.md` is a
+      dated snapshot that QUOTES what it cites; renumbering it would make it claim its quotes come
+      from lines that now hold something else. Its entries are a different job from the spec ones
+      and must not be swept together.
+      **Not done in the commit that caused it, deliberately** — a 38-citation repair folded into a
+      fetch rewrite produces a diff nobody can review, and the relocation rule's whole point is
+      that a correction and a move never share a commit.
+
 - [ ] ⚠ **A VOIDED INVOICE NOW HAS NO TAG, AND NEEDS A RULING** (raised 2026-09-25 by the
       `2026-05-12` bump; Danny deferred the tagging decision deliberately). `2026-05-12` **added
       the enum value `voided` to `InvoiceStatusTypeEnum`**, so the value becomes reachable in our
