@@ -385,8 +385,27 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1798 server tests across 294 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the reads-vs-selects commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1798 · suites 294 · pass 1798 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE READS-VS-SELECTS COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1809 server tests across 295 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the import-fact-capture commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1809 · suites 295 · pass 1809 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE IMPORT-FACT-CAPTURE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1798 → 1809 is **+11 = 8 + 3**: eight in a new describe appended to
+  `repImportScope.test.js` and three appended to an EXISTING describe in
+  `captureFetchContract.test.js` (the mechanical fence gaining the import's selections). Suites
+  294 → 295 is **that one new describe only**. React did not move and was re-measured.
+  **All four predicted before the run and matched.**
+  ⚠ **AND A TEST HARNESS THAT ANSWERS FROM A FIXED FIXTURE CANNOT SEE A MISSING SELECTION — THE
+  SAME DEFECT TWICE IN TWO COMMITS, CAUGHT ONLY BY A GUARD-PROOF REFUSING TO GO RED.** In 3a-2 a
+  stub gated its fixture on the WHOLE query and `JOB_FIELDS` also carried `updatedAt`, so dropping
+  it from the invoice selection left 37/37 green. In 3b the import harness returned the whole
+  fixture object regardless of the query, so dropping `receivedDate` from the import's invoice
+  selection left **39/39 green**. Both harnesses now PROJECT the fixture to what the query
+  actually selects. **A stub that cannot represent a missing field cannot test for one**, and the
+  only symptom either time was an injection that produced no red.
+  ⚠ **THE MECHANICAL FENCE ALSO CAUGHT THIS COMMIT'S OWN AUTHOR.** `REP_JOB_FIELDS` first kept
+  `client { id createdAt }` outside the shared constant, reasoning the QUERY still selected it;
+  the fence went red naming `client`, correctly — it checks the per-entity CONSTANT, because that
+  is the unit a writer is fed from.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE READS-VS-SELECTS COMMIT ITSELF, BECAUSE IT SHIPS TESTS.* It read **1798 / 294 / 1342 / 80**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE READS-VS-SELECTS COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 1787 → 1798 is **+11 = 7 + 4**, both appended to EXISTING files and EXISTING describes —
   seven in `captureFetchContract.test.js` (six mechanical checks plus the derivation's own
   non-vacuity case) and four in `crmJobInvoiceFacts.test.js`. **Suites hold at 294**, which is the

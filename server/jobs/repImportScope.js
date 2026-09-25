@@ -34,7 +34,13 @@ const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../utils/retryHelpers');
 const { computeThrottlePaceDelayMs, classifyPipelineStatus } = require('../crm/pipelineSync');
 const { fetchAllClientJobs, recomputeClientSales, windowDaysFor } = require('../utils/clientSales');
-const { writeRequestFacts, writeQuoteFacts } = require('../utils/factCapture');
+const {
+  writeRequestFacts,
+  writeQuoteFacts,
+  writeJobFacts,
+  writeInvoiceFacts,
+  writeInvoiceJobLinks,
+} = require('../utils/factCapture');
 const { logError: realLogError } = require('../middleware/errorLogger');
 
 // ── THE REP WINDOW (ruling 4) ─────────────────────────────────────────────────
@@ -98,14 +104,68 @@ const REP_QUOTES_QUERY = `
     }
   }
 `;
+// ── THE FACT-WRITER FIELD SETS (3d Phase 1a Commit 3b) ───────────────────────
+// ⚠ THESE MUST CARRY EVERY FIELD THE FACT WRITERS READ, AND IT IS ENFORCED RATHER THAN
+// REMEMBERED. The mechanical fence in server/test/captureFetchContract.test.js derives each
+// writer's reads from server/utils/factCapture.js and fails on any field read but not selected —
+// and since 3b it covers THESE constants too, not only the live capture path. That fence exists
+// because Commit 3's writers read 42 field/selection pairs no query selected, including
+// `updatedAt`, which left the staleness guard inert in production while its unit tests were green.
+//
+// ⚠ IDENTICAL TO THE LIVE PATH BY CONSTRUCTION, WHICH IS WHAT R5i ACTUALLY REQUIRES. The import
+// and the webhooks must produce the same fact row for the same Jobber object, so the honest way
+// to get there is one field list per entity rather than two lists someone keeps in step. These
+// mirror JOB_FIELDS and INVOICE_FIELDS in server/utils/jobberClientFetch.js; the fence compares
+// both against the same derived read set, so a divergence fails on one side or the other.
+//
+// ⚠ ALL FIELDS VERIFIED AT THE PINNED 2026-05-12 by Danny's introspection — see the note at
+// JOB_FIELDS in server/utils/jobberClientFetch.js for the type-by-type list.
+// ⚠ `client { id createdAt }` IS INSIDE THIS CONSTANT, AND THE FENCE IS WHY. The first draft kept
+// it on its own line in REP_JOBS_QUERY, reasoning that the QUERY still selected it — and the fence
+// went red naming `client`, correctly: it checks the per-entity CONSTANT, because that is the unit
+// a writer is fed from. A field selected somewhere else in the document is the whole-query
+// looseness this fence was built to remove, so the constant was wrong rather than the check.
+// ⚠ `createdAt` on the client is the import's own need, not the job writer's: groupSales reads it
+// to decide sale re-paging. The live JOB_FIELDS selects `client { id }` only, and both satisfy the
+// fence — the writer reads `client.id` and nothing more.
+const REP_JOB_FIELDS = `id jobNumber jobStatus jobType title
+        createdAt updatedAt startAt endAt completedAt
+        total invoicedTotal uninvoicedTotal
+        client { id createdAt } quote { id } request { id } salesperson { id }`;
+
+const REP_INVOICE_FIELDS = `id invoiceNumber invoiceStatus
+          createdAt updatedAt issuedDate dueDate receivedDate
+          client { id }
+          amounts { total subtotal invoiceBalance paymentsTotal
+                    depositAmount discountAmount taxAmount }
+          jobs(first: 50) { nodes { id } pageInfo { hasNextPage } }
+          archivedJobs(first: 50) { nodes { id } pageInfo { hasNextPage } }`;
+
 const REP_JOBS_QUERY = `
   query RepJobs($since: ISO8601DateTime!, $after: String) {
     jobs(first: 100, after: $after, filter: { createdAt: { after: $since } }) {
       nodes {
-        id createdAt
-        client { id createdAt }
+        ${REP_JOB_FIELDS}
       }
       pageInfo { hasNextPage endCursor }
+    }
+  }
+`;
+
+// ⚠ PER CLIENT, NOT A TOP-LEVEL SWEEP, AND THE REASON IS THE WINDOW. §4.3 governs the import's
+// REACH — 12 months by activity — and the rep scope's client set is already the answer to that
+// question. Storage itself has NO window (Q5), so this fetches a rep-scope client's invoices to
+// exhaustion regardless of date: an invoice raised this month can settle a job from before the
+// window, and clipping the FETCH would lose the sale's value rather than merely its display.
+const REP_CLIENT_INVOICES_QUERY = `
+  query RepClientInvoices($id: EncodedId!, $after: String) {
+    client(id: $id) {
+      invoices(first: 50, after: $after) {
+        nodes {
+          ${REP_INVOICE_FIELDS}
+        }
+        pageInfo { hasNextPage endCursor }
+      }
     }
   }
 `;
@@ -229,6 +289,63 @@ async function pageRepConnection({ label, query, dataPath, since, getToken, onPa
   console.log(`[fullJobberImport] ${label} complete — ${totals.pages} pages, ${totals.nodes} nodes, `
     + `cost requested=${totals.requested} actual=${totals.actual}`);
   return totals;
+}
+
+/**
+ * Pages ONE rep-scope client's invoices to exhaustion and writes the facts.
+ * Inputs: db, contractorId, the Jobber client id, getToken, and a totals object for cost.
+ * Output: { invoices, links } counts.
+ * Throws: on a GraphQL error (repRequest's contract), on a missing connection, on a cursor
+ *         anomaly, and — via the writers — on an incomplete invoice job set.
+ *
+ * ⚠ IT GOES THROUGH repRequest, NOT axios, SO IT INHERITS THE IMPORT'S WHOLE CONTRACT: the
+ * errors array is a failure, a throttle is retried on Jobber's own cost report, and every
+ * response's cost is added to the step totals. Calling axios directly here would be a second
+ * fetch contract in the same file — which is the shape that let the live path and the import
+ * drift apart in the first place.
+ * ⚠ AND NO FIXED CAP SILENTLY DROPS RECORDS (N3): hasNextPage with no endCursor throws, and the
+ * page cap throws rather than returning a short set.
+ */
+async function captureClientInvoices(db, { contractorId, clientId, getToken, totals }) {
+  let after = null;
+  let pages = 0;
+  let invoices = 0;
+  let links = 0;
+
+  for (;;) {
+    if (pages >= MAX_REP_PAGES) {
+      throw new Error(`Rep invoices: client ${clientId} exceeded ${MAX_REP_PAGES} pages — refusing a partial set`);
+    }
+    const { data, cost } = await repRequest({
+      label: `Rep invoices — client ${clientId}`,
+      query: REP_CLIENT_INVOICES_QUERY,
+      variables: { id: clientId, after },
+      getToken,
+    });
+    pages += 1;
+    addCost(totals, cost);
+
+    const connection = data?.client?.invoices;
+    if (!connection) {
+      throw new Error(`Rep invoices: no invoices connection for client ${clientId} on page ${pages}`);
+    }
+    const nodes = connection.nodes || [];
+
+    // ⚠ THE SAME WRITERS THE LIVE PATH USES. R5i is satisfied by calling the same functions with
+    // the same node shape, not by two writers that agree today.
+    invoices += await writeInvoiceFacts(db, contractorId, nodes);
+    links += await writeInvoiceJobLinks(db, contractorId, nodes);
+
+    const hasNext = !!connection.pageInfo?.hasNextPage;
+    after = connection.pageInfo?.endCursor || null;
+    if (hasNext && !after) {
+      throw new Error(`Rep invoices: client ${clientId} reported hasNextPage with no endCursor on page ${pages}`);
+    }
+    if (!hasNext) break;
+    await paceAfter(cost);
+  }
+
+  return { invoices, links };
 }
 
 /**
@@ -459,6 +576,7 @@ async function runRepScope(db, { contractorId, filterPreference, getToken, onSte
   onStep('Rep Step 3 — jobs');
   const jobsByClient = new Map();
   const clientCreatedAt = new Map();
+  let jobFacts = 0;
   summary.jobs = await pageRepConnection({
     label: 'Rep Step 3 — jobs',
     query: REP_JOBS_QUERY,
@@ -466,6 +584,13 @@ async function runRepScope(db, { contractorId, filterPreference, getToken, onSte
     since,
     getToken,
     onPage: async (nodes) => {
+      // ⚠ THE FULL NODES GO TO THE FACT WRITER; jobsByClient KEEPS ITS FLATTENED SHAPE.
+      // groupSales reads { id, createdAt } off jobsByClient, and widening that map to the raw
+      // node would hand a second consumer a shape it did not ask for — the mismatch CLAUDE.md
+      // records as vacuity shape #12, where one fetch feeds two consumers needing opposite
+      // shapes. Writing facts from `nodes` and grouping from the flattened copy keeps both
+      // contracts explicit.
+      jobFacts += await writeJobFacts(db, contractorId, nodes);
       for (const n of nodes) {
         const cid = n?.client?.id;
         if (!cid || !n.id) continue;
@@ -476,6 +601,44 @@ async function runRepScope(db, { contractorId, filterPreference, getToken, onSte
       }
     },
   });
+  summary.jobs.facts = jobFacts;
+
+  // ── REP STEP 3b — INVOICES FOR THE REP-SCOPE CLIENTS ────────────────────────
+  // ⚠ WHY A SEPARATE STEP AND NOT PART OF STEP 3: Jobber's top-level `invoices` connection
+  // cannot be filtered to this client set, and an invoice's DATE is not the sale's date — an
+  // invoice raised this month can settle a job from before the window. So invoices are fetched
+  // PER CLIENT, over the client set §4.3's window already produced, and to exhaustion (Q5:
+  // storage has no window).
+  // ⚠ A PER-CLIENT FAILURE IS RECORDED AND THE SWEEP CONTINUES, which is the established shape
+  // for this file's per-client work (Rep Step 4 does the same). One client's bad invoice must not
+  // cost the whole import the rep scope — and the failure is a LOUD row in error_log, never a
+  // silent zero.
+  onStep('Rep Step 3b — invoices');
+  const invoiceTotals = { requested: 0, actual: 0 };
+  summary.invoices = { clients: 0, invoices: 0, links: 0, failed: 0, cost: invoiceTotals };
+  for (const clientId of [...clientIds].sort()) {
+    try {
+      const { invoices, links } = await captureClientInvoices(db, {
+        contractorId, clientId, getToken, totals: invoiceTotals,
+      });
+      summary.invoices.clients += 1;
+      summary.invoices.invoices += invoices;
+      summary.invoices.links += links;
+    } catch (invErr) {
+      summary.invoices.failed += 1;
+      await logError({
+        req: null,
+        contractorId,
+        error: new Error(`Rep Step 3b — invoices failed for client ${clientId}: ${invErr.message}`),
+        source: 'fullJobberImport — rep invoices',
+        alert: false,
+      });
+    }
+  }
+  // diagnostic log — intentional
+  console.log(`[fullJobberImport] Rep Step 3b complete — ${summary.invoices.clients} clients, `
+    + `${summary.invoices.invoices} invoice facts, ${summary.invoices.links} job links, `
+    + `${summary.invoices.failed} failed, cost requested=${invoiceTotals.requested} actual=${invoiceTotals.actual}`);
 
   onStep('Rep stages');
   const { missing, ...stageCounts } = await writeStages(db, contractorId, [...clientIds].sort(), jobsByClient);
@@ -512,6 +675,13 @@ module.exports = {
   REP_REQUESTS_QUERY,
   REP_QUOTES_QUERY,
   REP_JOBS_QUERY,
+  REP_CLIENT_INVOICES_QUERY,
+  // ⚠ THE PER-ENTITY FIELD CONSTANTS, exported so the mechanical reads-vs-selects fence covers
+  // the IMPORT's queries and not only the live capture path. Per-entity rather than the whole
+  // query, because a whole-query check passes when the field appears anywhere in it.
+  REP_JOB_FIELDS,
+  REP_INVOICE_FIELDS,
+  captureClientInvoices,
   _setTestOverrides,
   _resetTestOverrides,
 };

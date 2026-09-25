@@ -54,6 +54,10 @@ const { startTestServer, stopTestServer, seedAudience, waitFor } = require('./he
 const importJob = require('../jobs/fullJobberImport');
 const repScope = require('../jobs/repImportScope');
 const clientSales = require('../utils/clientSales');
+// Rep Step 3b (3d Phase 1a Commit 3b): the LIVE capture path and the shared fact writers, so the
+// R5i case can drive both sides through their own real query text into the same writer.
+const jobberClientFetch = require('../utils/jobberClientFetch');
+const factCapture = require('../utils/factCapture');
 const replay = require('../utils/attributionReplay');
 const { runAttributionEngine } = require('../utils/attributionEngine');
 const { evaluateAudience } = require('../cron/jobs/dynamicAudiences');
@@ -81,7 +85,32 @@ function page(key, nodes, { hasNextPage = false, endCursor = null, cost = null }
   };
 }
 
-function installJobber({ campaign = {}, rep = {}, clientJobs = {}, identities = IDENTITIES, repHandler = null } = {}) {
+// ⚠ THE HARNESS ANSWERS FROM WHAT THE QUERY ACTUALLY SELECTS, AND IT DID NOT BEFORE 3b.
+// projectToSelection keeps only the fields the query text names, so a selection that drops a field
+// yields a node without it — the production consequence. A stub that returns the whole fixture
+// regardless of the query CANNOT detect a missing SELECTION, and that is not hypothetical: the
+// R5i guard-proof for 3b (drop receivedDate from the import's invoice selection) stayed GREEN at
+// 39/39 against the un-projected harness. Same defect the 3a-2 stub had, one file along.
+// ⚠ Word-boundary matching against the whole query is deliberate here: each rep query selects ONE
+// entity, so there is no sibling selection for a name to hide in — unlike the live BASE_QUERY,
+// where the per-entity split is what makes the fence precise.
+function projectToSelection(node, query) {
+  if (node === null || typeof node !== 'object') return node;
+  if (Array.isArray(node)) return node.map((n) => projectToSelection(n, query));
+  const out = {};
+  for (const [k, v] of Object.entries(node)) {
+    if (!new RegExp('\\b' + k + '\\b').test(query)) continue;
+    out[k] = (v !== null && typeof v === 'object') ? projectToSelection(v, query) : v;
+  }
+  return out;
+}
+
+// ⚠ `clientInvoices` ARRIVED WITH REP STEP 3b, AND ITS DEFAULT IS AN EMPTY PAGE RATHER THAN A
+// THROW ON PURPOSE. Step 3b fetches invoices per rep-scope client, so every existing fixture now
+// reaches it; answering an unlisted client with "no invoices" keeps those fixtures meaningful
+// instead of turning them into per-client failures. ⚠ An empty answer is NOT an untested one —
+// the fact-writing cases below supply real invoices and assert the rows.
+function installJobber({ campaign = {}, rep = {}, clientJobs = {}, clientInvoices = {}, identities = IDENTITIES, repHandler = null } = {}) {
   const fn = async (url, body) => {
     if (!String(url).includes('api.getjobber.com')) {
       calls.outbound.push(url);
@@ -102,10 +131,15 @@ function installJobber({ campaign = {}, rep = {}, clientJobs = {}, identities = 
       case 'GetRequests': return page('requests', campaign.requests || []);
       case 'RepRequests': return page('requests', rep.requests || []);
       case 'RepQuotes':   return page('quotes', rep.quotes || []);
-      case 'RepJobs':     return page('jobs', rep.jobs || []);
+      case 'RepJobs':     return page('jobs', (rep.jobs || []).map((n) => projectToSelection(n, body.query)));
       // Rep Step 4 — one client's identity. A client absent from the map is one Jobber
       // cannot return, answered as a null client (not an error), exactly as Jobber does.
       case 'RepClientIdentity': return { data: { data: { client: identities[body.variables.id] || null } } };
+      case 'RepClientInvoices': {
+        const id = body.variables.id;
+        const nodes = (clientInvoices[id] || []).map((n) => projectToSelection(n, body.query));
+        return { data: { data: { client: { invoices: { nodes, pageInfo: { hasNextPage: false, endCursor: null } } } } } };
+      }
       case 'GetClientJobsPaged': {
         const id = body.variables.id;
         if (!clientJobs[id]) throw new Error(`harness: no full job history for ${id}`);
@@ -186,6 +220,9 @@ const CLIENT_JOBS = { 'up-1': [{ id: 'j-up1-old', createdAt: ago(700) }, { id: '
 async function reset() {
   for (const t of [
     'client_sale_jobs', 'client_sales', 'crm_request_facts', 'crm_quote_facts',
+    // Rep Step 3b's tables. ⚠ Added with 3b — a fact table missing from this list leaks rows
+    // between cases, and a leaked row reads as a successful write by the case that follows.
+    'crm_invoice_job_links', 'crm_invoice_facts', 'crm_job_facts',
     'flagged_assignments', 'admin_messages', 'client_rep_assignments', 'dynamic_audiences',
     'contact_tags', 'pipeline_cache', 'notifications', 'jobber_import_progress', 'jobber_clients',
     'sessions', 'error_log', 'contact_jobber_links', 'contacts', 'contractor_settings', 'contractor_crm_settings', 'tokens', 'titles',
@@ -903,5 +940,191 @@ describe('Rep Step 4, standalone — the boot backfill names an older import\'s 
     const before = calls.byOp.RepClientIdentity;
     assert.deepEqual(await run(), []);
     assert.equal(calls.byOp.RepClientIdentity, before);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('Rep Step 3b — the import writes job and invoice facts (3d Phase 1a Commit 3b)', () => {
+// ═══════════════════════════════════════════════════════════════════════════
+
+  // ⚠ EVERY FIELD NON-NULL, ON PURPOSE. A fixture that leaves columns empty cannot tell a correct
+  // write from no write at all — the columns are NULL either way, which is exactly how 3a-2's
+  // 42-field gap survived a whole passing test file. The R5i case below asserts on the columns by
+  // name and FAILS on any NULL.
+  const FULL_JOB = {
+    id: 'j-up1', jobNumber: 4101, jobStatus: 'active', jobType: 'ONE_OFF', title: 'Roof replacement',
+    createdAt: ago(30), updatedAt: ago(5), startAt: ago(28), endAt: ago(6), completedAt: ago(6),
+    total: 29724.8, invoicedTotal: 29724.8, uninvoicedTotal: 0,
+    client: { id: 'up-1', createdAt: ago(730) },
+    quote: { id: 'q-up1' }, request: { id: 'rq-up1' }, salesperson: { id: 'ju-rep1' },
+  };
+
+  const FULL_INVOICE = {
+    id: 'inv-up1', invoiceNumber: 9101, invoiceStatus: 'paid',
+    createdAt: ago(10), updatedAt: ago(4), issuedDate: ago(10), dueDate: ago(1), receivedDate: ago(2),
+    client: { id: 'up-1' },
+    amounts: {
+      total: 29724.8, subtotal: 27000.5, invoiceBalance: 0, paymentsTotal: 29724.8,
+      depositAmount: 1000, discountAmount: 0, taxAmount: 2724.3,
+    },
+    jobs: { nodes: [{ id: 'j-up1' }], pageInfo: { hasNextPage: false } },
+    archivedJobs: { nodes: [{ id: 'j-up1-old' }], pageInfo: { hasNextPage: false } },
+  };
+
+  const runScope = () => repScope.runRepScope(pool, {
+    contractorId: TENANT, filterPreference: { mode: 'recommended' }, getToken: async () => 'tok',
+    now: new Date('2026-09-21T12:00:00Z'),
+  });
+
+  const installWithFacts = () => installJobber({
+    campaign: CAMPAIGN,
+    rep: { ...REP, jobs: [FULL_JOB, ...REP.jobs.filter((j) => j.id !== 'j-up1')] },
+    clientJobs: CLIENT_JOBS,
+    clientInvoices: { 'up-1': [FULL_INVOICE] },
+  });
+
+  it('writes a job fact row for every job the rep window paged', async () => {
+    installWithFacts();
+    await runScope();
+    const { rows } = await pool.query(
+      `SELECT jobber_job_id FROM crm_job_facts WHERE contractor_id = $1 ORDER BY jobber_job_id`, [TENANT]
+    );
+    assert.deepEqual(rows.map((r) => r.jobber_job_id), ['j-new1a', 'j-new1b', 'j-up1']);
+  });
+
+  it('the job fact carries money, dates and its three foreign Jobber ids', async () => {
+    installWithFacts();
+    await runScope();
+    const { rows } = await pool.query(
+      `SELECT * FROM crm_job_facts WHERE contractor_id = $1 AND jobber_job_id = 'j-up1'`, [TENANT]
+    );
+    const r = rows[0];
+    assert.equal(r.total, '29724.80');
+    assert.equal(r.invoiced_total, '29724.80');
+    assert.equal(r.uninvoiced_total, '0.00');
+    assert.equal(r.job_number, '4101');
+    assert.equal(r.job_type, 'ONE_OFF');
+    assert.equal(r.title, 'Roof replacement');
+    assert.equal(r.jobber_quote_id, 'q-up1');
+    assert.equal(r.jobber_request_id, 'rq-up1');
+    assert.equal(r.salesperson_jobber_user_id, 'ju-rep1');
+    assert.equal(r.jobber_client_id, 'up-1');
+  });
+
+  it('writes invoice facts and their job links, including the archived one', async () => {
+    installWithFacts();
+    await runScope();
+    const inv = await pool.query(`SELECT * FROM crm_invoice_facts WHERE contractor_id = $1`, [TENANT]);
+    assert.equal(inv.rows.length, 1, 'ONE row for the invoice, keyed by its own id');
+    assert.equal(inv.rows[0].total, '29724.80');
+    assert.equal(inv.rows[0].invoice_balance, '0.00');
+    assert.equal(inv.rows[0].deposit_amount, '1000.00');
+
+    const links = await pool.query(
+      `SELECT jobber_job_id, from_archived_jobs FROM crm_invoice_job_links
+        WHERE contractor_id = $1 ORDER BY jobber_job_id`, [TENANT]
+    );
+    assert.deepEqual(links.rows, [
+      { jobber_job_id: 'j-up1', from_archived_jobs: false },
+      { jobber_job_id: 'j-up1-old', from_archived_jobs: true },
+    ]);
+  });
+
+  it('the summary reports what was captured, and nothing failed', async () => {
+    installWithFacts();
+    const summary = await runScope();
+    assert.equal(summary.invoices.failed, 0, 'a per-client invoice failure must not pass silently');
+    assert.equal(summary.invoices.invoices, 1);
+    assert.equal(summary.invoices.links, 2);
+    assert.equal(summary.jobs.facts, 3);
+  });
+
+  it('tenancy — every fact row carries this contractor and no other', async () => {
+    installWithFacts();
+    await runScope();
+    for (const t of ['crm_job_facts', 'crm_invoice_facts', 'crm_invoice_job_links']) {
+      const { rows } = await pool.query(`SELECT DISTINCT contractor_id FROM ${t}`);
+      assert.deepEqual(rows.map((r) => r.contractor_id), [TENANT], `${t} wrote outside the tenant`);
+    }
+  });
+
+  it('re-running the import is idempotent — no duplicate facts or links', async () => {
+    installWithFacts();
+    await runScope();
+    await runScope();
+    const counts = {};
+    for (const t of ['crm_job_facts', 'crm_invoice_facts', 'crm_invoice_job_links']) {
+      const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM ${t} WHERE contractor_id = $1`, [TENANT]);
+      counts[t] = rows[0].n;
+    }
+    assert.deepEqual(counts, { crm_job_facts: 3, crm_invoice_facts: 1, crm_invoice_job_links: 2 });
+  });
+
+  it('a per-client invoice FAILURE is counted and recorded, never a silent zero', async () => {
+    installJobber({
+      campaign: CAMPAIGN,
+      rep: { ...REP, jobs: [FULL_JOB, ...REP.jobs.filter((j) => j.id !== 'j-up1')] },
+      clientJobs: CLIENT_JOBS,
+      // An invoice whose job set is TRUNCATED — the writers refuse it rather than replace links
+      // from a short set, which is the contract Commit 3 established.
+      clientInvoices: { 'up-1': [{ ...FULL_INVOICE, jobs: { nodes: [{ id: 'j-up1' }], pageInfo: { hasNextPage: true } } }] },
+    });
+    const summary = await runScope();
+    assert.equal(summary.invoices.failed, 1, 'the refusing client must be counted as failed');
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM error_log WHERE source = 'fullJobberImport — rep invoices'`
+    );
+    assert.ok(rows[0].n >= 1, 'a per-client failure must reach error_log, loudly');
+  });
+
+  // ⚠ R5i — THE IMPORT AND THE LIVE PATH MUST PRODUCE THE SAME ROW FOR THE SAME OBJECT.
+  // Both sides are driven through their OWN REAL QUERY TEXT against one underlying fixture, so a
+  // field missing from either selection produces a NULL on that side and the comparison fails.
+  // Comparing two rows built by handing the same object to the same writer would be vacuous.
+  it('IDENTICAL ROWS — live capture and import capture agree column for column, with no NULLs', async () => {
+    installWithFacts();
+    await runScope();
+    const importRow = (await pool.query(
+      `SELECT * FROM crm_invoice_facts WHERE contractor_id = $1 AND jobber_invoice_id = 'inv-up1'`, [TENANT]
+    )).rows[0];
+
+    // The LIVE path, through fetchFullClient's own query text, into the same writer.
+    const LIVE = 'r5i-live-tenant';
+    const savedPost = axios.post;
+    axios.post = async (url, body) => {
+      if (!/GetClient\b/.test(body.query)) throw new Error('unexpected live follow-up page');
+      return { data: { data: { client: {
+        id: 'up-1',
+        quotes: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        jobs: { nodes: [FULL_JOB], pageInfo: { hasNextPage: false, endCursor: null } },
+        invoices: { nodes: [FULL_INVOICE], pageInfo: { hasNextPage: false, endCursor: null } },
+      } } } };
+    };
+    let liveRow;
+    try {
+      const client = await jobberClientFetch.fetchFullClient('up-1', 'tok');
+      await factCapture.writeInvoiceFacts(pool, LIVE, client.invoices.nodes);
+      liveRow = (await pool.query(
+        `SELECT * FROM crm_invoice_facts WHERE contractor_id = $1 AND jobber_invoice_id = 'inv-up1'`, [LIVE]
+      )).rows[0];
+    } finally {
+      axios.post = savedPost;
+      await pool.query(`DELETE FROM crm_invoice_facts WHERE contractor_id = $1`, [LIVE]);
+    }
+
+    assert.ok(importRow && liveRow, 'both paths must have written a row');
+
+    // ⚠ FAIL ON ANY NULL, NAMED. Two identically-EMPTY rows would otherwise satisfy a
+    // column-for-column comparison perfectly, which is the failure this arc keeps meeting.
+    const compared = Object.keys(importRow).filter((k) => k !== 'contractor_id' && k !== 'captured_at');
+    for (const col of compared) {
+      assert.notEqual(importRow[col], null, `import row has NULL ${col} — its query is not selecting what the writer reads`);
+      assert.notEqual(liveRow[col], null, `live row has NULL ${col} — its query is not selecting what the writer reads`);
+    }
+    assert.ok(compared.length >= 16, `only ${compared.length} columns compared — the fixture is too thin to prove agreement`);
+
+    for (const col of compared) {
+      assert.deepEqual(importRow[col], liveRow[col], `column ${col} differs between the import and the live path`);
+    }
   });
 });

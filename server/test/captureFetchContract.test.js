@@ -26,6 +26,7 @@ const { join } = require('node:path');
 const axios = require('axios');
 const fetchModule = require('../utils/jobberClientFetch');
 const jobberRouter = require('../routes/webhooks/jobber');
+const repImport = require('../jobs/repImportScope');
 
 const { fetchFullClient } = fetchModule;
 const { fetchClientRelatedData, fetchClientJobsForJobUpdate, fetchInvoiceWithJobs } = jobberRouter._captureFetches;
@@ -212,19 +213,25 @@ describe('capture fetch — (ii) THE BOUNDARY FENCE: what consumers read must be
     return { top: [...top].sort(), nested: [...nested].sort() };
   }
 
-  // writer -> the capture selections that must be able to feed it.
+  // writer -> EVERY selection that must be able to feed it, live AND import.
+  // ⚠ THE IMPORT'S QUERIES ARE IN HERE SINCE 3b, AND THAT IS THE POINT OF R5i. The import and the
+  // webhooks must produce the same fact row for the same Jobber object; a fence that checked only
+  // the live path would let the import drift and would report health about a path it never read.
   const WRITER_SELECTIONS = [
     ['writeJobFacts', {
       'fetchFullClient JOB_FIELDS': fetchModule.JOB_FIELDS,
       'fetchClientRelatedData RELATED_JOB_FIELDS': jobberRouter._captureFields.RELATED_JOB_FIELDS,
+      'repImportScope REP_JOB_FIELDS': repImport.REP_JOB_FIELDS,
     }],
     ['writeInvoiceFacts', {
       'fetchFullClient INVOICE_FIELDS': fetchModule.INVOICE_FIELDS,
       'fetchClientRelatedData RELATED_INVOICE_FIELDS': jobberRouter._captureFields.RELATED_INVOICE_FIELDS,
+      'repImportScope REP_INVOICE_FIELDS': repImport.REP_INVOICE_FIELDS,
     }],
     ['writeInvoiceJobLinks', {
       'fetchFullClient INVOICE_FIELDS': fetchModule.INVOICE_FIELDS,
       'fetchClientRelatedData RELATED_INVOICE_FIELDS': jobberRouter._captureFields.RELATED_INVOICE_FIELDS,
+      'repImportScope REP_INVOICE_FIELDS': repImport.REP_INVOICE_FIELDS,
     }],
   ];
 

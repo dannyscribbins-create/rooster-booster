@@ -5510,10 +5510,27 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       Jobber's changelog **returns HTTP 403 to automated fetches** and must be read in a browser,
       so no session can verify a bump's precondition unaided — it must ask.
 
-- [ ] ⚠ **NO COMMIT IN THE 3d PHASE 1a PLAN WIRES THE IMPORT TO CAPTURE JOBS AND INVOICES, AND
-      THE PRE-LAUNCH "RE-IMPORT, THEN REPLAY" DEPENDS ON IT** (found 2026-09-25 while building
-      Commit 3, by enumerating every commit's `Files:` line rather than reading the ones that
-      looked relevant).
+- [x] **✅ DONE — THE IMPORT NOW CAPTURES JOBS AND INVOICES** (3d Phase 1a Commit 3b, 2026-09-25;
+      Danny ruled it in as its own commit after 3a-2). `REP_JOBS_QUERY` widened to every field the
+      job writer reads, a new per-client `REP_CLIENT_INVOICES_QUERY` paged to exhaustion as Rep
+      Step 3b, and all three writers called with the same node shape the live path uses. The
+      mechanical reads-vs-selects fence now covers the import's selections too, so R5i is enforced
+      rather than asserted. A per-client invoice failure is counted and reaches `error_log`; it
+      does not cost the whole rep scope.
+      ⚠ **THE IMPORT'S COST PACING IS PRESERVED ON THE NEW QUERY** — it goes through `repRequest`,
+      so it inherits the errors-are-failures contract, the throttle retry on Jobber's own cost
+      report, and `addCost` into the step totals. Calling axios directly would have been a second
+      fetch contract in the same file, which is how the live path and the import drifted apart.
+      ⚠ **REACH vs STORAGE, KEPT SEPARATE:** the client set still comes from §4.3's 12-month
+      activity window; the invoice fetch itself has NO window (Q5), because an invoice raised this
+      month can settle a job from before the window and clipping the FETCH would lose the sale's
+      value rather than merely its display.
+
+- [x] **✅ SUPERSEDED BY THE ENTRY ABOVE — the finding that no commit wired the import** (found
+      2026-09-25 while building Commit 3, by enumerating every commit's `Files:` line rather than
+      reading the ones that looked relevant). Kept as the record of how it was found, because the
+      method is the transferable part: `repImportScope.js` appeared in §3h exactly once, in Commit
+      1's relocation, and reading the commits that *looked* relevant would have missed it.
       **Measured:** `ONE_ENGINE_1a_DESIGN.md` §3h names `server/jobs/repImportScope.js` in exactly
       ONE commit — **Commit 1, the verbatim relocation.** Commits 4–7 name
       `attributionDecide.js`, `attributionReplay.js`, `requestAttribution.js`,
