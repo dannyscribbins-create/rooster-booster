@@ -20,7 +20,11 @@
 //     request, NEWEST FIRST. ⚠ Newest-first is contractual — resolveModeAMatch takes
 //     eligible[0] — and the "at or before" cut is what keeps a replayed request from seeing
 //     requests that did not exist yet when it happened, which the live path never could;
-//   · quotes from crm_quote_facts; currentStatus from jobber_clients.pipeline_stage;
+//   · quotes AND currentStatus from decideFromFacts (server/utils/attributionDecide.js), which
+//     reads saved facts only. ⚠ THIS LINE USED TO READ "currentStatus from
+//     jobber_clients.pipeline_stage", and Commit 4 made that FALSE rather than merely stale: Q6
+//     removed the display column from the decision entirely. It is corrected here rather than
+//     left, because a header that names the wrong input is what a reader trusts first;
 //   · writeOrphanOnMiss: false (ruling R3 — an unresolved client records NOTHING).
 //
 // ⚠ STICKY IS EXISTING-WINS, AND THE ENGINE ALREADY ENFORCES IT. Its step 3 returns
@@ -37,7 +41,7 @@
 // The fence in repImportScope.test.js counts that, with a positive control.
 
 const { runAttributionEngine } = require('./attributionEngine');
-const { classifyPipelineStatus } = require('../crm/pipelineSync');
+const { decideFromFacts, toEngineQuote } = require('./attributionDecide');
 const { logError: realLogError } = require('../middleware/errorLogger');
 
 // ── STATUS, FOR THE ADMIN ──────────────────────────────────────────────────────
@@ -68,41 +72,6 @@ function toEngineRequest(row) {
   };
 }
 
-function toEngineQuote(row) {
-  return {
-    id: row.jobber_quote_id,
-    quoteStatus: row.quote_status,
-    lastTransitioned: { approvedAt: row.approved_at ? new Date(row.approved_at).toISOString() : null },
-    salesperson: row.salesperson_jobber_user_id ? { id: row.salesperson_jobber_user_id } : null,
-  };
-}
-
-/**
- * The stage the engine gates on. Normally jobber_clients.pipeline_stage.
- *
- * ⚠ THE FALLBACK IS FOR A NULL OR ABSENT STAGE ONLY, AND IT IS DELIBERATELY WEAKER.
- * A client in the rep window may have no jobber_clients row at all (Step G excluded it
- * and the rep steps never CREATE a row — Danny's guard). Its stage is then derived from
- * what IS stored: a client_sales row means a job exists ('sold'); otherwise the quote
- * facts decide lead / inspection / not_sold. It can never say 'paid', because no invoice
- * is stored here — which only matters to the gate as "not lead/inspection/not_sold",
- * and 'sold' already clears that.
- */
-async function stageFor(db, contractorId, jobberClientId, quotes) {
-  const { rows } = await db.query(
-    `SELECT pipeline_stage FROM jobber_clients WHERE contractor_id = $1 AND jobber_client_id = $2`,
-    [contractorId, jobberClientId]
-  );
-  if (rows[0]?.pipeline_stage) return rows[0].pipeline_stage;
-
-  const { rows: sales } = await db.query(
-    `SELECT 1 FROM client_sales WHERE contractor_id = $1 AND jobber_client_id = $2 LIMIT 1`,
-    [contractorId, jobberClientId]
-  );
-  if (sales.length > 0) return 'sold';
-  return classifyPipelineStatus({ jobs: { nodes: [] }, quotes: { nodes: quotes } });
-}
-
 /**
  * Replay one client's stored history through the engine.
  * Returns the number of stored requests replayed (0 = nothing to replay).
@@ -117,15 +86,12 @@ async function replayClientAttribution(db, { contractorId, jobberClientId, logEr
   );
   if (reqRows.length === 0) return 0;
 
-  const { rows: quoteRows } = await db.query(
-    `SELECT jobber_quote_id, quote_status, approved_at, salesperson_jobber_user_id
-       FROM crm_quote_facts
-      WHERE contractor_id = $1 AND jobber_client_id = $2`,
-    [contractorId, jobberClientId]
-  );
-  const quotes = quoteRows.map(toEngineQuote);
-  const client = { quotes: { nodes: quotes } };
-  const currentStatus = await stageFor(db, contractorId, jobberClientId, quotes);
+  // ⚠ ONE DECISION PATH (R5i). The quote read, the job read and the status derivation all live
+  // in decideFromFacts now, so the replay and — from Commit 5 — the live doors decide from the
+  // same saved facts using the same code. This function no longer derives a status of its own.
+  // ⚠ Q6: the old stageFor read jobber_clients.pipeline_stage FIRST and returned it when set, so
+  // the decision inherited the display column. Nothing here reads it any more.
+  const { currentStatus, client } = await decideFromFacts(db, { contractorId, jobberClientId });
 
   const allRequests = reqRows.map(toEngineRequest);
   for (let i = 0; i < allRequests.length; i += 1) {

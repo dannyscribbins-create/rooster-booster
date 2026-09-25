@@ -5599,6 +5599,33 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       REFERRAL RULES ENGINE on the money path, not the fact tables, so it is not capture-path and
       making it throw is not a change to fold into a commit about archivedJobs.
 
+- [ ] ⚠ **SEVEN SITES STILL DEFINE "PAID" AS THE STATUS ALONE, AND THE DECISION IS NOW STRICTER
+      THAN ALL OF THEM** (raised 2026-09-25 by Commit 4; Danny ruled it a later commit, not now).
+      `isInvoicePaid` in `server/utils/attributionDecide.js` requires **all three**:
+      `invoiceStatus = 'paid'` AND `invoiceBalance = 0` AND `total > 0`. These seven still test the
+      status alone: `crm/pipelineSync.js:114` · `jobs/fullJobberImport.js:618` ·
+      `referralRules.js:38` · `routes/admin/campaigns.js:1729` ·
+      `routes/webhooks/jobber.js:1075` · `utils/deriveJobberTags.js:308` and `:328`.
+      **Move them onto the ONE helper**, so every surface agrees on "paid".
+      ⚠ **THE TWO SHAPES THEY DISAGREE IN, UNTIL THEN, NAMED SO NOBODY HAS TO RE-DERIVE THEM:**
+      **status paid with a NON-ZERO balance** (the decision says not paid, those seven say paid),
+      and **status paid with total 0** (same split). A voided or bad_debt invoice is excluded by
+      BOTH definitions, because both test the status — so the divergence is narrower than it looks
+      and is entirely about the balance and the zero-value cases.
+      ⚠ **THE DECISION BEING STRICTER IS DELIBERATE AND IS NOT THE BUG.** A fact-derived decision
+      may be stricter than a display; what must not persist is two definitions nobody reconciled.
+
+- [ ] ⚠ **Q6 — THE DISPLAYED STAGE AND THE DECISION'S STATUS CAN NOW DISAGREE** (raised 2026-09-25
+      by Commit 4, accepted and temporary). `jobber_clients.pipeline_stage` is still written by the
+      handlers and is still what the rep surface shows, but `decideFromFacts` does not read it —
+      the decision derives status from saved facts only. Until Q6's follow-up they are two
+      derivations of one idea and can differ, most visibly for a client whose facts have not been
+      captured yet: the column may say `sold` while the decision says `lead`.
+      **What that costs concretely:** `'lead'` is in `attributionEngine`'s `GATE_EXCLUSIONS`, so a
+      client the display calls sold can have its sticky gate skipped. **Before Commit 5 this
+      affects the REPLAY and the REBUILD only** — the live doors still derive status from a live
+      fetch and are deliberately untouched.
+
 - [ ] ⚠ **THE CAPTURE PATH HAS NO COST-BASED PACING, AND 3a-2 ROUGHLY DOUBLED ITS QUERY COST**
       (raised 2026-09-25 in Commit 3a-2). `repImportScope.js` reads `requestedQueryCost` /
       `actualQueryCost` and paces on them (`computeThrottlePaceDelayMs`); the capture path in

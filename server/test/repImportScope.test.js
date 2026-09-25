@@ -536,11 +536,49 @@ describe('Ruling 1 + 5 — the replay reproduces the engine over stored history'
        salesperson_jobber_user_id, assessment_id, assigned_jobber_user_ids)
      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
     [TENANT, clientId, id, ago(days), salesperson, assessment ? `as-${id}` : null, JSON.stringify(assigned)]);
-  const setStage = (clientId, stage) => pool.query(
-    `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, pipeline_stage, last_synced_at)
-     VALUES ($1, $2, 'X', $3, NOW())
-     ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE SET pipeline_stage = EXCLUDED.pipeline_stage`,
-    [clientId, TENANT, stage]);
+  // ⚠ SINCE COMMIT 4 THIS SEEDS THE FACT THE STAGE CLAIMS, NOT ONLY THE DISPLAY COLUMN, AND THAT
+  // IS THE Q6 RULING ARRIVING IN THE FIXTURES. decideFromFacts does not read
+  // jobber_clients.pipeline_stage, so a test whose only evidence of 'sold' was that column now
+  // decides 'lead' — and 'lead' is in attributionEngine's GATE_EXCLUSIONS, so the sticky gate is
+  // skipped and nothing is attributed.
+  // ⚠ ONE CASE FAILED LOUDLY AND THE OTHER THREE DID NOT, WHICH IS WHY THE HELPER CHANGED RATHER
+  // THAN THAT ONE TEST. 'ord-1' went red. 'st-1' passes either way (the engine returns early on an
+  // existing sticky), 'sep-1' asks for 'inspection' which is excluded regardless, and 'r3-1'
+  // asserts that NOTHING is written — which a skipped gate also produces. That third one would
+  // have kept passing for the wrong reason, asserting R3 while proving only that the gate never
+  // ran. Seeding the fact keeps every caller's precondition real.
+  // The pipeline_stage write STAYS: it is still the display column, and cases here count
+  // jobber_clients rows.
+  const setStage = async (clientId, stage) => {
+    await pool.query(
+      `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, pipeline_stage, last_synced_at)
+       VALUES ($1, $2, 'X', $3, NOW())
+       ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE SET pipeline_stage = EXCLUDED.pipeline_stage`,
+      [clientId, TENANT, stage]);
+
+    // 'sold' and 'paid' both mean a JOB exists; only 'paid' adds a settled invoice.
+    if (stage !== 'sold' && stage !== 'paid') return;
+    const jobId = `jf-${clientId}`;
+    await pool.query(
+      `INSERT INTO crm_job_facts (contractor_id, jobber_job_id, jobber_client_id, created_at)
+       VALUES ($1, $2, $3, NOW() - INTERVAL '30 days')
+       ON CONFLICT (contractor_id, jobber_job_id) DO NOTHING`,
+      [TENANT, jobId, clientId]);
+    if (stage !== 'paid') return;
+    // ⚠ status paid AND balance 0 AND total > 0 — all three, per the paid ruling. A $0 or
+    // non-zero-balance invoice would not qualify, so a fixture using either would seed 'sold'.
+    const invId = `if-${clientId}`;
+    await pool.query(
+      `INSERT INTO crm_invoice_facts (contractor_id, jobber_invoice_id, jobber_client_id,
+                                      invoice_status, total, invoice_balance)
+       VALUES ($1, $2, $3, 'paid', 1000.00, 0.00)
+       ON CONFLICT (contractor_id, jobber_invoice_id) DO NOTHING`,
+      [TENANT, invId, clientId]);
+    await pool.query(
+      `INSERT INTO crm_invoice_job_links (contractor_id, jobber_invoice_id, jobber_job_id)
+       VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [TENANT, invId, jobId]);
+  };
 
   it('⚠ TWO SEPARATE assessments are NOT a co-assignment — the pair to the flag case', async () => {
     // The grouping finding (ruling 1): the same two reps, on two assessments instead of one.

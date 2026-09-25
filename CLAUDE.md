@@ -385,8 +385,31 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1818 server tests across 296 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the invoice-jobs-paging commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1818 · suites 296 · pass 1818 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE INVOICE-JOBS-PAGING COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1842 server tests across 302 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the decideFromFacts commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1842 · suites 302 · pass 1842 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE decideFromFacts COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1818 → 1842 is **+24**, one new file (`attributionDecide.test.js`); suites 296 → 302 is
+  that file's **six** top-level describes. React did not move — no `src/` file touched — and was
+  re-measured. **All four predicted before the run and matched.** Three EXISTING suites had
+  fixtures corrected (see below) and none gained a case, so they contribute 0.
+  ⚠ **A GUARD-PROOF THAT FIRED ONLY AT THE UNIT LEVEL EXPOSED A VACUITY IN THE DB-LEVEL CASES,
+  AND THIS IS THE ENTRY WORTH KEEPING.** Deleting `isInvoicePaid`'s status condition took only the
+  unit test red; the voided and bad_debt cases through the real database stayed GREEN. Cause:
+  `decideFromFacts` passed each row's RAW `invoiceStatus` into `classifyPipelineStatus`, which
+  tests `=== 'paid'` itself — so **the classifier was doing the excluding and the helper's
+  condition was redundant.** The cases could not tell the two apart. Fixed by marking every
+  invoice the helper ACCEPTS as `invoiceStatus: 'paid'`, which states the conclusion instead of
+  re-deriving it; deleting any of the three conditions now fails a database case.
+  ⚠ **AND A FIXTURE SEEDING A STAGE THAT ONLY THE DISPLAY COLUMN CARRIED IS THE Q6 RULING ARRIVING
+  IN THE TESTS.** Four cases across three suites seeded `jobber_clients.pipeline_stage = 'sold'`
+  and nothing else; `stageFor` read that column FIRST, so the decision inherited it. With the
+  column removed from the decision, those clients derive `'lead'` — which is in
+  `attributionEngine`'s `GATE_EXCLUSIONS`, so the sticky gate is skipped and nothing is attributed.
+  **Three went red and one did not**: a case asserting NOTHING is written passes against a skipped
+  gate too, so it would have kept asserting its ruling while proving only that the gate never ran.
+  The shared `setStage` helper now seeds the FACT its stage claims, which keeps every caller's
+  precondition real rather than repairing the three that complained.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE INVOICE-JOBS-PAGING COMMIT ITSELF, BECAUSE IT SHIPS TESTS.* It read **1818 / 296 / 1342 / 80**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE INVOICE-JOBS-PAGING COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 1809 → 1818 is **+9**, one new describe appended to `captureFetchContract.test.js`;
   suites 295 → 296 is that describe. React did not move — no `src/` file touched — and was
   re-measured. **All four predicted before the run and matched.**

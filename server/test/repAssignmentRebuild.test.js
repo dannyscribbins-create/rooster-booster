@@ -65,7 +65,10 @@ after(async () => {
 
 beforeEach(async () => {
   jobberCalls = 0;
+  // ⚠ The three Commit 3 fact tables added with Commit 4 — decideFromFacts reads them, so a
+  // leaked row changes a later case's derived status.
   for (const t of ['flagged_assignments', 'client_rep_assignments', 'crm_request_facts', 'crm_quote_facts',
+    'crm_invoice_job_links', 'crm_invoice_facts', 'crm_job_facts',
     'client_sale_jobs', 'client_sales', 'jobber_clients', 'sessions', 'titles', 'team_members']) {
     await pool.query(`DELETE FROM ${t} WHERE contractor_id = ANY($1::text[])`, [[TENANT, OTHER]]);
   }
@@ -196,6 +199,15 @@ describe('The assignment rebuild — what it discards, and what it must not', ()
     await pool.query(
       `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, pipeline_stage, last_synced_at)
        VALUES ('c1', $1, 'C', 'sold', NOW())`, [TENANT]);
+    // ⚠ 'sold' IS SEEDED AS A FACT TOO, SINCE COMMIT 4 (Q6). decideFromFacts does not read
+    // jobber_clients.pipeline_stage, so the column alone left the decision at 'lead' — which
+    // attributionEngine's GATE_EXCLUSIONS skips, so the rebuild replayed and attributed nothing
+    // and this case went red on `null !== 9`. That failure WAS the ruling working: the fixture's
+    // only evidence of 'sold' was the display column. The column write stays as the display value.
+    await pool.query(
+      `INSERT INTO crm_job_facts (contractor_id, jobber_job_id, jobber_client_id, created_at)
+       VALUES ($1, 'jf-c1', 'c1', NOW() - INTERVAL '20 days')
+       ON CONFLICT (contractor_id, jobber_job_id) DO NOTHING`, [TENANT]);
     await pool.query(
       `INSERT INTO crm_request_facts (contractor_id, jobber_request_id, jobber_client_id, created_at, assessment_id, assigned_jobber_user_ids)
        VALUES ($1, 'r1', 'c1', NOW() - INTERVAL '10 days', 'as-1', '["ju-A"]')`, [TENANT]);

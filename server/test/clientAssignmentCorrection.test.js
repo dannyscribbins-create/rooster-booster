@@ -78,8 +78,15 @@ beforeEach(async () => {
     `DELETE FROM dynamic_audience_members WHERE audience_id IN
        (SELECT id FROM dynamic_audiences WHERE contractor_id = $1)`, [TENANT]);
   await pool.query('DELETE FROM activity_log');
+  // ⚠ crm_invoice_job_links / crm_invoice_facts / crm_job_facts ADDED WITH COMMIT 4. A fact
+  // table missing from this list leaks rows between cases, and since decideFromFacts reads these
+  // to derive the status, a leaked job fact silently turns a later 'lead' client into 'sold' and
+  // lets the sticky gate run. That is exactly what happened while writing this commit: seeding a
+  // job fact in one case made a LATER case assign the wrong rep (20 !== 21).
   for (const t of ['contact_tags', 'dynamic_audiences', 'flagged_assignments',
-    'client_rep_assignments', 'crm_request_facts', 'jobber_clients', 'sessions', 'titles', 'team_members']) {
+    'client_rep_assignments', 'crm_request_facts',
+    'crm_invoice_job_links', 'crm_invoice_facts', 'crm_job_facts',
+    'jobber_clients', 'sessions', 'titles', 'team_members']) {
     await pool.query(`DELETE FROM ${t} WHERE contractor_id = $1`, [TENANT]);
   }
   await pool.query('DELETE FROM contractors WHERE id = $1', [TENANT]);
@@ -157,7 +164,16 @@ describe('PART 1 — seeing and changing a client\'s rep from the client record'
     await pool.query(
       `INSERT INTO crm_request_facts (contractor_id, jobber_request_id, jobber_client_id, created_at, assessment_id, assigned_jobber_user_ids)
        VALUES ($1, 'r1', 'c1', NOW() - INTERVAL '5 days', 'as-1', '["ju-4"]')`, [TENANT]);
+    // ⚠ THE STAGE IS NOW SEEDED AS A FACT, NOT ONLY AS THE DISPLAY COLUMN (Commit 4, Q6).
+    // decideFromFacts does not read jobber_clients.pipeline_stage, so this line alone left the
+    // decision at 'lead' — which is in attributionEngine's GATE_EXCLUSIONS, so the sticky gate was
+    // skipped and the client came back unattributed. The pipeline_stage write stays because the
+    // column is still the display value; the crm_job_facts row is what 'sold' now MEANS.
     await pool.query(`UPDATE jobber_clients SET pipeline_stage = 'sold' WHERE contractor_id = $1 AND jobber_client_id = 'c1'`, [TENANT]);
+    await pool.query(
+      `INSERT INTO crm_job_facts (contractor_id, jobber_job_id, jobber_client_id, created_at)
+       VALUES ($1, 'jf-c1', 'c1', NOW() - INTERVAL '20 days')
+       ON CONFLICT (contractor_id, jobber_job_id) DO NOTHING`, [TENANT]);
     const { replayClientAttribution } = require('../utils/attributionReplay');
     await replayClientAttribution(pool, { contractorId: TENANT, jobberClientId: 'c1' });
     assert.equal((await assignmentRow('c1')).sticky_rep_id, rep, 'the engine may answer again — that is the ruling');
