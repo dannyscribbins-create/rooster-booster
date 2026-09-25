@@ -233,8 +233,13 @@ function GroupedFilterPanel({
     }
   }
 
+  // ⚠ GUARDED FOR cat.bare LIKE THE PILL LOOP BELOW, AND THIS SITE WAS MISSED ON THE
+  // FIRST PASS — the 4c fence caught it, not a reading. Section A auto-opens when one of
+  // its own tags is selected; with an unguarded rebuild a selected `paying_client` would
+  // not be in this set, so the section holding it would stay COLLAPSED while claiming
+  // nothing is active there. Same rebuild, a second consequence.
   const sectionATagSet = new Set(
-    jobberTagSummary.flatMap(cat => cat.values.map(v => `${cat.prefix}:${v}`))
+    jobberTagSummary.flatMap(cat => cat.values.map(v => (cat.bare ? v : `${cat.prefix}:${v}`)))
   );
   const sectionBTagSet = new Set(ROOFMILES_GROUPS.flatMap(g => g.pills.map(p => p.tag)));
   const sectionAHasActive = selectedTags.some(t => sectionATagSet.has(t));
@@ -411,7 +416,10 @@ function GroupedFilterPanel({
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                         {cat.values.map(val => {
-                          const tag        = `${cat.prefix}:${val}`;
+                          // ⚠ A BARE GROUP'S VALUE IS THE WHOLE STORED TAG (4c) — see the same
+                          // note in AdminCampaigns' audience cloud. Rebuilding would filter on a
+                          // string no row holds and quietly return nothing.
+                          const tag        = cat.bare ? val : `${cat.prefix}:${val}`;
                           const isSelected = selectedTags.includes(tag);
                           return (
                             <button
@@ -426,7 +434,7 @@ function GroupedFilterPanel({
                                 fontWeight: isSelected ? 600 : 400, transition: 'all 0.1s',
                               }}
                             >
-                              {val.replace(/_/g, ' ')}
+                              {cat.bare ? tagLabel(val) : val.replace(/_/g, ' ')}
                             </button>
                           );
                         })}

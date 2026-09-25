@@ -4026,7 +4026,7 @@ export default function AdminCampaigns({ setLoggedIn }) {
                   {/* Amber warning pills for saved tags hidden by Tag Visibility settings */}
                   {(() => {
                     const visibleTagSet = new Set(
-                      tagSummary.flatMap(cat => cat.values.map(v => `${cat.prefix}:${v}`))
+                      tagSummary.flatMap(cat => cat.values.map(v => (cat.bare ? v : `${cat.prefix}:${v}`)))
                     );
                     const hiddenSelected = audienceFilterTags.filter(t => !visibleTagSet.has(t));
                     if (hiddenSelected.length === 0) return null;
@@ -4069,7 +4069,11 @@ export default function AdminCampaigns({ setLoggedIn }) {
                           </p>
                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                             {cat.values.map(val => {
-                              const tag = `${cat.prefix}:${val}`;
+                              // ⚠ A BARE GROUP'S VALUE IS THE WHOLE STORED TAG (4c). Rebuilding
+                              // `prefix:value` here would offer `client_status:paying_client`,
+                              // which no row holds — the audience would select nobody and say
+                              // nothing. `cat.bare` is the server telling us not to rebuild.
+                              const tag = cat.bare ? val : `${cat.prefix}:${val}`;
                               const isSelected = audienceFilterTags.includes(tag);
                               return (
                                 <button
@@ -4085,7 +4089,12 @@ export default function AdminCampaigns({ setLoggedIn }) {
                                     whiteSpace: 'nowrap',
                                   }}
                                 >
-                                  {val.replace(/_/g, ' ')}
+                                  {/* ⚠ tagLabel ONLY ON A BARE GROUP, BY RULING. A prefixed group
+                                      prints its prefix as the heading directly above, so the full
+                                      label there would read "Invoice / Jobber status: Paid". A bare
+                                      tag has no heading supplying that context, which is exactly
+                                      why paying_client must read "Paid client" here. */}
+                                  {cat.bare ? tagLabel(val) : val.replace(/_/g, ' ')}
                                 </button>
                               );
                             })}

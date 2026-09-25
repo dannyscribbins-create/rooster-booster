@@ -716,7 +716,7 @@ router.get('/api/admin/jobber-client-tag-summary', requirePermission('contacts')
   const { contractorId } = adminSession;
   const visibleOnly = req.query.visibleOnly === 'true';
   try {
-    const [tagResult, systemTagResult, visibilityResult] = await Promise.all([
+    const [tagResult, systemTagResult, bareCrmTagResult, visibilityResult] = await Promise.all([
       pool.query(
         `SELECT
            SUBSTRING(tag FROM 1 FOR POSITION(':' IN tag) - 1) AS prefix,
@@ -743,6 +743,28 @@ router.get('/api/admin/jobber-client-tag-summary', requirePermission('contacts')
          ORDER BY tag`,
         [contractorId]
       ),
+      // ── BARE jobber_crm TAGS (3d Phase 1a Commit 4c) ────────────────────────
+      // ⚠ A THIRD QUERY, BECAUSE paying_client SATISFIED NEITHER OF THE OTHER TWO AND
+      // WAS THEREFORE INVISIBLE TO EVERY AUDIENCE BUILDER. The prefixed query above
+      // requires `tag LIKE '%:%'` and it has no colon; the system query requires
+      // `source = 'system'` and deriveAndSaveTags writes it as `jobber_crm`. It fell
+      // through the gap between them, so an admin reaching for "clients who have paid"
+      // could only find `invoice:paid` — Jobber's verbatim status mirror, which after
+      // 4a does NOT agree with RoofMiles' own decision on a $0 or unsettled invoice.
+      // ⚠ THIS SELECTS THE WHOLE TAG, NOT A VALUE HALF, and that is what `bare: true`
+      // on the group below exists to say — see the note there.
+      pool.query(
+        `SELECT tag, COUNT(DISTINCT jobber_client_id) AS client_count
+         FROM contact_tags
+         WHERE contractor_id = $1
+           AND source = 'jobber_crm'
+           AND jobber_client_id IS NOT NULL
+           AND tag NOT LIKE '%:%'
+           AND ${ATTRIBUTION_TAG_SQL_EXCLUSION}
+         GROUP BY tag
+         ORDER BY tag`,
+        [contractorId]
+      ),
       visibleOnly
         ? pool.query(
             `SELECT tag_group_visibility FROM contractor_settings WHERE contractor_id = $1`,
@@ -763,6 +785,25 @@ router.get('/api/admin/jobber-client-tag-summary', requirePermission('contacts')
       valueCount:   systemValues.length,
       contactCount: 0, // RoofMiles tags span contacts table — not counted per jobber_client_id
       count:        0, // backward compat
+    };
+
+    // ── THE CLIENT-STATUS GROUP — BARE TAGS, CARRIED WHOLE ────────────────────
+    // ⚠ `bare: true` IS LOAD-BEARING AND IS NOT DECORATION. Both audience builders
+    // rebuild a selectable tag as `${cat.prefix}:${value}`, which is correct for every
+    // prefixed group and WRONG for a tag that has no prefix — it would offer
+    // `client_status:paying_client`, a string no row holds, and the audience would
+    // silently select nobody. `bare` tells the client the value IS the stored tag.
+    // ⚠ AND IT IS ALSO WHY THE VALUES ARE NOT NORMALISED the way the roofmiles group
+    // normalises its own. Normalising would rewrite the very string the filter matches.
+    const bareCrmValues = bareCrmTagResult.rows.map(r => r.tag);
+    const clientStatusGroup = {
+      prefix:       'client_status',
+      label:        'Client Status',
+      values:       bareCrmValues,
+      bare:         true,
+      valueCount:   bareCrmValues.length,
+      contactCount: bareCrmTagResult.rows.reduce((n, r) => n + parseInt(r.client_count, 10), 0),
+      count:        bareCrmTagResult.rows.reduce((n, r) => n + parseInt(r.client_count, 10), 0),
     };
 
     let categories = tagResult.rows.map(row => {
@@ -789,6 +830,19 @@ router.get('/api/admin/jobber-client-tag-summary', requirePermission('contacts')
           return { ...cat, values: filteredValues, valueCount: filteredValues.length };
         });
 
+      // Apply visibleOnly filtering to the Client Status group — same opt-out model as
+      // every other group, so a contractor can hide it without a migration.
+      if (visibility['client_status']?.enabled !== false) {
+        const hiddenVals = visibility['client_status']?.hidden_values || [];
+        if (hiddenVals.length > 0) {
+          clientStatusGroup.values = clientStatusGroup.values.filter(v => !hiddenVals.includes(v));
+          clientStatusGroup.valueCount = clientStatusGroup.values.length;
+        }
+        if (clientStatusGroup.values.length > 0) {
+          categories = [clientStatusGroup, ...categories];
+        }
+      }
+
       // Apply visibleOnly filtering to the RoofMiles group
       if (visibility['roofmiles']?.enabled !== false) {
         const hiddenVals = visibility['roofmiles']?.hidden_values || [];
@@ -800,8 +854,9 @@ router.get('/api/admin/jobber-client-tag-summary', requirePermission('contacts')
           categories = [roofmilesGroup, ...categories];
         }
       }
-    } else if (roofmilesGroup.values.length > 0) {
-      categories = [roofmilesGroup, ...categories];
+    } else {
+      if (clientStatusGroup.values.length > 0) categories = [clientStatusGroup, ...categories];
+      if (roofmilesGroup.values.length > 0)    categories = [roofmilesGroup, ...categories];
     }
 
     res.json({ categories });

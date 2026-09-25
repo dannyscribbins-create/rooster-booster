@@ -5620,10 +5620,90 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       **What to decide:** whether `invoice:paid` should be renamed (e.g. `invoice_status:paid`) so
       the mirror cannot be mistaken for the decision, or left and documented for audience authors.
 
-- [ ] ⚠ **`paying_client` CANNOT BE USED TO BUILD AN AUDIENCE AT ALL, AND 4b's LABEL THEREFORE
-      CANNOT BE SEEN WHERE IT MATTERS MOST** (found 2026-09-25 in Commit 4b while enumerating the
-      render sites; deliberately NOT changed — it is more than display text, which is the boundary
-      Danny set on 4b).
+- [x] **✅ DONE — `paying_client` IS SELECTABLE AS AN AUDIENCE** (3d Phase 1a Commit 4c,
+      2026-09-25). `GET /api/admin/jobber-client-tag-summary` gained a THIRD query for bare
+      `jobber_crm` tags and emits them as a `client_status` group carrying **`bare: true`**; both
+      audience builders honour that flag instead of rebuilding a prefixed form, and render the bare
+      branch through `tagLabel()` so it reads "Paid client".
+      ⚠ **`bare: true` IS THE LOAD-BEARING HALF, NOT THE QUERY.** Both builders reconstruct a
+      selectable tag from a prefix and a value half; unguarded that offers
+      `client_status:paying_client`, a string no `contact_tags` row holds — **the audience saves,
+      evaluates, reports zero members and mails nobody, with no error anywhere.** A server case
+      drives the real evaluator against BOTH forms so the difference is pinned, not described.
+      ⚠ **AND THE 4c FENCE FOUND A SECOND UNGUARDED REBUILD THE FIRST PASS MISSED** —
+      `AdminContactsTab`'s section-A tag set, which decides whether the section auto-opens. Left
+      unguarded, a selected `paying_client` is absent from that set and **the section holding that
+      very pill stays collapsed.** Found by the check, not by reading.
+      **Its predecessor entry, which this closes, is kept below for the reasoning.**
+
+- [ ] ⚠ **THE `roofmiles` SYSTEM GROUP IS REBUILT INTO A TAG THAT MATCHES NOTHING, IN
+      `AdminCampaigns`' AUDIENCE BUILDER** (found 2026-09-25 in Commit 4c while enumerating the
+      rebuild sites; deliberately NOT fixed — it is a behaviour change nobody asked for, and a
+      pre-existing defect rather than anything 4c introduced).
+      The summary's system-tag group NORMALISES its values, so a stored `App User` is offered as
+      `app_user`, and `AdminCampaigns` then rebuilds it into a prefixed `roofmiles` form. **No
+      `contact_tags` row holds that string**, so an audience built on any RoofMiles Tag selects
+      nobody and says nothing.
+      ⚠ **`AdminContactsTab` DOES NOT HAVE THE BUG, AND ITS CODE SAYS WHY** — it filters the
+      `roofmiles` prefix out of section A and offers those tags through `ROOFMILES_GROUPS`, which
+      carries each bare tag explicitly. **One consumer was fixed and the other was not**, and the
+      shared producer gives no sign which is which.
+      ⚠ **4c's `bare` FLAG IS THE OBVIOUS REPAIR AND IS NOT AUTOMATICALLY RIGHT HERE**: those
+      values are normalised, so marking the group bare would offer `app_user` where the stored tag
+      is `App User`. Fixing it means carrying the stored tag, not reusing the flag.
+      **What to decide:** whether the summary should carry an explicit per-value stored-tag array
+      for every group, retiring reconstruction everywhere, or whether `AdminCampaigns` should
+      filter the group out as its sibling already does.
+
+- [ ] ⚠ **THE STALE-TAG BACKFILL: `pull_all` IS THE ONLY MODE THAT WOULD CLEAR THEM, AND
+      `recommended` IS ACTIVELY THE WRONG TOOL** (investigated read-only 2026-09-25 after Commit
+      4b; NOTHING WAS RUN).
+      After 4a/4b, `paying_client` rows created under the old status-only rule clear only when that
+      client is re-derived, and only `fullJobberImport` can do that in bulk today.
+      ⚠ **STEP G DECIDES WHO GETS RE-DERIVED, AND ITS FIRST BRANCH ADMITS A CLIENT ONLY IF
+      `isInvoicePaid` HOLDS TODAY.** The clients whose tag is stale are *precisely* the ones that
+      predicate now REJECTS — a $0 or unsettled "paid" invoice. Under `recommended` they are then
+      admitted only if created within 12 months, so **an older client with a stale tag is never
+      reached and the tag survives forever.** `pull_all` is the only mode that admits every client.
+      ⚠ **AND `recommended` COSTS THE SAME JOBBER TRAFFIC AS `pull_all` ANYWAY.** The date filter
+      is applied **only** for `custom_date`, so both modes run the identical bulk sweep of Steps
+      A-E and differ only in how many clients Step G lets through to the write phase. The saving is
+      writes, not API calls.
+      **SIDE EFFECTS BEYOND TAGS — every one verified at HEAD, not assumed:**
+      `jobber_clients` upsert (names, contact, flags, `pipeline_stage`) · the `jobber_client` and
+      `tier_1` system tags · the `jobber_import_progress` cursor · the contact-matching pass
+      (`contact_jobber_links`, and a `tier_1` to `tier_2` tag swap) · an in-app **`notifications`**
+      row when links are established · the rep scope (`jobber_clients.pipeline_stage`,
+      `contractor_crm_settings.rep_window_start`) · the attribution replay, which writes
+      **`client_rep_assignments`**, **`flagged_assignments`** and **`admin_messages`** · `error_log`
+      rows on per-client failures.
+      ⚠ **NO EMAIL AND NO SMS** — swept across the import, the matching pass, the rep scope, the
+      replay and the engine; zero sends. The two notification surfaces are both IN-APP.
+      ⚠ **BUT IT CAN CHANGE REP ASSIGNMENTS AND RAISE FLAGS**, which is the consequence to weigh:
+      a tag backfill would drag the whole attribution replay along with it.
+      **COST, for Accent's ~47,000 clients:** Step A pages clients 100 at a time (~470 pages) and
+      Steps B-E each sweep the whole account's invoices, quotes, requests and jobs at 100 per page.
+      The pacing waits on the real bucket (10,000 max, 500/s restore) against a hardcoded page-cost
+      constant — **which the file's own comment records as having no source** — so a page settles
+      to roughly 5s. **Order of hours, not minutes, and Steps A-E hold every fetched object in
+      memory before the first write**, which the file itself flags: a failure in the fetch loses
+      the whole run.
+      ⚠ **SAFE TO RE-RUN TODAY? NOT WITHOUT TWO CHECKS.** Every write is an idempotent upsert and
+      the route rejects a concurrent run — but **if a previous run left its progress row unfinished,
+      a new one RESUMES from the cursor instead of restarting**, which would silently skip most of
+      the book for a job whose whole point is to cover all of it. And a backup must be taken first,
+      per the standing rule.
+      **RECOMMENDATION — `fullJobberImport` is NOT the right tool, and this should not be built
+      without a ruling.** It is hours of Jobber traffic, an all-or-nothing in-memory fetch, and a
+      rep-assignment replay, to correct one boolean tag. **A tags-only re-derivation is the right
+      shape**: walk `jobber_clients` for the contractor, read the invoice facts already captured in
+      `crm_invoice_facts`, and add or remove `paying_client` — **no Jobber calls at all**, because
+      Commits 3 through 3c made those facts durable. **Not built, by instruction.**
+
+- [x] **✅ SUPERSEDED BY THE 4c ENTRY ABOVE — `paying_client` CANNOT BE USED TO BUILD AN AUDIENCE
+      AT ALL, AND 4b's LABEL THEREFORE CANNOT BE SEEN WHERE IT MATTERS MOST** (found 2026-09-25 in
+      Commit 4b while enumerating the render sites; kept for the reasoning, which is what made 4c a
+      two-part change rather than a one-line query).
       `GET /api/admin/jobber-client-tag-summary` builds the audience tag cloud from **two** queries
       and `paying_client` satisfies neither. The prefixed query requires `tag LIKE '%:%'`;
       `paying_client` has no colon. The system query requires `source = 'system'`;

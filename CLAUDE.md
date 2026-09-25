@@ -385,8 +385,41 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1862 server tests across 305 suites, and 1353 React tests across 81 files** (measured 2026-09-25 by the paying-client recompute commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1862 · suites 305 · pass 1862 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYING-CLIENT RECOMPUTE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1874 server tests across 307 suites, and 1358 React tests across 82 files** (measured 2026-09-25 by the paid-client-audience commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1874 · suites 307 · pass 1874 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PAID-CLIENT-AUDIENCE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  **BOTH HALVES MOVED, EACH BY ONE NEW FILE.** Server 1862 → 1874 is **+12**, one new file
+  (`payingClientAudience.test.js`); suites 305 → 307 is that file's **two** top-level describes.
+  React 1353 → 1358 is **+5** in one new file (`bareTagGroup.test.jsx`), and 81 → 82 is that file.
+  **All four predicted before the run and matched.**
+  ⚠ **COUNTED WITH AN ANCHORED NEEDLE THIS TIME — `grep -cE "^\s*it\("` — BECAUSE THE PREVIOUS
+  COMMIT RECORDED A BARE `it(` MATCHING `split(`.** Every `for` in both files was checked for
+  position: they sit inside `beforeEach` hooks, inside `it()` bodies, or inside the `walk` helper,
+  so none wraps a case and 12 and 5 are exact.
+  ⚠ **NO PHANTOM.** The new React file is a `.test.` file in `src/constants`, a walked root, and
+  `adminBranding.test.jsx`'s walker skips `.test.` files; the only other `src/` edits are to
+  files that already existed.
+  ⚠ **THE NEW SERVER FILE'S FIRST RUN REPORTED `pass 8 · fail 0 · cancelled 4`, WHICH IS THE
+  EXACT SHAPE THIS FILE WARNS ABOUT AND IT STILL HAPPENED.** Two describes each carried their own
+  `before`/`after`; `initTestDb()` returns the `server/db.js` pool SINGLETON, so the first suite's
+  teardown ended the pool the second was about to use and its four cases were CANCELLED during
+  setup — **an entire describe that never ran, under a `fail 0` summary.** The lifecycle is now
+  file-level, with the reason recorded in the file. **One pool per test FILE is not a style
+  preference; reading only `pass` and `fail` would have called this green.**
+  ⚠ **AND TWO GUARD-PROOF INJECTIONS WERE INVALID AND WERE DISCARDED RATHER THAN READ.** Pasting
+  the new bare predicate over the PREFIXED query took **all 8** summary cases red — it breaks the
+  SQL (`POSITION` returns 0 for a tag with no colon, so the `SUBSTRING` length goes negative)
+  rather than reintroducing a defect. **8 red from a one-line change is a tell, not a result.** An
+  untyped `$1` in the tenancy injection failed the same way. Both were replaced with injections
+  that reintroduce the actual defect and take **1** and **2** red respectively.
+  ⚠ **AND ONE INJECTION FAILED TO LAND WHILE THE SUITE REPORTED 12/12 GREEN** — which reads
+  exactly like a fence that does not fire. The only tell was the patch script's `AssertionError`
+  printed above the green count. **Confirm the injection landed before believing the result.**
+  ⚠ **A `git checkout` OF A FILE WITH UNCOMMITTED WORK DISCARDED THAT WORK, NOT THE INJECTION.**
+  Reverting a guard-proof with `git checkout <file>` restores HEAD, which on an uncommitted commit
+  is *the previous commit's* content — the whole 4c edit to that file went with it. Recovered by
+  reapplying and **proven byte-identical by sha256**, which is the only reason it is recorded as a
+  detour rather than as data loss. **Revert a guard-proof with its inverse patch, never with git.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PAYING-CLIENT RECOMPUTE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
   **BOTH HALVES MOVED, AND BOTH BY ONE WHOLE NEW FILE.** Server 1852 → 1862 is **+10**, the `it(`
   lines of one new file (`payingClientRecompute.test.js`); suites 304 → 305 is that file's single
   describe. React 1342 → 1353 is **+11** in one new file (`tagLabels.test.jsx`), and 80 → 81 is that
