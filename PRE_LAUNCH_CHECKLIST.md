@@ -5510,6 +5510,50 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       Jobber's changelog **returns HTTP 403 to automated fetches** and must be read in a browser,
       so no session can verify a bump's precondition unaided — it must ask.
 
+- [ ] ⚠ **NO COMMIT IN THE 3d PHASE 1a PLAN WIRES THE IMPORT TO CAPTURE JOBS AND INVOICES, AND
+      THE PRE-LAUNCH "RE-IMPORT, THEN REPLAY" DEPENDS ON IT** (found 2026-09-25 while building
+      Commit 3, by enumerating every commit's `Files:` line rather than reading the ones that
+      looked relevant).
+      **Measured:** `ONE_ENGINE_1a_DESIGN.md` §3h names `server/jobs/repImportScope.js` in exactly
+      ONE commit — **Commit 1, the verbatim relocation.** Commits 4–7 name
+      `attributionDecide.js`, `attributionReplay.js`, `requestAttribution.js`,
+      `webhooks/jobber.js`, `repRequestSweep.js`, `repAssignmentRebuild.js`,
+      `attributionEngine.js` and `clientQueue.js`. **The import is in none of them.**
+      **Consequence:** Commit 3 gives `crm_job_facts` / `crm_invoice_facts` / the link table, and
+      Commit 5 wires capture at the four LIVE doors — so from then on facts accumulate for
+      clients that TRANSACT. A client whose jobs and invoices predate the wiring has **no job or
+      invoice facts at all**, and nothing backfills them. The rep scope already captures requests
+      and quotes (`writeRequestFacts` / `writeQuoteFacts` in the import); jobs and invoices would
+      be the only fact kinds the import does not write.
+      ⚠ **THIS IS THE "delivery is the fourth state" TRAP EXACTLY.** Storage, a writer and a
+      schema all exist after Commit 3, so the feature READS as built; what is missing is that
+      nothing carries the historical values to it. A check built from the schema and the writers
+      cannot see the gap.
+      **PROPOSED HOME — a Commit 3b between 3 and 4:** `repImportScope.js` gains a Rep Step that
+      calls `writeJobFacts` / `writeInvoiceFacts` / `writeInvoiceJobLinks` from the data Rep Step
+      3 ALREADY fetches (it pages jobs to exhaustion today and throws its nodes away after
+      grouping), plus an invoice fetch it does not yet make. **Not built in Commit 3, which is
+      scoped to the schema and the writers and explicitly forbids wiring any door.** Danny to rule
+      on whether it is 3b or a later backfill job.
+
+- [ ] ⚠ **THE CAPTURE FETCH DOES NOT SELECT `Invoice.archivedJobs`, SO `from_archived_jobs` IS
+      STRUCTURALLY ALWAYS false IN PRODUCTION** (found 2026-09-25 in Commit 3).
+      Danny's ruling: an invoice's job set comes from `Invoice.jobs` **and**
+      `Invoice.archivedJobs`. Commit 3's `writeInvoiceJobLinks` handles both and records which
+      connection each link came from, **and is tested on both** — but Commit 2's capture queries
+      select only `jobs(first: 50)`. `fetchInvoiceWithJobs` (the invoice-paid path) DOES select
+      `archivedJobs`, so the field is proven at `2026-05-12`; it is simply not in the two capture
+      queries.
+      ⚠ **SO THE WRITER IS CORRECT AND THE SUPPLY IS MISSING — the same shape as the font columns
+      the branding loader never selected**, where a resolver read a field no query asked for and
+      every surface quietly took the default. Here the default is `false`, which reads as "this
+      invoice covers no archived jobs" rather than "nobody looked".
+      **Fix: add `archivedJobs(first: 50) { nodes { id } pageInfo { hasNextPage } }` to
+      `INVOICE_FIELDS` in `server/utils/jobberClientFetch.js` and `RELATED_INVOICE_FIELDS` in
+      `server/routes/webhooks/jobber.js`, and extend `assertInvoiceJobsComplete` to check it.**
+      Not done in Commit 3 — Commit 2 is closed and deployed, and widening a shipped fetch is its
+      own change with its own guard-proof.
+
 - [ ] ⚠ **38 CITATIONS ROTTED BY THE CAPTURE-FETCH-CONTRACT COMMIT, AND THEY MUST BE REPAIRED BY
       ROLE RATHER THAN BY DELTA** (raised 2026-09-25, measured by
       `npm run citecheck -- --changed-files` at that commit's working tree).

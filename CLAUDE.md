@@ -385,8 +385,23 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1752 server tests across 287 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the capture-fetch-contract commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1752 · suites 287 · pass 1752 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CAPTURE-FETCH-CONTRACT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1781 server tests across 293 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the job/invoice fact-tables commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1781 · suites 293 · pass 1781 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE JOB/INVOICE FACT-TABLES COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1752 → 1781 is **+29**, one new file (`crmJobInvoiceFacts.test.js`); suites 287 → 293 is
+  that file's **six** top-level describes. React did not move — no `src/` file was touched — and
+  was re-measured rather than carried. **All four predicted before the run and matched.**
+  ⚠ **COUNTED WITH `grep -c`, AND THE ONE LOOP THAT MULTIPLIES WAS SEPARATED FROM THE TWO THAT
+  DO NOT.** 27 `it(` lines; the loop over `MONEY_CASES` **WRAPS** its `it()` and emits 3, while
+  the other two sit inside a `beforeEach` (iterating tables to clear) and inside an `it()` body
+  (re-capturing three times). So 26 × 1 + 3 = **29**.
+  ⚠ **AND A GUARD-PROOF CORRECTED A CLAIM THIS FILE'S OWN TEST COMMENT MADE — WHICH IS THE ENTRY
+  WORTH KEEPING.** The money test's comment asserted that `29724.8` AND `12599.25` are both
+  exactly representable in a 4-byte float and therefore non-discriminating. Injecting a `real[]`
+  cast took **12599.25 red and left 29724.8 green**: the first half was right, the second was
+  wrong, and only the injection said so. **The comment now records the measurement instead of the
+  reasoning.** A fixture's discriminating power is a claim like any other and needs a source.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CAPTURE-FETCH-CONTRACT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.* It read **1752 / 287 / 1342 / 80**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE CAPTURE-FETCH-CONTRACT COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 1702 → 1752 is **+50**, one new file (`captureFetchContract.test.js`); suites 283 → 287
   is that file's **four** top-level describes. React did not move — no `src/` file was touched —
   and was re-measured rather than carried. **All four predicted before the run and matched.**

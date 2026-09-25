@@ -72,7 +72,249 @@ async function writeQuoteFacts(db, contractorId, nodes) {
   return rows.length;
 }
 
+// ── MONEY (3d Phase 1a Commit 3) ─────────────────────────────────────────────
+/**
+ * Converts Jobber's GraphQL Float to a decimal STRING with exactly two places.
+ * Inputs: a number, a numeric string, null or undefined.
+ * Output: a string like '29724.80', or null.
+ *
+ * ⚠ A STRING, NOT A NUMBER, AND THAT IS THE WHOLE POINT. The target column is
+ * NUMERIC(12,2); handing node-postgres a JS double lets a binary float decide the stored
+ * value, and `Math.round(v * 100) / 100` is the same mistake wearing arithmetic. Formatting
+ * to a decimal string first means Postgres parses an exact decimal literal and no float ever
+ * reaches the database.
+ * ⚠ AND NEVER CENTS. The repo records Jobber's amounts as whole dollars (29724.8 is
+ * $29,724.80, not $297.24), so multiplying by 100 anywhere is a defect, not a unit choice.
+ */
+function toMoneyString(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return null;
+  return n.toFixed(2);
+}
+
+/**
+ * Upserts job facts, one row per Jobber job.
+ * Inputs: a db/pool, the contractor id, the job nodes from the capture fetch.
+ * Output: the number of rows offered (not the number actually updated — see the guard).
+ *
+ * ⚠ AN OLDER FETCH MUST NEVER OVERWRITE A NEWER ROW. Two doors can capture the same job
+ * seconds apart, and a webhook's client-wide fetch can arrive after a narrower, fresher one.
+ * The ON CONFLICT branch therefore carries a WHERE on updated_at, and the COALESCE to
+ * -infinity makes all four NULL combinations total rather than accidental:
+ *   stored NULL, incoming NULL  -> update (no basis to refuse, and nothing is lost)
+ *   stored NULL, incoming value -> update (we gain information)
+ *   stored value, incoming NULL -> REFUSE (cannot prove it is newer, so keep what we have)
+ *   stored value, incoming older-> REFUSE
+ * ⚠ Written as a WHERE on the conflict branch rather than a read-then-write, so two
+ * concurrent captures cannot interleave between the check and the write.
+ */
+async function writeJobFacts(db, contractorId, nodes) {
+  const rows = (nodes || []).filter((n) => n?.id);
+  if (rows.length === 0) return 0;
+  await db.query(
+    `INSERT INTO crm_job_facts
+       (contractor_id, jobber_job_id, jobber_client_id, jobber_quote_id, jobber_request_id,
+        salesperson_jobber_user_id, job_number, job_status, job_type, title,
+        created_at, updated_at, start_at, end_at, completed_at,
+        total, invoiced_total, uninvoiced_total)
+     SELECT $1, j.id, j.client_id, j.quote_id, j.request_id, j.sp, j.job_number, j.job_status,
+            j.job_type, j.title, j.created_at, j.updated_at, j.start_at, j.end_at,
+            j.completed_at, j.total, j.invoiced_total, j.uninvoiced_total
+       FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[],
+                   $8::text[], $9::text[], $10::text[], $11::timestamptz[], $12::timestamptz[],
+                   $13::timestamptz[], $14::timestamptz[], $15::timestamptz[],
+                   $16::numeric[], $17::numeric[], $18::numeric[])
+         AS j(id, client_id, quote_id, request_id, sp, job_number, job_status, job_type, title,
+              created_at, updated_at, start_at, end_at, completed_at,
+              total, invoiced_total, uninvoiced_total)
+     ON CONFLICT (contractor_id, jobber_job_id) DO UPDATE SET
+       jobber_client_id           = EXCLUDED.jobber_client_id,
+       jobber_quote_id            = EXCLUDED.jobber_quote_id,
+       jobber_request_id          = EXCLUDED.jobber_request_id,
+       salesperson_jobber_user_id = EXCLUDED.salesperson_jobber_user_id,
+       job_number                 = EXCLUDED.job_number,
+       job_status                 = EXCLUDED.job_status,
+       job_type                   = EXCLUDED.job_type,
+       title                      = EXCLUDED.title,
+       created_at                 = EXCLUDED.created_at,
+       updated_at                 = EXCLUDED.updated_at,
+       start_at                   = EXCLUDED.start_at,
+       end_at                     = EXCLUDED.end_at,
+       completed_at               = EXCLUDED.completed_at,
+       total                      = EXCLUDED.total,
+       invoiced_total             = EXCLUDED.invoiced_total,
+       uninvoiced_total           = EXCLUDED.uninvoiced_total,
+       captured_at                = NOW()
+     WHERE COALESCE(EXCLUDED.updated_at, '-infinity'::timestamptz)
+        >= COALESCE(crm_job_facts.updated_at, '-infinity'::timestamptz)`,
+    [
+      contractorId,
+      rows.map((n) => n.id),
+      rows.map((n) => n.client?.id || null),
+      rows.map((n) => n.quote?.id || null),
+      rows.map((n) => n.request?.id || null),
+      rows.map((n) => n.salesperson?.id || null),
+      rows.map((n) => (n.jobNumber === null || n.jobNumber === undefined ? null : String(n.jobNumber))),
+      rows.map((n) => n.jobStatus || null),
+      rows.map((n) => n.jobType || null),
+      rows.map((n) => n.title || null),
+      rows.map((n) => n.createdAt || null),
+      rows.map((n) => n.updatedAt || null),
+      rows.map((n) => n.startAt || null),
+      rows.map((n) => n.endAt || null),
+      rows.map((n) => n.completedAt || null),
+      rows.map((n) => toMoneyString(n.total)),
+      rows.map((n) => toMoneyString(n.invoicedTotal)),
+      rows.map((n) => toMoneyString(n.uninvoicedTotal)),
+    ]
+  );
+  return rows.length;
+}
+
+/**
+ * Upserts invoice facts, ONE ROW PER INVOICE.
+ * Inputs: a db/pool, the contractor id, the invoice nodes from the capture fetch.
+ * Output: the number of rows offered.
+ *
+ * ⚠ KEYED BY THE INVOICE'S OWN ID, NEVER BY (invoice, job). An invoice can cover several
+ * jobs; keying per job would store it twice and a sale's value would count it twice. The job
+ * set is a separate table — see writeInvoiceJobLinks.
+ * ⚠ THE STATUS IS STORED VERBATIM, INCLUDING 'voided'. Dropping or rewriting a voided invoice
+ * here would put a DECISION inside a fact table, and the fact that an invoice was voided is
+ * exactly what a later consumer needs in order to exclude it.
+ * ⚠ Same updated_at guard as writeJobFacts, for the same reason.
+ */
+async function writeInvoiceFacts(db, contractorId, nodes) {
+  const rows = (nodes || []).filter((n) => n?.id);
+  if (rows.length === 0) return 0;
+  await db.query(
+    `INSERT INTO crm_invoice_facts
+       (contractor_id, jobber_invoice_id, jobber_client_id, invoice_number, invoice_status,
+        total, invoice_balance, payments_total, deposit_amount, subtotal, tax_amount,
+        discount_amount, issued_date, due_date, received_date, created_at, updated_at)
+     SELECT $1, v.id, v.client_id, v.invoice_number, v.invoice_status, v.total, v.balance,
+            v.payments, v.deposit, v.subtotal, v.tax, v.discount,
+            v.issued_date, v.due_date, v.received_date, v.created_at, v.updated_at
+       FROM unnest($2::text[], $3::text[], $4::text[], $5::text[],
+                   $6::numeric[], $7::numeric[], $8::numeric[], $9::numeric[],
+                   $10::numeric[], $11::numeric[], $12::numeric[],
+                   $13::timestamptz[], $14::timestamptz[], $15::timestamptz[],
+                   $16::timestamptz[], $17::timestamptz[])
+         AS v(id, client_id, invoice_number, invoice_status, total, balance, payments, deposit,
+              subtotal, tax, discount, issued_date, due_date, received_date,
+              created_at, updated_at)
+     ON CONFLICT (contractor_id, jobber_invoice_id) DO UPDATE SET
+       jobber_client_id = EXCLUDED.jobber_client_id,
+       invoice_number   = EXCLUDED.invoice_number,
+       invoice_status   = EXCLUDED.invoice_status,
+       total            = EXCLUDED.total,
+       invoice_balance  = EXCLUDED.invoice_balance,
+       payments_total   = EXCLUDED.payments_total,
+       deposit_amount   = EXCLUDED.deposit_amount,
+       subtotal         = EXCLUDED.subtotal,
+       tax_amount       = EXCLUDED.tax_amount,
+       discount_amount  = EXCLUDED.discount_amount,
+       issued_date      = EXCLUDED.issued_date,
+       due_date         = EXCLUDED.due_date,
+       received_date    = EXCLUDED.received_date,
+       created_at       = EXCLUDED.created_at,
+       updated_at       = EXCLUDED.updated_at,
+       captured_at      = NOW()
+     WHERE COALESCE(EXCLUDED.updated_at, '-infinity'::timestamptz)
+        >= COALESCE(crm_invoice_facts.updated_at, '-infinity'::timestamptz)`,
+    [
+      contractorId,
+      rows.map((n) => n.id),
+      rows.map((n) => n.client?.id || null),
+      rows.map((n) => (n.invoiceNumber === null || n.invoiceNumber === undefined ? null : String(n.invoiceNumber))),
+      rows.map((n) => n.invoiceStatus || null),
+      rows.map((n) => toMoneyString(n.amounts?.total)),
+      rows.map((n) => toMoneyString(n.amounts?.invoiceBalance)),
+      rows.map((n) => toMoneyString(n.amounts?.paymentsTotal)),
+      rows.map((n) => toMoneyString(n.amounts?.depositAmount)),
+      rows.map((n) => toMoneyString(n.amounts?.subtotal)),
+      rows.map((n) => toMoneyString(n.amounts?.taxAmount)),
+      rows.map((n) => toMoneyString(n.amounts?.discountAmount)),
+      rows.map((n) => n.issuedDate || null),
+      rows.map((n) => n.dueDate || null),
+      rows.map((n) => n.receivedDate || null),
+      rows.map((n) => n.createdAt || null),
+      rows.map((n) => n.updatedAt || null),
+    ]
+  );
+  return rows.length;
+}
+
+/**
+ * Replaces an invoice's job set from a COMPLETE fetch.
+ * Inputs: a db/pool, the contractor id, the invoice nodes (each carrying jobs and optionally
+ *         archivedJobs, with pageInfo).
+ * Output: the number of link rows written.
+ *
+ * ⚠ HOW THIS KNOWS THE SET IS COMPLETE, AND WHY IT CHECKS RATHER THAN INHERITS. The capture
+ * fetch already throws when an invoice's job set spans more than one page
+ * (assertInvoiceJobsComplete in server/utils/jobberClientFetch.js). This writer asserts it
+ * AGAIN, locally, because a safety measure carried forward unchecked is not a safety measure:
+ * this writer will later be called from doors that do not exist yet, and one of them may build
+ * its nodes by hand. If `hasNextPage` is true on either connection, it THROWS and writes
+ * nothing — a REPLACE against a truncated set would silently delete real links.
+ * ⚠ AND THE REPLACE IS SCOPED TO THE INVOICE, NOT THE CONTRACTOR. Deleting this invoice's
+ * links and reinserting them is how a job REMOVED from an invoice stops being linked; doing it
+ * per contractor would wipe every other invoice's links on a single-invoice capture.
+ */
+async function writeInvoiceJobLinks(db, contractorId, nodes) {
+  const invoices = (nodes || []).filter((n) => n?.id);
+  if (invoices.length === 0) return 0;
+
+  for (const inv of invoices) {
+    if (inv.jobs?.pageInfo?.hasNextPage === true || inv.archivedJobs?.pageInfo?.hasNextPage === true) {
+      throw new Error(
+        `writeInvoiceJobLinks: invoice ${inv.id} job set is INCOMPLETE (hasNextPage) — `
+        + 'refusing to replace links from a truncated set'
+      );
+    }
+  }
+
+  let written = 0;
+  for (const inv of invoices) {
+    const links = new Map();
+    for (const j of (inv.jobs?.nodes || [])) {
+      if (j?.id) links.set(j.id, false);
+    }
+    // archivedJobs second so a job present in BOTH is recorded as archived.
+    for (const j of (inv.archivedJobs?.nodes || [])) {
+      if (j?.id) links.set(j.id, true);
+    }
+
+    await db.query(
+      `DELETE FROM crm_invoice_job_links WHERE contractor_id = $1 AND jobber_invoice_id = $2`,
+      [contractorId, inv.id]
+    );
+    if (links.size === 0) continue;
+
+    const jobIds = [...links.keys()];
+    await db.query(
+      `INSERT INTO crm_invoice_job_links
+         (contractor_id, jobber_invoice_id, jobber_job_id, from_archived_jobs)
+       SELECT $1, $2, l.job_id, l.archived
+         FROM unnest($3::text[], $4::boolean[]) AS l(job_id, archived)
+       ON CONFLICT (contractor_id, jobber_invoice_id, jobber_job_id) DO UPDATE SET
+         from_archived_jobs = EXCLUDED.from_archived_jobs,
+         captured_at        = NOW()`,
+      [contractorId, inv.id, jobIds, jobIds.map((id) => links.get(id))]
+    );
+    written += jobIds.length;
+  }
+
+  return written;
+}
+
 module.exports = {
   writeRequestFacts,
   writeQuoteFacts,
+  writeJobFacts,
+  writeInvoiceFacts,
+  writeInvoiceJobLinks,
+  toMoneyString,
 };

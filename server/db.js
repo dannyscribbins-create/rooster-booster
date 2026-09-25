@@ -2528,6 +2528,108 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // both tested.
   await pool.query(`ALTER TABLE client_rep_assignments ADD COLUMN IF NOT EXISTS written_by TEXT`);
 
+  // ── CRM JOB + INVOICE FACTS (3d Phase 1a Commit 3, Danny's Q4 ruling 2026-09-24) ──────
+  //
+  // ⚠ ROWS, NOT A DERIVED BOOLEAN, AND THIS IS RECORDED SO IT IS NOT "SIMPLIFIED" BACK.
+  // The design's earlier shape was a monotonic `has_paid_invoice` flag. Four consumers need
+  // more than "is it paid": the queued-$0 exclusion, the completion boundary, SALE VALUE, and
+  // payout grouping by `invoice_window_days`. ⚠ Two of those four are NOT BUILT YET, and that
+  // is the argument rather than a hole in it — a boolean cannot be widened into them later
+  // without re-fetching every client's entire history from Jobber.
+  //
+  // ⚠ APPENDED AT THE END OF initDB ON PURPOSE. The highest citation anywhere into this file
+  // is around :1672, so a block landing below that moves nothing anyone points at. The two
+  // sibling fact tables (crm_quote_facts, crm_request_facts) already sit just above.
+  //
+  // ⚠ NO DATE WINDOW ON WHAT IS STORED (Q5). A fact is stored because it was fetched, not
+  // because it falls inside someone's reporting window. Clipping happens at READ time, which
+  // is what `rep_window_start` above exists for.
+  //
+  // ⚠ MONEY IS NUMERIC(12,2) DOLLARS, NEVER CENTS AND NEVER A FLOAT COLUMN. Jobber sends a
+  // GraphQL Float (e.g. 29724.8); the writers in server/utils/factCapture.js convert it via a
+  // DECIMAL STRING so no binary float ever reaches Postgres. A `real`/`double precision`
+  // column would reintroduce the drift the string path exists to avoid.
+
+  await pool.query(`CREATE TABLE IF NOT EXISTS crm_job_facts (
+    contractor_id              TEXT NOT NULL,
+    jobber_job_id              TEXT NOT NULL,
+    jobber_client_id           TEXT,
+    jobber_quote_id            TEXT,
+    jobber_request_id          TEXT,
+    salesperson_jobber_user_id TEXT,
+    job_number                 TEXT,
+    job_status                 TEXT,
+    job_type                   TEXT,
+    title                      TEXT,
+    created_at                 TIMESTAMPTZ,
+    updated_at                 TIMESTAMPTZ,
+    start_at                   TIMESTAMPTZ,
+    end_at                     TIMESTAMPTZ,
+    completed_at               TIMESTAMPTZ,
+    total                      NUMERIC(12,2),
+    invoiced_total             NUMERIC(12,2),
+    uninvoiced_total           NUMERIC(12,2),
+    captured_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (contractor_id, jobber_job_id)
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_job_facts_client
+    ON crm_job_facts (contractor_id, jobber_client_id)`);
+
+  // ⚠ ONE ROW PER INVOICE, KEYED BY THE INVOICE'S OWN ID — never by (invoice, job). An
+  // invoice can cover SEVERAL jobs (Invoice.jobs is a connection, plus Invoice.archivedJobs),
+  // so keying it per job would store the same invoice two or three times and a sale's value
+  // would double-count it. The job set lives in crm_invoice_job_links below.
+  // ⚠ invoice_status IS STORED EXACTLY AS JOBBER SENDS IT, INCLUDING 'voided'. 2026-05-12
+  // added that enum value. A voided invoice is a FACT worth keeping; excluding it from a
+  // sale's value and from "paid" is a DECISION, and decisions do not belong in a fact table.
+  await pool.query(`CREATE TABLE IF NOT EXISTS crm_invoice_facts (
+    contractor_id     TEXT NOT NULL,
+    jobber_invoice_id TEXT NOT NULL,
+    jobber_client_id  TEXT,
+    invoice_number    TEXT,
+    invoice_status    TEXT,
+    total             NUMERIC(12,2),
+    invoice_balance   NUMERIC(12,2),
+    payments_total    NUMERIC(12,2),
+    deposit_amount    NUMERIC(12,2),
+    subtotal          NUMERIC(12,2),
+    tax_amount        NUMERIC(12,2),
+    discount_amount   NUMERIC(12,2),
+    issued_date       TIMESTAMPTZ,
+    due_date          TIMESTAMPTZ,
+    received_date     TIMESTAMPTZ,
+    created_at        TIMESTAMPTZ,
+    updated_at        TIMESTAMPTZ,
+    captured_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (contractor_id, jobber_invoice_id)
+  )`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_invoice_facts_client
+    ON crm_invoice_facts (contractor_id, jobber_client_id)`);
+
+  // ⚠ THE INVOICE-TO-JOB LINK, AND ITS PRIMARY KEY IS WHAT MAKES SALE VALUE
+  // DOUBLE-COUNT-PROOF. Summing value means: collect the DISTINCT jobber_invoice_id values
+  // linked to any job in the sale, then sum those invoices' totals once each. The key
+  // guarantees a link cannot be recorded twice, and the invoice table guarantees the invoice
+  // itself exists once.
+  // ⚠ from_archived_jobs RECORDS WHICH CONNECTION THE LINK CAME FROM. Jobber exposes an
+  // invoice's jobs as `jobs` and `archivedJobs` separately; both are real links, and an
+  // archived job is still a job whose invoice was paid. Keeping the provenance means a later
+  // consumer can decide about archived work without re-fetching.
+  // ⚠ NO FOREIGN KEYS, DELIBERATELY, AND FOR THE SAME REASON THE SIBLING FACT TABLES HAVE
+  // NONE: capture order is not guaranteed. An invoice can be fetched before the job it names,
+  // and an FK would make a correct capture fail on arrival order.
+  await pool.query(`CREATE TABLE IF NOT EXISTS crm_invoice_job_links (
+    contractor_id      TEXT NOT NULL,
+    jobber_invoice_id  TEXT NOT NULL,
+    jobber_job_id      TEXT NOT NULL,
+    from_archived_jobs BOOLEAN NOT NULL DEFAULT false,
+    captured_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (contractor_id, jobber_invoice_id, jobber_job_id)
+  )`);
+  // The sale-value direction is "which invoices does this job carry", so it gets its own index.
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_invoice_job_links_job
+    ON crm_invoice_job_links (contractor_id, jobber_job_id)`);
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed
