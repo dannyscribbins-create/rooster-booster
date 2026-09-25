@@ -1360,7 +1360,7 @@ router.post('/api/admin/crm/test-connection', requirePermission('integrations'),
           { headers: {
               Authorization: `Bearer ${credential}`,
               'Content-Type': 'application/json',
-              'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
+              'X-JOBBER-GRAPHQL-VERSION': '2026-05-12'
           } }
         ),
         { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
@@ -1399,7 +1399,7 @@ router.post('/api/admin/crm/connect-api-key', requirePermission('integrations.ma
           { headers: {
               Authorization: `Bearer ${credential}`,
               'Content-Type': 'application/json',
-              'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
+              'X-JOBBER-GRAPHQL-VERSION': '2026-05-12'
           } }
         ),
         { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }

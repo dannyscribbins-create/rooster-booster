@@ -5476,17 +5476,57 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
 - [ ] ⚠ **`pull_all` IS ACCEPTED BY THE API AND ABSENT FROM THE UI.** `POST /api/admin/jobber-full-import`
       lists it in `validModes` (and its 400 message omits `paying_only`, which the UI does send).
       Either expose it or remove it; nothing reaches it today except a hand-built request.
-- [ ] ⚠ **JOBBER API VERSION UPGRADE — `2026-02-17` APPEARS 43 TIMES ACROSS 17 FILES IN `server/`
-      AT `c5830e2`**, tests included (re-counted with `git grep -o`; that is the scope the ruling's
-      figure matches). ⚠ **THIS COMMIT MAKES IT 46 ACROSS 18** — `repImportScope.js` adds one header
-      and two comments — **plus 1 in `src/utils/jobberUserSearch.js`**, which the `server/` count
-      does not see. Tracked markdown carries more, as records rather than sites. Every probe in
-      this arc ran at explorer version 2026-05-12, so each carries a version caveat, **including the
-      createdAt filter the three rep steps depend on.** If that filter is absent at 2026-02-17, the rep
-      scope fails loudly after the campaign import has committed (tested) and the import panel says
-      so. **Danny is looking up the 2026-02-17 retirement date himself** (Jobber's docs refuse
-      automated access). The upgrade is its own phase: one header value, every site, and a re-probe
-      of every field this arc marked "observed at 2026-05-12".
+- [x] **✅ DONE — JOBBER API VERSION UPGRADE, `2026-02-17` → `2026-05-12`** (3d Phase 1a Commit
+      2-pre, 2026-09-25). Danny read the changelog in a browser and ruled the pin moves to
+      Jobber's current version, and keeps it current from the changelog going forward.
+      ⚠ **THE COUNT IN THIS ITEM WAS A HAND-MAINTAINED FIGURE AND IT HAD GONE STALE, WHICH IS WHY
+      IT IS RECORDED HERE RATHER THAN QUIETLY REPLACED.** It read *"43 TIMES ACROSS 17 FILES IN
+      `server/` AT `c5830e2`"*, then *"THIS COMMIT MAKES IT 46 ACROSS 18"*. **Measured 2026-09-25
+      at `4c5ad06`: 47 occurrences across 18 files in `server/`**, plus 1 in
+      `src/utils/jobberUserSearch.js` which a `server/`-scoped count structurally cannot see —
+      the scope-beside-the-claim rule. **88 across 29 files repo-wide**, most of them prose.
+      ⚠ **THE FIGURE THAT ACTUALLY MATTERED WAS NEITHER OF THOSE: 28 LIVE REQUEST HEADERS ACROSS
+      14 FILES.** Everything else is comment or record. Counting occurrences answers a different
+      question from counting behaviour, and only the second one is the upgrade.
+      **What shipped:** the 28 headers; the one test that FENCES the header value
+      (`jobberUserPicker.test.js`, its `assert.equal` on every observed header); and the comments
+      that asserted the old pin as today's pin.
+      **Changelog check (pasted by Danny from developer.getjobber.com):** five intervening
+      versions — `2026-03-10` (no external breaking changes), `2026-04-13`, `2026-04-16`,
+      `2026-04-22`, `2026-05-12` — and **every change is an ADDED ENUM VALUE. Nothing removed,
+      nothing retyped**, so no shipped query needed altering.
+      ⚠ **THE ARC-WIDE VERSION CAVEAT IS NOW CLOSED, AND THAT IS THE REAL WIN.** Every probe in
+      this arc ran in the explorer at `2026-05-12` while the client pinned `2026-02-17`, so nine
+      separate comments read *"strong evidence, not proof."* The explorer version and the pinned
+      version are now the same, so those observations describe our own schema — including the
+      `createdAt` filter the three rep steps depend on, `Request.updatedAt`, `User.status` and
+      `Client.jobs` paging. **The degradation paths were all KEPT**, because what they guard was
+      never only the version gap.
+      ⚠ **STILL UNPROVEN, DELIBERATELY LEFT ON THE LIST:** `Query.quote(id:)`, `Query.job(id:)`
+      and `Quote.client`. Danny's introspection covered the **Invoice, InvoiceAmounts, Job and
+      Client TYPES** and said nothing about the Query root or the Quote type. `Job.client` IS now
+      proven and has been struck from that list. **A partial dump is not a clean bill of health.**
+      ⚠ **NOT DONE, AND IT IS NOT THIS ITEM:** `2026-05-12`'s own retirement date is unknown;
+      Jobber's changelog **returns HTTP 403 to automated fetches** and must be read in a browser,
+      so no session can verify a bump's precondition unaided — it must ask.
+
+- [ ] ⚠ **A VOIDED INVOICE NOW HAS NO TAG, AND NEEDS A RULING** (raised 2026-09-25 by the
+      `2026-05-12` bump; Danny deferred the tagging decision deliberately). `2026-05-12` **added
+      the enum value `voided` to `InvoiceStatusTypeEnum`**, so the value becomes reachable in our
+      data for the first time as a direct consequence of the bump.
+      **Consequence, measured by reading the code rather than predicted:** `INVOICE_STATUS_MAP` in
+      `server/utils/deriveJobberTags.js` maps four values (`awaiting_payment` · `paid` ·
+      `past_due` · `bad_debt`) and the lookup is guarded by `if (mappedInvoice)`. So a client whose
+      LATEST invoice is `voided` gets **no `invoice:*` tag at all** — fail-safe, not fail-wrong,
+      **but `contact_tags` drives campaign audiences, so it changes WHO RECEIVES CAMPAIGNS.**
+      ⚠ **The tag a voided invoice should produce is a RULING, not an implementation detail** —
+      `invoice:voided`? no tag? fall through to the previous non-voided invoice? **Tagging was
+      deliberately NOT changed in the bump commit**, so this is an open question and not residue.
+      ⚠ **AND THE SAME ENUM VALUE HAS A SECOND CONSUMER THAT IS COMMIT 3's JOB, FILED SO THE TWO
+      ARE NOT CONFUSED: a voided invoice must NEVER count toward a sale's value nor toward
+      "paid."** Sale value sums the **distinct** invoices linked to any job in the sale, and
+      "paid" is `invoiceAmounts.invoiceBalance = 0` — a voided invoice must be excluded from both
+      before either is computed.
 
 ### 🔴 Canvass-stage — a LIVE DOUBLE-COUNT in the rep's book, found in a browser (2026-09-21)
 

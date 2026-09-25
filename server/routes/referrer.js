@@ -608,7 +608,7 @@ router.post('/api/signup', signupLimiter, async (req, res) => {
           'https://api.getjobber.com/api/graphql',
           // MVP: fetches only first 100 Jobber clients — no pagination. At scale, use Jobber webhook (Stripe ACH session).
           { query: `{ clients(first:100) { nodes { id phoneNumbers { number } emails { address } } } }` },
-          { headers: { Authorization: `Bearer ${jobberToken}`, 'Content-Type': 'application/json', 'X-JOBBER-GRAPHQL-VERSION': '2026-02-17' } }
+          { headers: { Authorization: `Bearer ${jobberToken}`, 'Content-Type': 'application/json', 'X-JOBBER-GRAPHQL-VERSION': '2026-05-12' } }
         );
 
         const clients = gqlResponse.data.data?.clients?.nodes || [];

@@ -38,7 +38,7 @@ const REQ_OLD = {
 // Builds a mock _httpPost that resolves with a successful Jobber response shape.
 // Shape matches the TOP-LEVEL Query.requests field (data.requests.nodes), not the nested
 // Client.requests connection — the nested connection accepts no sort/filter args at our
-// pinned API version (2026-02-17), confirmed live; ATTRIBUTION_QUERY moved to the top-level
+// pinned API version (2026-05-12), confirmed live; ATTRIBUTION_QUERY moved to the top-level
 // field with a clientId filter instead. See jobber.js for the full verification history.
 function successPost(requestNodes) {
   return async () => ({

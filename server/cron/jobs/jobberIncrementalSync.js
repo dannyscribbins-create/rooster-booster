@@ -151,7 +151,7 @@ async function runForContractor(contractorId) {
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
-            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
           },
         }
       ),
@@ -263,7 +263,7 @@ async function runForContractor(contractorId) {
             headers: {
               Authorization: `Bearer ${token}`,
               'Content-Type': 'application/json',
-              'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+              'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
             },
           }
         ),

@@ -354,7 +354,7 @@ describe('Wave 0.2 — Jobber ingestion repair (RED first)', () => {
   // are two different claims and this test makes only the first. Field validity was
   // checked separately in GraphiQL (2026-08-23: valid in both query shapes, spelled
   // isArchived) and must be re-confirmed post-deploy, because that check ran against
-  // API version 2025-04-xx while production pins 2026-02-17.
+  // API version 2025-04-xx while production pins 2026-05-12.
   // ⚠ Do NOT read a green T11a as schema confirmation.
   // ─────────────────────────────────────────────────────────────────────────
   it('T11a — a CLIENT_UPDATE for an archived client must write is_archived = true (RED: upsertAndTagClient binds a hardcoded false as $9 and reads the field from no source, so every webhook path writes false regardless of Jobber state)', async () => {

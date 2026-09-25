@@ -76,7 +76,7 @@ router.get('/callback', async (req, res) => {
           { headers: {
               Authorization: `Bearer ${response.data.access_token}`,
               'Content-Type': 'application/json',
-              'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
+              'X-JOBBER-GRAPHQL-VERSION': '2026-05-12'
           } }
         ),
         { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
@@ -104,7 +104,7 @@ router.get('/callback', async (req, res) => {
         { headers: {
             Authorization: `Bearer ${response.data.access_token}`,
             'Content-Type': 'application/json',
-            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
+            'X-JOBBER-GRAPHQL-VERSION': '2026-05-12'
         } }
       );
       if (accountRes.data?.data?.account?.name) {

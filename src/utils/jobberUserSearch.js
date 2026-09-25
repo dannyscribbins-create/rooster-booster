@@ -15,7 +15,7 @@
 //
 // ⚠ CLIENT-SIDE, AND THAT IS A DECISION MADE UNDER UNCERTAINTY RATHER THAN A
 // PREFERENCE. Whether Jobber's `users` connection accepts a server-side search
-// or filter argument **at our pinned version (2026-02-17)** could not be
+// or filter argument **at our pinned version (2026-05-12)** could not be
 // established: introspection needs a token, the local stack has zero, and
 // calling the production account from a build environment is forbidden. The
 // introspection query is filed on `PRE_LAUNCH_CHECKLIST.md` for a live run.

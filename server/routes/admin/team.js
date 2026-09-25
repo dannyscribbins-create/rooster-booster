@@ -1256,9 +1256,11 @@ router.get('/api/admin/jobber-users', requirePermission('team'), async (req, res
     //
     // Danny introspected Jobber on 2026-09-17 and `User.status` exists, typed
     // `UserStatusEnum` with five values (ACTIVATED · DEACTIVATED · NOT_INVITED ·
-    // RESEND_INVITE · SEND_INVITE). ⚠ **BUT THE EXPLORER RAN 2026-05-12 AND WE
-    // PIN 2026-02-17.** That is evidence, not proof, for what OUR client
-    // receives — and the cost of being wrong is not a missing marker.
+    // RESEND_INVITE · SEND_INVITE). ⚠ **THE EXPLORER RAN 2026-05-12, AND SINCE THE
+    // 2-pre BUMP WE PIN 2026-05-12 TOO** — so that introspection now describes OUR
+    // schema, and the "evidence, not proof" gap this block used to carry is closed.
+    // ⚠ **THE DEGRADATION BELOW IS NOT REMOVED**, because what it guards was never
+    // only the version gap: the cost of being wrong is not a missing marker.
     //
     // ⚠ GRAPHQL HAS NO OPTIONAL FIELD. A selection naming a field that does not
     // exist at our version fails the WHOLE query, which reaches this handler as
@@ -1302,7 +1304,7 @@ router.get('/api/admin/jobber-users', requirePermission('team'), async (req, res
             // in someone's GraphiQL explorer can return fields this client
             // would never receive. That gap is the entire reason for the
             // fallback above.
-            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
           },
         }
       ),
@@ -1341,7 +1343,7 @@ router.get('/api/admin/jobber-users', requirePermission('team'), async (req, res
           req,
           error: new Error(
             'jobber-users: first page failed WITH `status` selected — retrying once without it. ' +
-            'If this recurs, `User.status` is probably absent at API version 2026-02-17 and the ' +
+            'If this recurs, `User.status` is probably absent at API version 2026-05-12 and the ' +
             'marker cannot ship until the version moves. ' +
             (response.data?.errors ? JSON.stringify(response.data.errors).slice(0, 300) : '')
           ),

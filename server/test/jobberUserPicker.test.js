@@ -304,10 +304,13 @@ describe('Canvass-3.6 — the Jobber user picker reaches every user, or fails lo
 
   // ── 4b. THE `status` FIELD AND ITS DEGRADATION (Canvass-3.6b) ────────────
   //
-  // ⚠ THE RISK THIS SECTION EXISTS FOR. `User.status` was introspected live on
-  // 2026-09-17 — but in an explorer running **2026-05-12**, while this client
-  // pins **2026-02-17**. GraphQL has no optional field: if `status` does not
-  // exist at our version the WHOLE query fails, which reaches the handler as
+  // ⚠ THE RISK THIS SECTION EXISTS FOR — AND THE VERSION HALF OF IT IS NOW CLOSED.
+  // `User.status` was introspected live on 2026-09-17 in an explorer running
+  // **2026-05-12**, and as of the 2-pre bump this client pins **2026-05-12** too,
+  // so that observation is now a statement about OUR schema rather than evidence
+  // about a neighbouring one. ⚠ **THE DEGRADATION BELOW STAYS ANYWAY**, and not out
+  // of habit: GraphQL has no optional field, so if `status` ever stops existing at
+  // our version the WHOLE query fails, which reaches the handler as
   // `data.users === undefined` and — under the 502 rule this file already
   // fences — would take the picker from "no marker" to **"no picker at all"**,
   // on every contractor, permanently.
@@ -423,7 +426,7 @@ describe('Canvass-3.6 — the Jobber user picker reaches every user, or fails lo
     };
     await get(token);
     assert.ok(seen.length >= 2, `expected more than one page, saw ${seen.length}`);
-    for (const v of seen) assert.equal(v, '2026-02-17');
+    for (const v of seen) assert.equal(v, '2026-05-12');
   });
 
   // ── 6. THE GUARDS THAT PREDATE THIS PHASE, RE-ASSERTED ───────────────────

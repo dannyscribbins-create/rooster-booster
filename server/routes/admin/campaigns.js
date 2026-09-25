@@ -1530,7 +1530,7 @@ async function fetchJobberPage(query, variables, accessToken) {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${accessToken}`,
-            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
           }
         }
       );

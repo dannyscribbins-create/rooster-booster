@@ -159,9 +159,10 @@ async function sweepContractor(contractorId) {
     } catch (fetchErr) {
       // ⚠ A SCHEMA ERROR LANDS HERE AND MUST NOT DEGRADE TO AN UNFILTERED SWEEP.
       // `Request.updatedAt` and RequestFilterAttributes.updatedAt were observed in the
-      // explorer at version 2026-05-12; our client pins 2026-02-17. If they are absent at
-      // our version this is where we find out, and the correct outcome is a loud recorded
-      // failure with the watermark untouched — not a full-history scan.
+      // explorer at version 2026-05-12, which since the 2-pre bump is the version our
+      // client pins — so their presence is no longer the open question it was. The guard
+      // stays: if they are ever absent this is where we find out, and the correct outcome
+      // is a loud recorded failure with the watermark untouched — not a full-history scan.
       await logError({
         req: null,
         contractorId,

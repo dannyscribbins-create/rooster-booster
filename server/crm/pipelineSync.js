@@ -659,7 +659,7 @@ async function runFullSync(contractorId) {
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
-            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
           },
         }
       ),
@@ -754,7 +754,7 @@ async function runIncrementalSync(contractorId) {
   // Fallback admission price when no response has yet reported extensions.cost —
   // last calibrated against the production query shape (customFields + quotes:10 +
   // jobs:10 + invoices:5) via live GraphiQL. Calibrated against API default version
-  // 2025-04-16, not the pinned 2026-02-17 — treat as provisional pending a re-run
+  // 2025-04-16, not the pinned 2026-05-12 — treat as provisional pending a re-run
   // against the pinned version. See CLAUDE_REGISTRY.md.
   const CONSERVATIVE_REQUESTED_COST = 8055;
 
@@ -808,7 +808,7 @@ async function runIncrementalSync(contractorId) {
               headers: {
                 Authorization: `Bearer ${token}`,
                 'Content-Type': 'application/json',
-                'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+                'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
               },
             }
           ),

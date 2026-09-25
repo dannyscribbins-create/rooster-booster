@@ -32,9 +32,9 @@ const { groupJobsIntoSales } = require('./saleGrouping');
 // account, 2026-09-21, with the ascending CREATED_AT sort:
 //   · after: null  -> the 2026-06-02T15:57:32Z job, hasNextPage true,  endCursor "MQ", requestedQueryCost 8
 //   · after: "MQ"  -> the 2026-09-21T03:26:59Z job, hasNextPage false, endCursor "Mg", requestedQueryCost 8
-// ⚠ VERSION CAVEAT KEPT: the explorer ran at 2026-05-12 and our client pins
-// 2026-02-17. Strong evidence, not proof, for what our version receives — the same
-// caveat every other probe in this arc carries.
+// ⚠ VERSION CAVEAT NOW CLOSED: the explorer ran at 2026-05-12, and since the 2-pre bump
+// our client pins 2026-05-12 — so these readings describe OUR schema rather than a
+// neighbouring one. The same closure applies to every other probe in this arc.
 const JOBS_PAGE_QUERY = `
   query GetClientJobsPaged($id: EncodedId!, $after: String) {
     client(id: $id) {
@@ -87,7 +87,7 @@ async function fetchAllClientJobs(jobberClientId, token, { costTotals = null } =
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
-            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
           },
         }
       ),

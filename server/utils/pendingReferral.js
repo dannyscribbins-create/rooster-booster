@@ -351,7 +351,7 @@ async function fetchReferrerContact(jobberId, contractorId) {
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
-            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
           },
         }
       ),

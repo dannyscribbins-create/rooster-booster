@@ -122,7 +122,7 @@ async function fetchAllPages(token, query, dataPath, label = '', contractorId = 
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
-            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
           },
         }
       ),
@@ -343,7 +343,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
                 headers: {
                   Authorization: `Bearer ${tokenB}`,
                   'Content-Type': 'application/json',
-                  'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+                  'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
                 },
               }
             ),
@@ -407,7 +407,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
                 headers: {
                   Authorization: `Bearer ${tokenD}`,
                   'Content-Type': 'application/json',
-                  'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+                  'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
                 },
               }
             ),
@@ -470,7 +470,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
                 headers: {
                   Authorization: `Bearer ${tokenE}`,
                   'Content-Type': 'application/json',
-                  'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+                  'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
                 },
               }
             ),
@@ -537,7 +537,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
                 headers: {
                   Authorization: `Bearer ${tokenC}`,
                   'Content-Type': 'application/json',
-                  'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+                  'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
                 },
               }
             ),

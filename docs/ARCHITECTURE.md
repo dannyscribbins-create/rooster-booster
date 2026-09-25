@@ -366,7 +366,9 @@ below is the second one. **Moved verbatim; nothing corrected on the way in.**
 
 > Hosted on Railway (backend) and Vercel (frontend). All commits to main auto-deploy to Railway. Vercel may need manual redeploy — dashboard → latest deployment → three dots → Redeploy.
 >
-> **Jobber API version header: `2026-02-17`** — monitor for deprecation notices.
+> **Jobber API version header: `2026-05-12`** — monitor for deprecation notices. Moved from
+> `2026-02-17` on 2026-09-25 (3d Phase 1a Commit 2-pre). Danny keeps the pin current from
+> Jobber's changelog, which returns HTTP 403 to automated fetches and must be read in a browser.
 >
 > `DB_QUERIES.md` in project root — reference cheat-sheet of Railway query interface SQL snippets. Accurate and inert.
 >

@@ -30,9 +30,11 @@ const { jobberShouldRetry } = require('./retryHelpers');
 // The gap was found by asking the question per writer rather than once: the webhook
 // router's fetchClientRelatedData, jobberIncrementalSync's GetClientRelated and
 // fullJobberImport's Step C all carried it; this did not.
-// ⚠ The field is PROVEN at 2026-02-17 — those three shipped queries select
-// `job.createdAt` under that exact version header — so this is not a 3.6b-style
-// unknown-field risk, where a field absent at our version fails the WHOLE query.
+// ⚠ The field is PROVEN at 2026-05-12 — those three shipped queries select
+// `job.createdAt` under that exact version header, it was equally proven at the previous
+// pin 2026-02-17, and Danny's 2026-05-12 introspection lists `createdAt` on the Job type —
+// so this is not a 3.6b-style unknown-field risk, where a field absent at our version
+// fails the WHOLE query.
 // ⚠ `first: 10` IS STILL A CAP, AND IT IS NOT ENOUGH FOR SALE GROUPING. Dating one
 // sale needs only the earliest job; grouping sales needs EVERY job, and a client with
 // more than ten silently loses some. See PRE_LAUNCH_CHECKLIST.md on paging jobs
@@ -63,7 +65,7 @@ async function fetchFullClient(clientId, token) {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
         },
       }
     ),

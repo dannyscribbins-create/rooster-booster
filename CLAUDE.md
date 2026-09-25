@@ -2653,7 +2653,7 @@ missing the standard trailers** — which is how you can spot the others, if the
 ### Jobber API
 - All Jobber GraphQL calls wrapped in retryWithBackoff with jobberShouldRetry.
 - retryHelpers (resendShouldRetry, twilioShouldRetry, jobberShouldRetry, anthropicShouldRetry, **stripeShouldRetry**) live in server/utils/retryHelpers.js — never redefine locally. ⚠ `stripeShouldRetry` was missing from this list until 2026-08-29 while being imported and used in `server/routes/stripe.js` — **an incomplete resident list is how someone concludes a helper does not exist and writes a fifth one locally**, which is the exact thing this line forbids.
-- Jobber API version: `2026-02-17`. Do not change without verifying changelog.
+- Jobber API version: `2026-05-12`. Do not change without verifying changelog. ⚠ **Danny keeps this pin current from Jobber's changelog; it moved from `2026-02-17` on 2026-09-25 (3d Phase 1a Commit 2-pre) after the five intervening versions were read and found ADDITIVE ONLY.** ⚠ **Jobber's changelog returns HTTP 403 to automated fetches — it must be read in a browser**, so a version bump cannot verify its own precondition unaided; ask.
 - `ClientFilterAttributes` does NOT support name/firstName/lastName filtering — always filter locally in JS.
 - Jobber GraphQL is read-only. Never add mutations without explicit instruction.
 - ⚠ **ROOFMILES NEVER WRITES TO A CONTRACTOR'S CRM. THIS IS A PRODUCT PRINCIPLE, NOT A TECHNICAL

@@ -301,7 +301,7 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
       { headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17'
+          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12'
       } }
     ),
     { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
@@ -363,7 +363,7 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
 }
 
 // Uses the TOP-LEVEL Query.requests field, not the nested Client.requests connection — the
-// nested connection accepts no sort/filter args at our pinned version (2026-02-17): confirmed
+// nested connection accepts no sort/filter args at our pinned version (2026-05-12): confirmed
 // live via a GraphiQL argumentNotAccepted error, and confirmed in Jobber's Client type docs
 // (args: after/before/first/last only; sibling connections like contacts/jobs/notes DO take
 // sort, but requests and quotes are plain). The top-level Query.requests field, by contrast,
@@ -406,7 +406,7 @@ async function fetchAttributionData(clientId, token, _httpPost = null) {
       {
         headers: {
           Authorization: `Bearer ${token}`,
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
           'Content-Type': 'application/json',
         },
       }
@@ -445,8 +445,11 @@ async function fetchAttributionData(clientId, token, _httpPost = null) {
 // ⚠ WHAT IS PROVEN AT OUR PINNED VERSION AND WHAT IS NOT — READ BEFORE WIDENING EITHER
 // QUERY BELOW. The top-level `Query.requests` field, `RequestFilterAttributes`,
 // `RequestsSortInput`, and the selection `id createdAt salesperson { id } assessment { id
-// assignedUsers { nodes { id } } }` are ALL proven at 2026-02-17 — ATTRIBUTION_QUERY above
+// assignedUsers { nodes { id } } }` were ALL proven at 2026-02-17 — ATTRIBUTION_QUERY above
 // uses every one of them in production and was verified live in GraphiQL on 2026-07-06.
+// ⚠ THE PIN MOVED TO 2026-05-12 IN THE 2-pre BUMP, AND THAT PROOF CARRIES FORWARD: the five
+// intervening versions (2026-03-10 · 04-13 · 04-16 · 04-22 · 05-12) are ADDITIVE ONLY — six
+// added enum values, nothing removed and nothing retyped, per Jobber's changelog.
 // THREE things these two queries add are NOT proven at our version, and each is listed
 // because the 3.6b lesson is that an unknown field fails the WHOLE query, not just itself:
 //   1. `Query.request(id:)`        — the singular field. ⚠ THIS LINE USED TO READ
@@ -472,11 +475,13 @@ async function fetchAttributionData(clientId, token, _httpPost = null) {
 //                                        client { id }
 //                                      · `quote(id:)` returned id, quoteStatus "converted",
 //                                        createdAt 2026-09-21T03:25:55Z, client { id }
-//                                    ⚠ **VERSION CAVEAT, KEPT DELIBERATELY:** the explorer
-//                                    ran at **2026-05-12**; our client pins **2026-02-17**.
-//                                    That is strong evidence and not proof for what our
-//                                    version receives — the same caveat item 3 below carries
-//                                    for `Request.updatedAt`, and for the same reason.
+//                                    ⚠ **THE VERSION CAVEAT THIS BLOCK CARRIED IS CLOSED.**
+//                                    It read: the explorer ran at 2026-05-12 while our client
+//                                    pinned 2026-02-17, so the observation was strong evidence
+//                                    and not proof. The 2-pre bump moved our pin to
+//                                    **2026-05-12** — the same version the explorer ran — so
+//                                    the observation now describes OUR schema. Item 3 below
+//                                    closes for the same reason.
 //                                    ⚠ **THE DATE AND THE ACCOUNT ARE THE POINT.** The
 //                                    sentence this block replaced asserted provenness with
 //                                    no source and was FALSE; a proof with no date is the
@@ -485,8 +490,9 @@ async function fetchAttributionData(clientId, token, _httpPost = null) {
 //                                    degradation that holds regardless.
 //   2. `Request.client`            — needed to get from a request id to a client id.
 //   3. `Request.updatedAt`, and `RequestFilterAttributes.updatedAt` — observed by Danny in
-//      the explorer at version 2026-05-12 on 2026-09-18, which is STRONG EVIDENCE AND NOT
-//      PROOF for what our 2026-02-17 client receives.
+//      the explorer at version 2026-05-12 on 2026-09-18. Since the 2-pre bump our client
+//      pins 2026-05-12, so this is now PROOF for what our client receives rather than the
+//      evidence it was; the degradation below is kept regardless.
 // ⚠ NEITHER FUNCTION FALLS BACK TO AN UNFILTERED QUERY ON FAILURE. A request fetch that
 // cannot name its field degrades to "nothing is written, the failure is recorded" — never to
 // a wider query. An unfiltered `requests` sweep would be unbounded, and silently trading a
@@ -520,7 +526,7 @@ async function fetchRequestById(requestId, token, _httpPost = null) {
       {
         headers: {
           Authorization: `Bearer ${token}`,
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
           'Content-Type': 'application/json',
         },
       }
@@ -579,7 +585,7 @@ async function fetchRequestsUpdatedSince(since, token, cursor = null, _httpPost 
       {
         headers: {
           Authorization: `Bearer ${token}`,
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
           'Content-Type': 'application/json',
         },
       }

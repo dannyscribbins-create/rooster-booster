@@ -57,13 +57,14 @@ function repWindowStart(filterPreference, now = new Date()) {
 
 // ── THE THREE QUERIES ─────────────────────────────────────────────────────────
 // Selections are the ones Danny measured on Accent's live account, 2026-09-21,
-// first: 100, created after 2025-09-21 (explorer 2026-05-12; this code pins 2026-02-17):
+// first: 100, created after 2025-09-21 (explorer 2026-05-12; this code now pins 2026-05-12):
 //   requests  requested 1506 · actual 1174 · 67 pages
 //   quotes    requested  906 · actual  906 · 96 pages
 //   jobs      requested  406 · actual  406 · 61 pages
-// ⚠ VERSION CAVEAT, SAME AS EVERY PROBE IN THIS ARC: the createdAt filter on these three
-// connections was observed at 2026-05-12, not at our pinned version. If it is absent at
-// 2026-02-17 the whole query fails — and that surfaces HERE as a GraphQL error, loudly,
+// ⚠ THE VERSION CAVEAT THIS ARC CARRIED IS CLOSED: the createdAt filter on these three
+// connections was observed at 2026-05-12, and the 2-pre bump made 2026-05-12 our pinned
+// version, so the observation and the client now agree. The failure path is kept anyway —
+// if the filter is ever absent the whole query fails, and that surfaces HERE, loudly,
 // AFTER the campaign import has already completed and committed. It cannot degrade into
 // an unfiltered sweep, because a failed query is thrown, never retried without the filter.
 // ⚠ EVERY NESTED CONNECTION CARRIES AN EXPLICIT first: (ruling 8) — assignedUsers(first: 5)
@@ -153,7 +154,7 @@ async function repRequest({ label, query, variables, getToken }) {
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
-            'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
           },
         }
       ),
@@ -320,8 +321,9 @@ async function groupSales(db, { contractorId, jobsByClient, clientCreatedAt, win
 // ── REP STEP 4 — NAMES (Danny, 2026-09-22) ────────────────────────────────────
 // The same identity fields Step A selects, for ONE client. `emails` and `phones` are
 // plain lists, not connections, so ruling 8's first: does not apply to them.
-// ⚠ `client(id:)` IS PROVEN at 2026-02-17 — fetchFullClient and the per-client Steps
-// B–E of the campaign import use it under that exact header.
+// ⚠ `client(id:)` IS PROVEN at 2026-05-12 — fetchFullClient and the per-client Steps
+// B–E of the campaign import use it under that exact header. It was proven at the previous
+// pin 2026-02-17 too, and the five intervening versions removed and retyped nothing.
 const REP_CLIENT_IDENTITY_QUERY = `
   query RepClientIdentity($id: EncodedId!) {
     client(id: $id) {

@@ -119,7 +119,7 @@ async function fetchInvoiceWithJobs(invoiceId, token) {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
         },
       }
     ),
@@ -155,7 +155,7 @@ async function fetchClientJobsForJobUpdate(clientId, token) {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
         },
       }
     ),
@@ -200,7 +200,7 @@ async function fetchClientRelatedData(clientId, token) {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
         },
       }
     ),
@@ -1623,7 +1623,7 @@ router.post('/jobber/request-update', async (req, res) => {
 // three writers that carry a full client payload; a row conjured from a stage alone has
 // no name, email or phone. These handlers know a quote id or a job id, not a client.
 
-// ⚠ THREE FIELDS HERE ARE **NOT PROVEN** AT OUR PINNED VERSION 2026-02-17, AND EACH IS
+// ⚠ THREE FIELDS HERE ARE **NOT PROVEN** AT OUR PINNED VERSION 2026-05-12, AND EACH IS
 // NAMED BECAUSE AN UNKNOWN FIELD FAILS THE WHOLE QUERY RATHER THAN ITSELF:
 //   1. `Query.quote(id:)` — ZERO occurrences anywhere in this repo before this commit.
 //   2. `Query.job(id:)`   — likewise ZERO. ⚠ `server/crm/jobber.js` asserts in a comment
@@ -1632,9 +1632,15 @@ router.post('/jobber/request-update', async (req, res) => {
 //      occurrence of `job(id:)` in the repository was that comment claiming it. The
 //      claim has been corrected at its source.
 //   3. `Quote.client` / `Job.client` — needed to get from a quote or job id to a client.
+//      ⚠ **`Job.client` IS NOW PROVEN** — Danny's 2026-05-12 introspection lists it on the
+//      Job type, and 2026-05-12 is our pin as of the 2-pre bump. The OTHER THREE ARE STILL
+//      UNPROVEN and are deliberately left on this list: that introspection covered the
+//      Invoice, InvoiceAmounts, Job and Client TYPES, and said nothing about the QUERY root
+//      fields `quote(id:)` / `job(id:)` or about `Quote.client`. Narrowing the claim to what
+//      was actually observed is the point — a partial dump is not a clean bill of health.
 // ⚠ THE DEGRADATION IS THE SAME ONE `fetchRequestById` CHOSE, AND FOR THE SAME REASON:
 // a fetch that cannot name its field writes NOTHING and records the failure. It never
-// falls back to a wider query. If these turn out to be absent at 2026-02-17, the
+// falls back to a wider query. If these turn out to be absent at 2026-05-12, the
 // handlers are inert and the nightly sync keeps doing the job it already does — which
 // is why shipping them ahead of a GraphiQL confirmation is safe rather than reckless.
 async function fetchStageSubjectClient(topic, itemId, token) {
@@ -1651,7 +1657,7 @@ async function fetchStageSubjectClient(topic, itemId, token) {
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-02-17',
+          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
         },
       }
     ),
