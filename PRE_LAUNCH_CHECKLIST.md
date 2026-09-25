@@ -5536,8 +5536,62 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       scoped to the schema and the writers and explicitly forbids wiring any door.** Danny to rule
       on whether it is 3b or a later backfill job.
 
-- [ ] ⚠ **THE CAPTURE FETCH DOES NOT SELECT `Invoice.archivedJobs`, SO `from_archived_jobs` IS
-      STRUCTURALLY ALWAYS false IN PRODUCTION** (found 2026-09-25 in Commit 3).
+- [ ] ⚠ **UNSETTLED, AND IT DECIDES WHETHER THE CAPTURE PATH SEES ARCHIVED JOBS AT ALL: DOES
+      `Client.jobs` RETURN ARCHIVED JOBS?** (raised 2026-09-25 in Commit 3a; Danny to settle with
+      one read-only GraphiQL query.)
+      **What IS established.** The capture path calls `jobs(first: 50)` with **no `filter`
+      argument**, so it receives whatever the default is — checked across every shipped query;
+      only `repImportScope.js` filters, and that is the TOP-LEVEL `jobs` field, not
+      `Client.jobs`. **`Client.archivedJobs` appears nowhere in the repo**, and Danny's
+      2026-05-12 introspection of the Client type listed `jobs`, `invoices`, `quotes` and
+      `requests` — no archived counterpart.
+      ⚠ **AND THE ONE SIGNAL POINTING THE OTHER WAY IS THE WORRYING ONE: `Invoice` SPLITS
+      ARCHIVED INTO A SEPARATE CONNECTION.** `fetchInvoiceWithJobs` carries a live-verified
+      finding from 2026-04-30 — *"archivedJobs must be fetched alongside jobs"* — which only
+      makes sense if `Invoice.jobs` EXCLUDES archived. If that is Jobber's convention rather
+      than a quirk of Invoice, `Client.jobs` excludes them too, and the capture path has been
+      missing archived jobs entirely.
+      ⚠ **WHY THE OBVIOUS COUNTER-EVIDENCE IS NOT ENOUGH, AND THIS REPO IS THE PRECEDENT.**
+      `deriveJobberTags.js:210` filters `jobStatus === 'archived'` out of client jobs and `:207`
+      maps `archived: 'job:archived'` — both dead code if archived never arrives. **But a filter
+      existing does not prove the filtered value arrives:** `admin/contacts.js:891`'s
+      `is_archived = false` predicate was vacuously true for years in this very codebase. **No
+      test fixture anywhere puts an archived job in `client.jobs`.** So the repo cannot settle
+      it, and the fix is NOT being built on the inference.
+      **If archived jobs turn out to be EXCLUDED**, the consequences are bigger than
+      `from_archived_jobs`: `crm_job_facts` would never receive an archived job, sale grouping
+      (`clientSales.js`, which reads `Client.jobs`) would miss archived work, and a link row
+      written from `Invoice.archivedJobs` would point at a job id with no job-fact row.
+
+- [x] **✅ FIXED — THE CAPTURE FETCH DID NOT SELECT `Invoice.archivedJobs`, SO `from_archived_jobs`
+      WAS STRUCTURALLY ALWAYS false IN PRODUCTION** (found 2026-09-25 in Commit 3, fixed in
+      Commit 3a). Both capture selections now carry
+      `archivedJobs(first: 50) { nodes { id } pageInfo { hasNextPage } }`, and
+      `assertInvoiceJobsComplete` checks BOTH connections — it checked only `jobs`, which made an
+      archived-job overflow invisible while reading as a completeness check.
+      ⚠ **THE REPAIR THAT MATTERS IS THE TEST SHAPE, NOT THE TWO LINES OF GraphQL.** Commit 3's
+      writer handled `archivedJobs` and had two PASSING cases for it — both of which hand the
+      value to the writer directly, so neither could see that no query ever asked Jobber for it.
+      Commit 3a adds a **boundary** case: real query text → real fetch → real writer → real row,
+      which is the only shape that fails when the supply is missing. Guard-proofed both ways —
+      dropping `archivedJobs` takes the boundary case red (the link row goes missing) AND the
+      source-text fence red.
+      ⚠ **ONE SIBLING DELIBERATELY NOT TOUCHED, AND IT IS FILED BELOW:** `fetchInvoiceWithJobs`
+      selects `archivedJobs` but WITHOUT `pageInfo`, so its `first: 10` cap can truncate silently
+      and `assertInvoiceJobsComplete` cannot see it (`undefined` is not `true`). It feeds the
+      REFERRAL RULES ENGINE on the money path, not the fact tables, so it is not capture-path and
+      making it throw is not a change to fold into a commit about archivedJobs.
+
+- [ ] ⚠ **`fetchInvoiceWithJobs` CAN TRUNCATE AN INVOICE'S JOB SET SILENTLY** (raised 2026-09-25
+      in Commit 3a). It selects `jobs(first: 10)` and `archivedJobs(first: 10)` with **no
+      `pageInfo` on either**, so an invoice covering more than ten jobs loses the rest with
+      nothing to say so — and `assertInvoiceJobsComplete` cannot catch it, because a missing
+      `pageInfo` makes `hasNextPage` `undefined`, which is not `true`. **An absent field reads as
+      health.** It feeds the referral rules engine's job-type detection inside the invoice-paid
+      handler, so the blast radius is a wrong job type on a big multi-job invoice.
+      **Fix: add `pageInfo { hasNextPage }` to both connections and decide what the handler does
+      when the set is incomplete** — throwing there stops a referral conversion on the money path,
+      so the degradation needs a ruling rather than a default.
       Danny's ruling: an invoice's job set comes from `Invoice.jobs` **and**
       `Invoice.archivedJobs`. Commit 3's `writeInvoiceJobLinks` handles both and records which
       connection each link came from, **and is tested on both** — but Commit 2's capture queries

@@ -226,6 +226,29 @@ describe('capture fetch — (ii) THE BOUNDARY FENCE: what consumers read must be
     }
   });
 
+  // ⚠ BOTH CONNECTIONS (Commit 3a). Jobber splits an invoice's jobs into `jobs` and
+  // `archivedJobs`; selecting only the first made from_archived_jobs structurally always false
+  // in production while the writer that sets it was correct and tested. Proven at 2026-05-12 by
+  // fetchInvoiceWithJobs, which has selected archivedJobs since 2026-04-30.
+  it('an invoice selects archivedJobs too, or from_archived_jobs can never be true', () => {
+    for (const [name, query] of Object.entries(FETCH_QUERIES)) {
+      assert.match(
+        query,
+        /archivedJobs\(first:\s*\d+\)\s*\{\s*nodes\s*\{\s*id\s*\}/,
+        `${name} must select the invoice's archivedJobs — an archived job is still a job whose invoice was paid`
+      );
+    }
+  });
+
+  it('BOTH invoice job connections select pageInfo, so neither can truncate silently', () => {
+    for (const [name, query] of Object.entries(FETCH_QUERIES)) {
+      for (const conn of ['jobs', 'archivedJobs']) {
+        const re = new RegExp(`${conn}\\(first:\\s*\\d+\\)\\s*\\{[^}]*\\}\\s*pageInfo\\s*\\{[^}]*hasNextPage`);
+        assert.match(query, re, `${name}: the invoice's ${conn} must select pageInfo.hasNextPage`);
+      }
+    }
+  });
+
   it('both capture queries pin the API version header the repo pins', async () => {
     installJobber(() => ({ data: { client: { id: CLIENT, quotes: page([]), jobs: page([]), invoices: page([]) } } }));
     await fetchFullClient(CLIENT, TOKEN);

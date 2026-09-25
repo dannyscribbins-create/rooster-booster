@@ -430,3 +430,111 @@ describe('(vi) tenancy — the same Jobber id under two contractors is two rows'
     assert.deepEqual(rows.map((r) => r.jobber_job_id), ['job-9']);
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('(vii) archivedJobs travel the WHOLE way — real query, real writer, real row', () => {
+// ═════════════════════════════════════════════════════════════════════════════
+
+  // ⚠ THIS IS THE BOUNDARY TEST, AND IT IS THE ONE THAT WOULD HAVE CAUGHT COMMIT 3's GAP.
+  // The (iv) and (vi) cases above hand `archivedJobs` to the writer directly, so they pass
+  // whether or not any query ever asks Jobber for it — which is exactly what happened: the
+  // writer was correct and tested while `from_archived_jobs` was structurally always false in
+  // production. This case sources the value from the REAL producer: the real capture query text,
+  // through the real fetch, into the real writer, read back out of the real table.
+  // ⚠ A test that injects the value itself cannot discover that nothing upstream supplies it.
+
+  const axios = require('axios');
+  const { fetchFullClient } = require('../utils/jobberClientFetch');
+
+  let realPost;
+
+  const page = (nodes, hasNextPage = false, endCursor = null) => ({ nodes, pageInfo: { hasNextPage, endCursor } });
+
+  // Answers the capture query from whatever it actually SELECTS. The archived job is supplied
+  // ONLY under archivedJobs, so a query that does not ask for it receives nothing — which is
+  // the production state this case exists to forbid.
+  function installJobber() {
+    axios.post = async (url, body, config) => {
+      const q = body.query;
+      if (!/GetClient\b/.test(q)) throw new Error('unexpected follow-up page in this fixture');
+      const inv = {
+        id: 'inv-arch',
+        invoiceStatus: 'paid',
+        createdAt: T1,
+        issuedDate: T1,
+        dueDate: T2,
+        amounts: { total: 4000, invoiceBalance: 0, paymentsTotal: 4000 },
+      };
+      if (/\bjobs\(first: \d+\) \{ nodes \{ id \}/.test(q)) {
+        inv.jobs = { nodes: [{ id: 'job-live' }], pageInfo: { hasNextPage: false } };
+      }
+      if (/\barchivedJobs\(first: \d+\) \{ nodes \{ id \}/.test(q)) {
+        inv.archivedJobs = { nodes: [{ id: 'job-arch' }], pageInfo: { hasNextPage: false } };
+      }
+      return {
+        data: {
+          data: {
+            client: {
+              id: 'jc-1',
+              quotes: page([]),
+              jobs: page([{ id: 'job-live', jobStatus: 'active', createdAt: T1 }]),
+              invoices: page([inv]),
+            },
+          },
+        },
+        __headers: config.headers,
+      };
+    };
+  }
+
+  beforeEach(() => { realPost = axios.post; installJobber(); });
+  after(() => { if (realPost) axios.post = realPost; });
+
+  it('the capture query ASKS for archivedJobs, so the fetch returns the archived job', async () => {
+    const client = await fetchFullClient('jc-1', 'tok');
+    const inv = client.invoices.nodes[0];
+    assert.deepEqual((inv.archivedJobs?.nodes || []).map((j) => j.id), ['job-arch'],
+      'if this is empty the query did not select archivedJobs — the writer never gets the chance to be right');
+  });
+
+  it('the archived job becomes a link row with from_archived_jobs = true', async () => {
+    const client = await fetchFullClient('jc-1', 'tok');
+    await writeInvoiceJobLinks(pool, A, client.invoices.nodes);
+
+    const { rows } = await pool.query(
+      `SELECT jobber_job_id, from_archived_jobs FROM crm_invoice_job_links
+        WHERE contractor_id = $1 ORDER BY jobber_job_id`,
+      [A]
+    );
+    assert.deepEqual(rows, [
+      { jobber_job_id: 'job-arch', from_archived_jobs: true },
+      { jobber_job_id: 'job-live', from_archived_jobs: false },
+    ]);
+  });
+
+  it('the invoice is still ONE row while covering a live job AND an archived one', async () => {
+    const client = await fetchFullClient('jc-1', 'tok');
+    await writeInvoiceFacts(pool, A, client.invoices.nodes);
+    await writeInvoiceJobLinks(pool, A, client.invoices.nodes);
+    assert.equal(await countOf('crm_invoice_facts', A), 1);
+    assert.equal(await countOf('crm_invoice_job_links', A), 2);
+  });
+
+  it('an archived job carries the invoice into the sale value, counted ONCE', async () => {
+    const client = await fetchFullClient('jc-1', 'tok');
+    await writeInvoiceFacts(pool, A, client.invoices.nodes);
+    await writeInvoiceJobLinks(pool, A, client.invoices.nodes);
+
+    const { rows } = await pool.query(
+      `SELECT COALESCE(SUM(f.total), 0) AS value
+         FROM crm_invoice_facts f
+        WHERE f.contractor_id = $1
+          AND f.jobber_invoice_id IN (
+            SELECT DISTINCT l.jobber_invoice_id FROM crm_invoice_job_links l
+             WHERE l.contractor_id = $1 AND l.jobber_job_id = ANY($2::text[])
+          )`,
+      [A, ['job-live', 'job-arch']]
+    );
+    assert.equal(rows[0].value, '4000.00', 'one invoice across a live and an archived job contributes once');
+  });
+});

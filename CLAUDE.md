@@ -385,8 +385,27 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1781 server tests across 293 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the job/invoice fact-tables commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1781 · suites 293 · pass 1781 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE JOB/INVOICE FACT-TABLES COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1787 server tests across 294 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the archivedJobs commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1787 · suites 294 · pass 1787 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE archivedJobs COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1781 → 1787 is **+6 = 4 + 2**: four in a new describe appended to
+  `crmJobInvoiceFacts.test.js` and two appended to an EXISTING describe in
+  `captureFetchContract.test.js`. Suites 293 → 294 is **that one new describe only** — the
+  captureFetchContract pair landed inside a describe that already existed, so they add cases
+  without adding a suite. React did not move and was re-measured. **All four predicted and matched.**
+  ⚠ **COUNTED WITH `grep -c` PER FILE, BECAUSE EACH HAS A DIFFERENT MULTIPLIER.**
+  `crmJobInvoiceFacts.test.js`: 31 `it(` lines, one wrapped by the 3-entry `MONEY_CASES` loop →
+  30 + 3 = 33. `captureFetchContract.test.js`: 29 lines, one wrapped by a NESTED pair
+  (2 queries × 12 fields) → 28 + 24 = 52. **A loop's multiplier is a property of the file, not
+  of the arc.**
+  ⚠ **AND THE COMMIT EXISTS BECAUSE A WRITER WAS CORRECT AND TESTED WHILE NOTHING SUPPLIED IT.**
+  Commit 3's `writeInvoiceJobLinks` handled `archivedJobs` and had two passing cases for it, but
+  the capture queries selected only `jobs` — so `from_archived_jobs` was STRUCTURALLY always
+  false in production. Both of those cases hand the value to the writer directly, which is
+  exactly why they could not see it. **The repair is a BOUNDARY test** — real query text, real
+  fetch, real writer, real row — and it is the only shape that could have caught this. Same
+  class as the font columns `loadContractorBranding()` never selected.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE JOB/INVOICE FACT-TABLES COMMIT ITSELF, BECAUSE IT SHIPS TESTS.* It read **1781 / 293 / 1342 / 80**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE JOB/INVOICE FACT-TABLES COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 1752 → 1781 is **+29**, one new file (`crmJobInvoiceFacts.test.js`); suites 287 → 293 is
   that file's **six** top-level describes. React did not move — no `src/` file was touched — and
   was re-measured rather than carried. **All four predicted before the run and matched.**

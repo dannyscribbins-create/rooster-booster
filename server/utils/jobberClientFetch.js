@@ -72,6 +72,17 @@ const MAX_PAGES = 200;
 //
 // ⚠ NO BACKTICK MAY APPEAR IN A COMMENT INSIDE THESE TEMPLATE LITERALS. One closes the
 // string, the remainder parses as an expression, and the file still loads.
+//
+// ⚠ AN INVOICE'S JOB SET IS TWO CONNECTIONS, AND SELECTING ONLY ONE OF THEM WAS A REAL GAP
+// (3d Phase 1a Commit 3a). Jobber exposes `Invoice.jobs` and `Invoice.archivedJobs`
+// SEPARATELY, and the repo's own live finding says so in terms: fetchInvoiceWithJobs in
+// server/routes/webhooks/jobber.js carries *"archivedJobs must be fetched alongside jobs —
+// archived jobs still carry job type"*, verified in the explorer on 2026-04-30, and Danny's
+// 2026-05-12 introspection lists both on the Invoice type. Commit 2 selected `jobs` only, so
+// `from_archived_jobs` in crm_invoice_job_links was STRUCTURALLY always false in production
+// while the writer that sets it was correct and tested — the same shape as the font columns the
+// branding loader never selected: a consumer reading a field no query asks for takes the
+// default, and the default reads as an answer.
 
 const CLIENT_SCALARS = `
             id firstName lastName createdAt isArchived
@@ -85,7 +96,8 @@ const JOB_FIELDS = `id jobStatus createdAt`;
 
 const INVOICE_FIELDS = `id invoiceStatus createdAt issuedDate dueDate
                 amounts { total invoiceBalance paymentsTotal }
-                jobs(first: ${INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }`;
+                jobs(first: ${INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }
+                archivedJobs(first: ${INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }`;
 
 const BASE_QUERY = `query GetClient($id: EncodedId!) {
           client(id: $id) {${CLIENT_SCALARS}
@@ -183,9 +195,16 @@ function assertNoJobberGraphQLErrors(response, label) {
  */
 function assertInvoiceJobsComplete(invoiceNodes, label) {
   for (const inv of invoiceNodes) {
-    if (inv?.jobs?.pageInfo?.hasNextPage) {
+    // ⚠ BOTH CONNECTIONS, because Jobber splits an invoice's jobs into `jobs` and
+    // `archivedJobs` and either one truncating loses a real link. Checking only `jobs` was the
+    // state this function shipped in at Commit 2, and it made an archived-job overflow
+    // invisible while reading as a completeness check.
+    const over = inv?.jobs?.pageInfo?.hasNextPage ? 'jobs'
+      : inv?.archivedJobs?.pageInfo?.hasNextPage ? 'archivedJobs'
+        : null;
+    if (over) {
       throw new Error(
-        `${label}: invoice ${inv.id} names more than ${INVOICE_JOBS_PAGE_SIZE} jobs — `
+        `${label}: invoice ${inv.id} names more than ${INVOICE_JOBS_PAGE_SIZE} ${over} — `
         + 'the job set would be truncated and the invoice-to-sale link would be wrong'
       );
     }

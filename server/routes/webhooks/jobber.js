@@ -221,7 +221,8 @@ const RELATED_JOB_FIELDS = `id jobStatus jobType completedAt createdAt
 
 const RELATED_INVOICE_FIELDS = `id invoiceStatus createdAt issuedDate dueDate
                 amounts { total invoiceBalance paymentsTotal }
-                jobs(first: 50) { nodes { id } pageInfo { hasNextPage } }`;
+                jobs(first: 50) { nodes { id } pageInfo { hasNextPage } }
+                archivedJobs(first: 50) { nodes { id } pageInfo { hasNextPage } }`;
 
 const RELATED_QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id }`;
 
