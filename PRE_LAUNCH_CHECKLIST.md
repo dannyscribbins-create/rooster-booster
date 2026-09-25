@@ -5582,6 +5582,23 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       REFERRAL RULES ENGINE on the money path, not the fact tables, so it is not capture-path and
       making it throw is not a change to fold into a commit about archivedJobs.
 
+- [ ] ⚠ **THE CAPTURE PATH HAS NO COST-BASED PACING, AND 3a-2 ROUGHLY DOUBLED ITS QUERY COST**
+      (raised 2026-09-25 in Commit 3a-2). `repImportScope.js` reads `requestedQueryCost` /
+      `actualQueryCost` and paces on them (`computeThrottlePaceDelayMs`); the capture path in
+      `server/utils/jobberClientFetch.js` reads neither — it has `retryWithBackoff` +
+      `jobberShouldRetry` only, which does retry a 429 but only AFTER being throttled.
+      **Estimated cost change, and it is an ESTIMATE:** leaf selections per node went
+      `JOB_FIELDS` 3 → 17, `INVOICE_FIELDS` 14 → 22, `RELATED_JOB_FIELDS` 9 → 21,
+      `RELATED_INVOICE_FIELDS` 14 → 22. At a full page of 50 that is roughly **+1100 points per
+      `BASE_QUERY` request**, against Jobber's `maximumAvailable` 10000 / `restoreRate` 500/s.
+      ⚠ **THE HEURISTIC BEHIND THAT NUMBER IS RECORDED AS PROVISIONAL** — `CLAUDE_REGISTRY.md`
+      says the ~1-point-per-scalar-per-node calibration ran against a different API version — and
+      **nothing here measured a live call.** So this is an order-of-magnitude check, not a figure
+      to act on: it says "comfortably inside the ceiling for one client", not "safe under burst".
+      **What to decide:** whether the capture path should pace on cost like the import does, and
+      whether a burst of webhooks for many clients can exhaust the bucket faster than 500/s
+      restores it. Read `requestedQueryCost` off a real response before setting any number.
+
 - [ ] ⚠ **`fetchInvoiceWithJobs` CAN TRUNCATE AN INVOICE'S JOB SET SILENTLY** (raised 2026-09-25
       in Commit 3a). It selects `jobs(first: 10)` and `archivedJobs(first: 10)` with **no
       `pageInfo` on either**, so an invoice covering more than ten jobs loses the rest with

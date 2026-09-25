@@ -450,21 +450,61 @@ describe('(vii) archivedJobs travel the WHOLE way — real query, real writer, r
 
   const page = (nodes, hasNextPage = false, endCursor = null) => ({ nodes, pageInfo: { hasNextPage, endCursor } });
 
-  // Answers the capture query from whatever it actually SELECTS. The archived job is supplied
-  // ONLY under archivedJobs, so a query that does not ask for it receives nothing — which is
-  // the production state this case exists to forbid.
-  function installJobber() {
+  // Returns just the client's `invoices(...) { ... }` selection, by matching braces from the
+  // first occurrence. A substring window would be a guess about query length; brace matching is
+  // the only form that stays right when the selection grows.
+  function sliceInvoicesBlock(query) {
+    const at = query.indexOf('invoices(');
+    if (at < 0) return '';
+    const open = query.indexOf('{', at);
+    if (open < 0) return '';
+    let depth = 0;
+    for (let i = open; i < query.length; i += 1) {
+      if (query[i] === '{') depth += 1;
+      else if (query[i] === '}') {
+        depth -= 1;
+        if (depth === 0) return query.slice(at, i + 1);
+      }
+    }
+    return query.slice(at);
+  }
+
+  // ⚠ THE STUB ANSWERS FROM WHAT THE QUERY ACTUALLY SELECTS, AND THAT IS THE WHOLE MECHANISM.
+  // Every field below is supplied ONLY if the real query text asks for it, so a selection that
+  // drops a field produces a node without it — exactly the production state. A stub that returns
+  // a fixed object regardless of the query is the vacuity this file exists to avoid: it would
+  // pass against a query that selects nothing at all.
+  function installJobber({ invoiceStatus = 'paid', updatedAt = T1 } = {}) {
     axios.post = async (url, body, config) => {
       const q = body.query;
       if (!/GetClient\b/.test(q)) throw new Error('unexpected follow-up page in this fixture');
-      const inv = {
-        id: 'inv-arch',
-        invoiceStatus: 'paid',
-        createdAt: T1,
-        issuedDate: T1,
-        dueDate: T2,
-        amounts: { total: 4000, invoiceBalance: 0, paymentsTotal: 4000 },
-      };
+      // ⚠ EVERY FIELD IS SUPPLIED, AND EVERY ONE IS GATED ON THE **INVOICE** SELECTION ASKING FOR
+      // IT. A fixture that leaves a field out cannot tell a missing SELECTION from a missing
+      // FIXTURE — the first draft of this stub omitted invoiceNumber, and the NON-NULL case below
+      // caught it immediately.
+      // ⚠ AND THE GATE READS THE INVOICE BLOCK, NOT THE WHOLE QUERY, BECAUSE THE LOOSE FORM MADE
+      // A GUARD-PROOF SILENTLY PASS. Dropping `updatedAt` from the invoice selection left this
+      // file GREEN at 37/37, because JOB_FIELDS also contains `updatedAt` and a whole-query test
+      // still matched it. That is the identical looseness 3a-2 fixed in the production fence,
+      // reappearing in the harness that was meant to prove it — and the only tell was a
+      // guard-proof that refused to go red.
+      const invoiceSelection = sliceInvoicesBlock(q);
+      const asks = (field) => new RegExp('\\b' + field + '\\b').test(invoiceSelection);
+
+      const inv = { id: 'inv-arch', invoiceStatus };
+      const gate = (field, value) => { if (asks(field)) inv[field] = value; };
+      gate('createdAt', T1);
+      gate('updatedAt', updatedAt);
+      gate('issuedDate', T1);
+      gate('dueDate', T2);
+      gate('receivedDate', T2);
+      gate('invoiceNumber', 7001);
+      if (asks('client')) inv.client = { id: 'jc-1' };
+      inv.amounts = {};
+      for (const [f, v] of [['total', 4000], ['subtotal', 3700], ['invoiceBalance', 0],
+        ['paymentsTotal', 4000], ['depositAmount', 500], ['discountAmount', 0], ['taxAmount', 300]]) {
+        if (asks(f)) inv.amounts[f] = v;
+      }
       if (/\bjobs\(first: \d+\) \{ nodes \{ id \}/.test(q)) {
         inv.jobs = { nodes: [{ id: 'job-live' }], pageInfo: { hasNextPage: false } };
       }
@@ -536,5 +576,56 @@ describe('(vii) archivedJobs travel the WHOLE way — real query, real writer, r
       [A, ['job-live', 'job-arch']]
     );
     assert.equal(rows[0].value, '4000.00', 'one invoice across a live and an archived job contributes once');
+  });
+
+  // ⚠ THE STALENESS GUARD, EXERCISED THROUGH THE REAL QUERY -> FETCH -> WRITER PATH. The (iii)
+  // cases above hand `updatedAt` to the writer directly and prove the SQL is right; they cannot
+  // prove anything SUPPLIES it. Before 3a-2 no capture query selected `updatedAt`, so in
+  // production both sides were NULL, every write landed, and the guard was inert — while (iii)
+  // stayed green. This is the only shape that fails when the selection is the thing at fault.
+  it('the capture query ASKS for updatedAt, so the fetched invoice carries it', async () => {
+    installJobber({ updatedAt: T2 });
+    const client = await fetchFullClient('jc-1', 'tok');
+    assert.equal(client.invoices.nodes[0].updatedAt, T2,
+      'if this is undefined the query did not select updatedAt and the staleness guard has no input');
+  });
+
+  it('an OLDER fetch cannot overwrite a NEWER row, end to end through the real query', async () => {
+    installJobber({ invoiceStatus: 'paid', updatedAt: T2 });
+    const newer = await fetchFullClient('jc-1', 'tok');
+    await writeInvoiceFacts(pool, A, newer.invoices.nodes);
+    assert.equal((await oneInvoice(A, 'inv-arch')).invoice_status, 'paid');
+
+    installJobber({ invoiceStatus: 'awaiting_payment', updatedAt: T1 });
+    const older = await fetchFullClient('jc-1', 'tok');
+    await writeInvoiceFacts(pool, A, older.invoices.nodes);
+
+    assert.equal((await oneInvoice(A, 'inv-arch')).invoice_status, 'paid',
+      'the T1 fetch is older than the stored T2 row and must not land — if this fails, either the '
+      + 'guard is gone or nothing is supplying updatedAt');
+  });
+
+  it('PAIRED POSITIVE — a NEWER fetch does land through the same path', async () => {
+    installJobber({ invoiceStatus: 'awaiting_payment', updatedAt: T1 });
+    await writeInvoiceFacts(pool, A, (await fetchFullClient('jc-1', 'tok')).invoices.nodes);
+
+    installJobber({ invoiceStatus: 'paid', updatedAt: T2 });
+    await writeInvoiceFacts(pool, A, (await fetchFullClient('jc-1', 'tok')).invoices.nodes);
+
+    assert.equal((await oneInvoice(A, 'inv-arch')).invoice_status, 'paid');
+  });
+
+  it('every column the ruling names arrives NON-NULL through the real path', async () => {
+    installJobber({ updatedAt: T2 });
+    const client = await fetchFullClient('jc-1', 'tok');
+    await writeInvoiceFacts(pool, A, client.invoices.nodes);
+    const row = await oneInvoice(A, 'inv-arch');
+
+    // ⚠ NAMED COLUMNS, NOT "the row exists". A row whose 17 columns are NULL satisfies any
+    // existence check, which is precisely how 3a-2's gap survived Commit 3's whole test file.
+    for (const col of ['invoice_number', 'invoice_status', 'total', 'invoice_balance',
+      'payments_total', 'issued_date', 'due_date', 'created_at', 'updated_at', 'jobber_client_id']) {
+      assert.notEqual(row[col], null, `${col} is NULL — the query is not selecting what the writer reads`);
+    }
   });
 });

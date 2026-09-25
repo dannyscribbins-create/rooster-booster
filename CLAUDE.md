@@ -385,8 +385,36 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1787 server tests across 294 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the archivedJobs commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1787 · suites 294 · pass 1787 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE archivedJobs COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1798 server tests across 294 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the reads-vs-selects commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1798 · suites 294 · pass 1798 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE READS-VS-SELECTS COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1787 → 1798 is **+11 = 7 + 4**, both appended to EXISTING files and EXISTING describes —
+  seven in `captureFetchContract.test.js` (six mechanical checks plus the derivation's own
+  non-vacuity case) and four in `crmJobInvoiceFacts.test.js`. **Suites hold at 294**, which is the
+  expected shape: no new file and no new describe. React did not move — no `src/` file touched —
+  and was re-measured. **All four predicted before the run and matched.**
+  ⚠ **A HAND-MAINTAINED FENCE LIST WENT STALE AND MISSED 26 FIELDS — AND THE REAL NUMBER WAS 42.**
+  `captureFetchContract`'s `REQUIRED` list named 12 fields, written from Commit 2's needs, and
+  Commit 3 then added writers reading fields no query selected. Replaced with a MECHANICAL check:
+  the writers' reads are derived from `factCapture.js`'s source text, the selections from the
+  per-entity field constants, and any field read-but-not-selected fails. **It is not circular** —
+  JavaScript property reads on one side, GraphQL selection text on the other.
+  ⚠ **AND THE FIRST MEASUREMENT OF THE GAP WAS ITSELF AN UNDERCOUNT, FOR THE REASON THE FENCE NOW
+  AVOIDS.** Checking a writer's reads against the WHOLE query reports `salesperson`, `total` and
+  `client` as selected, because `QUOTE_FIELDS` carries a salesperson and `INVOICE_FIELDS` carries a
+  total. Loose form: 26. **Per-entity form: 42.** Compare like with like, or the check flatters itself.
+  ⚠ **THE WORST MISSING FIELD WAS `updatedAt`, THE INPUT TO THE STALENESS GUARD** — so the guard
+  Commit 3 built and guard-proofed was INERT in production while its own unit tests stayed green.
+  Those tests hand the writer a value; they cannot prove anything supplies it. The repair is an
+  end-to-end case through the real query → fetch → writer path.
+  ⚠ **AND THE FIRST RUN OF THAT GUARD-PROOF STAYED GREEN AT 37/37, WHICH IS THE ENTRY WORTH
+  KEEPING.** Dropping `updatedAt` from the invoice selection changed nothing, because the test
+  stub gated its fixture on `/\bupdatedAt\b/` against the WHOLE query — and `JOB_FIELDS` also
+  contains `updatedAt`. **The identical looseness being fixed in production, reappearing inside
+  the harness meant to prove the fix**, and the only tell was a guard-proof that refused to go red.
+  The stub now slices the invoice selection by brace matching. **A guard-proof that will not fire
+  is a finding, never a formality.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE archivedJobs COMMIT ITSELF, BECAUSE IT SHIPS TESTS.* It read **1787 / 294 / 1342 / 80**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE archivedJobs COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 1781 → 1787 is **+6 = 4 + 2**: four in a new describe appended to
   `crmJobInvoiceFacts.test.js` and two appended to an EXISTING describe in
   `captureFetchContract.test.js`. Suites 293 → 294 is **that one new describe only** — the

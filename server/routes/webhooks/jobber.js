@@ -213,14 +213,28 @@ async function fetchClientJobsForJobUpdate(clientId, token) {
 // at 2026-05-12: amounts { total invoiceBalance paymentsTotal }. "Paid" is invoiceBalance = 0
 // by ruling, never total minus paymentsTotal. A VOIDED invoice is fetched like any other — its
 // status is a fact — and nothing here treats it as paid.
-const RELATED_JOB_FIELDS = `id jobStatus jobType completedAt createdAt
+// ⚠ THESE TWO CARRY EVERY FIELD THE FACT WRITERS READ, AND THE MECHANICAL FENCE IN
+// server/test/captureFetchContract.test.js ENFORCES IT rather than trusting anyone to remember.
+// Before 3a-2 they were 8 and 11 fields short of what writeInvoiceFacts and writeJobFacts read,
+// so those columns were NULL for every client in production while the writers looked correct.
+// All fields verified at the pinned 2026-05-12 by Danny's introspection — see the note at
+// JOB_FIELDS in server/utils/jobberClientFetch.js for the type-by-type list.
+// ⚠ customFields STAYS: deriveJobberTags reads it off each job for the work_category and
+// material_type tags, and it is the one thing here that is NOT a fact-writer field.
+const RELATED_JOB_FIELDS = `id jobNumber jobStatus jobType title
+                createdAt updatedAt startAt endAt completedAt
+                total invoicedTotal uninvoicedTotal
+                client { id } quote { id } request { id } salesperson { id }
                 customFields {
                   ... on CustomFieldText { label valueText }
                   ... on CustomFieldDropdown { label valueDropdown }
                 }`;
 
-const RELATED_INVOICE_FIELDS = `id invoiceStatus createdAt issuedDate dueDate
-                amounts { total invoiceBalance paymentsTotal }
+const RELATED_INVOICE_FIELDS = `id invoiceNumber invoiceStatus
+                createdAt updatedAt issuedDate dueDate receivedDate
+                client { id }
+                amounts { total subtotal invoiceBalance paymentsTotal
+                          depositAmount discountAmount taxAmount }
                 jobs(first: 50) { nodes { id } pageInfo { hasNextPage } }
                 archivedJobs(first: 50) { nodes { id } pageInfo { hasNextPage } }`;
 
@@ -2009,4 +2023,11 @@ router._captureQueries = {
   RELATED_QUOTES_PAGE_QUERY,
   RELATED_REQUESTS_PAGE_QUERY,
   RELATED_INVOICES_PAGE_QUERY,
+};
+// The per-entity field selections, for the mechanical reads-vs-selects fence. Separate from the
+// queries above because a whole-query check passes when a field appears anywhere in it.
+router._captureFields = {
+  RELATED_JOB_FIELDS,
+  RELATED_INVOICE_FIELDS,
+  RELATED_QUOTE_FIELDS,
 };

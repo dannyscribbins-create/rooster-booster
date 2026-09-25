@@ -20,6 +20,9 @@
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 
+const { readFileSync } = require('node:fs');
+const { join } = require('node:path');
+
 const axios = require('axios');
 const fetchModule = require('../utils/jobberClientFetch');
 const jobberRouter = require('../routes/webhooks/jobber');
@@ -163,23 +166,125 @@ describe('capture fetch — (i) a 200 with an errors array is a FAILURE, not an 
 describe('capture fetch — (ii) THE BOUNDARY FENCE: what consumers read must be SELECTED', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
-  // ⚠ EACH ENTRY NAMES THE CONSUMER THAT READS IT AND WHY. This list is hand-written on
-  // purpose: if it were derived from the query it would agree with the query by construction
-  // and could never fail. The pairing with the consumer's name is what makes a deletion
-  // reviewable rather than silent.
-  const REQUIRED = [
-    // classifyPipelineStatus (server/crm/pipelineSync.js) reads these three.
+  // ⚠ MECHANICAL, NOT HAND-MAINTAINED, AND THE REPLACEMENT IS THE POINT (3d Phase 1a Commit
+  // 3a-2). This block used to be a hand-written list of 12 fields, each paired with the consumer
+  // that reads it. The reasoning for writing it by hand was that a list derived from the query
+  // would agree with the query by construction — which is sound, and it is NOT what this does.
+  // ⚠ IT WENT STALE THE MOMENT COMMIT 3 ADDED WRITERS, AND MISSED 26 FIELDS. The list was
+  // written from Commit 2's needs; Commit 3's writers read 26 fields no capture query selected,
+  // so those columns were NULL for every client in production. Worst of them was `updatedAt`,
+  // the INPUT to the staleness guard — so that guard was inert while its own unit test proved
+  // the SQL worked. A fence built from a list someone maintains is a number in a governing
+  // document, and this repo has found those stale repeatedly.
+  //
+  // HOW EACH SIDE IS DERIVED, so the fence cannot silently stop reading either one:
+  //   READS    — the SOURCE TEXT of each writer in server/utils/factCapture.js is sliced by
+  //              function name, and every `<node>.field` / `<node>.amounts?.field` access is
+  //              collected. It grows automatically when a writer starts reading a new field.
+  //   SELECTS  — the per-entity FIELD CONSTANT the queries are built from, exported for this
+  //              purpose. ⚠ PER-ENTITY, NEVER THE WHOLE QUERY: checking writeJobFacts against
+  //              the whole BASE_QUERY reports `salesperson` and `total` as selected, because
+  //              QUOTE_FIELDS carries a salesperson and INVOICE_FIELDS carries a total. The
+  //              loose form is how the 26 were undercounted as 11 on first measurement.
+  //
+  // ⚠ AND IT IS NOT CIRCULAR. The two sides come from different files and different languages —
+  // JavaScript property reads on one side, GraphQL selection text on the other — so neither is
+  // derived from the other. Deleting a field from a selection makes the fence fail; deleting it
+  // from a writer makes the fence stop requiring it, which is correct, because a field no writer
+  // reads is not a field the query owes anyone.
+
+  const FACT_CAPTURE_SRC = readFileSync(join(__dirname, '..', 'utils', 'factCapture.js'), 'utf8');
+
+  // Slices one writer's body out of factCapture.js and collects the node fields it reads.
+  function fieldsReadBy(writerName) {
+    const start = FACT_CAPTURE_SRC.indexOf(`async function ${writerName}(`);
+    assert.ok(start >= 0, `harness: ${writerName} not found in factCapture.js — the fence must be re-anchored, not skipped`);
+    const end = FACT_CAPTURE_SRC.indexOf('\n}', start);
+    assert.ok(end > start, `harness: could not find the end of ${writerName}`);
+    const body = FACT_CAPTURE_SRC.slice(start, end);
+    assert.ok(body.length > 200, `harness: the ${writerName} slice is too short to be the real body`);
+
+    const nested = new Set();
+    for (const m of body.matchAll(/\b(?:n|inv)\.amounts\?\.([A-Za-z_][A-Za-z0-9_]*)/g)) nested.add(m[1]);
+    const top = new Set();
+    for (const m of body.matchAll(/\b(?:n|inv)\.([A-Za-z_][A-Za-z0-9_]*)/g)) top.add(m[1]);
+    top.delete('amounts');
+    return { top: [...top].sort(), nested: [...nested].sort() };
+  }
+
+  // writer -> the capture selections that must be able to feed it.
+  const WRITER_SELECTIONS = [
+    ['writeJobFacts', {
+      'fetchFullClient JOB_FIELDS': fetchModule.JOB_FIELDS,
+      'fetchClientRelatedData RELATED_JOB_FIELDS': jobberRouter._captureFields.RELATED_JOB_FIELDS,
+    }],
+    ['writeInvoiceFacts', {
+      'fetchFullClient INVOICE_FIELDS': fetchModule.INVOICE_FIELDS,
+      'fetchClientRelatedData RELATED_INVOICE_FIELDS': jobberRouter._captureFields.RELATED_INVOICE_FIELDS,
+    }],
+    ['writeInvoiceJobLinks', {
+      'fetchFullClient INVOICE_FIELDS': fetchModule.INVOICE_FIELDS,
+      'fetchClientRelatedData RELATED_INVOICE_FIELDS': jobberRouter._captureFields.RELATED_INVOICE_FIELDS,
+    }],
+  ];
+
+  for (const [writer, selections] of WRITER_SELECTIONS) {
+    for (const [label, selection] of Object.entries(selections)) {
+      it(`${label} selects EVERY field ${writer} reads`, () => {
+        const { top, nested } = fieldsReadBy(writer);
+        assert.ok(top.length > 0, `harness: ${writer} appears to read no fields — the slice or the regex is wrong`);
+
+        const missing = [
+          ...top.filter((f) => !new RegExp(`\\b${f}\\b`).test(selection)),
+          ...nested.filter((f) => !new RegExp(`\\b${f}\\b`).test(selection)).map((f) => `amounts.${f}`),
+        ];
+        assert.deepEqual(
+          missing, [],
+          `${label} does not select ${missing.length} field(s) that ${writer} reads: ${missing.join(', ')}. `
+          + 'A writer reading a field no query selects stores NULL, and NULL reads as an answer '
+          + 'rather than as "nobody looked".'
+        );
+      });
+    }
+  }
+
+  // ⚠ THE FENCE'S OWN NON-VACUITY CHECK. If the derivation ever stops finding reads — a renamed
+  // writer, a changed node variable, a regex that no longer matches — every assertion above
+  // passes against an empty list. That is the failure mode of this whole class, so it is asserted
+  // rather than assumed, with a floor that is well below the real counts (17 / 16 / 3 today).
+  it('the derivation actually finds reads — an empty read set would make every check above vacuous', () => {
+    const job = fieldsReadBy('writeJobFacts');
+    const inv = fieldsReadBy('writeInvoiceFacts');
+    const lnk = fieldsReadBy('writeInvoiceJobLinks');
+    assert.ok(job.top.length >= 12, `writeJobFacts reads only ${job.top.length} fields — derivation is probably broken`);
+    assert.ok(inv.top.length >= 8, `writeInvoiceFacts reads only ${inv.top.length} top-level fields`);
+    assert.ok(inv.nested.length >= 7, `writeInvoiceFacts reads only ${inv.nested.length} amounts fields`);
+    assert.ok(lnk.top.length >= 2, `writeInvoiceJobLinks reads only ${lnk.top.length} fields`);
+    // And the fields the ruling named by hand must be among them, so a derivation that finds
+    // SOMETHING but the wrong thing is caught too.
+    for (const f of ['jobNumber', 'invoicedTotal', 'uninvoicedTotal', 'updatedAt']) {
+      assert.ok(job.top.includes(f), `writeJobFacts should read ${f}`);
+    }
+    for (const f of ['invoiceNumber', 'receivedDate', 'updatedAt']) {
+      assert.ok(inv.top.includes(f), `writeInvoiceFacts should read ${f}`);
+    }
+    for (const f of ['depositAmount', 'subtotal', 'taxAmount', 'discountAmount']) {
+      assert.ok(inv.nested.includes(f), `writeInvoiceFacts should read amounts.${f}`);
+    }
+  });
+
+  // The CONSUMER fields — what classifyPipelineStatus and the attribution engine read. These are
+  // not fact-writer fields, so the mechanical check above cannot see them, and they keep an
+  // explicit list naming the consumer. ⚠ Kept deliberately: the two mechanisms cover different
+  // sets, and dropping this one would lose the engine's contract entirely.
+  const CONSUMER_REQUIRED = [
     { field: 'quoteStatus', read_by: 'classifyPipelineStatus — filters out archived quotes' },
     { field: 'invoiceStatus', read_by: 'classifyPipelineStatus — a paid invoice means stage paid' },
     { field: 'jobStatus', read_by: 'deriveJobberTags JOB_STATUS_MAP' },
-    // runAttributionEngine (server/utils/attributionEngine.js) documents this contract at its
-    // own entry point: quotes.nodes with quoteStatus, salesperson.id and lastTransitioned.
     { field: 'lastTransitioned', read_by: 'attributionEngine isQuoteEligible — approvedAt gate' },
     { field: 'approvedAt', read_by: 'attributionEngine — the sticky gate cutoff comparison' },
     { field: 'salesperson', read_by: 'attributionEngine — quote_salesperson sticky source' },
-    // Sale dating and grouping.
     { field: 'createdAt', read_by: 'sale grouping and the request grace window' },
-    // Sale VALUE. Danny's ruling: sum of final invoice totals, paid means invoiceBalance = 0.
     { field: 'total', read_by: 'sale value — sum of DISTINCT invoice totals' },
     { field: 'invoiceBalance', read_by: 'paid means invoiceBalance = 0, authoritative' },
     { field: 'paymentsTotal', read_by: 'amount paid' },
@@ -193,7 +298,7 @@ describe('capture fetch — (ii) THE BOUNDARY FENCE: what consumers read must be
   };
 
   for (const [name, query] of Object.entries(FETCH_QUERIES)) {
-    for (const { field, read_by } of REQUIRED) {
+    for (const { field, read_by } of CONSUMER_REQUIRED) {
       it(`${name} SELECTS ${field} — read by ${read_by}`, () => {
         assert.ok(
           new RegExp(`\\b${field}\\b`).test(query),

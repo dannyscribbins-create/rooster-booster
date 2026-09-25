@@ -92,10 +92,31 @@ const CLIENT_SCALARS = `
 
 const QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id }`;
 
-const JOB_FIELDS = `id jobStatus createdAt`;
+// ⚠ EVERY FIELD BELOW IS READ BY A FACT WRITER IN server/utils/factCapture.js, AND THAT IS NOT
+// A COINCIDENCE — it is enforced. The mechanical fence in
+// server/test/captureFetchContract.test.js derives the writers' reads from their source and the
+// selections from these constants, and fails on any field read but not selected. It replaced a
+// HAND-MAINTAINED list that was written from Commit 2's needs and went stale the moment Commit 3
+// added writers: it missed 26 fields, including `updatedAt`, which is the INPUT to the
+// staleness guard — so that guard was inert in production while its own unit test proved the SQL
+// worked. A fence built from a list someone maintains is a number in a governing document.
+// ⚠ ALL OF THESE ARE VERIFIED AT THE PINNED 2026-05-12 by the introspection Danny ran in
+// Jobber's Developer Center: the Job type carries jobNumber, jobStatus, jobType, title,
+// createdAt, updatedAt, startAt, endAt, completedAt, total, invoicedTotal, uninvoicedTotal,
+// client, quote, request and salesperson; the Invoice type carries invoiceNumber, invoiceStatus,
+// createdAt, updatedAt, issuedDate, dueDate, receivedDate, client and amounts; and InvoiceAmounts
+// carries total, subtotal, invoiceBalance, paymentsTotal, depositAmount, discountAmount and
+// taxAmount. GraphQL has no optional field, so a selection is a claim about the schema.
+const JOB_FIELDS = `id jobNumber jobStatus jobType title
+                createdAt updatedAt startAt endAt completedAt
+                total invoicedTotal uninvoicedTotal
+                client { id } quote { id } request { id } salesperson { id }`;
 
-const INVOICE_FIELDS = `id invoiceStatus createdAt issuedDate dueDate
-                amounts { total invoiceBalance paymentsTotal }
+const INVOICE_FIELDS = `id invoiceNumber invoiceStatus
+                createdAt updatedAt issuedDate dueDate receivedDate
+                client { id }
+                amounts { total subtotal invoiceBalance paymentsTotal
+                          depositAmount discountAmount taxAmount }
                 jobs(first: ${INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }
                 archivedJobs(first: ${INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }`;
 
@@ -320,9 +341,17 @@ module.exports = {
   JOBBER_API_VERSION,
   PAGE_SIZE,
   MAX_PAGES,
-  // Exported for the boundary fence only.
+  // Exported for the boundary fence only. ⚠ THE FIELD CONSTANTS ARE EXPORTED SEPARATELY FROM THE
+  // QUERIES ON PURPOSE: a fence that checks a writer's reads against a WHOLE query passes when
+  // the field happens to appear somewhere else in it. That is not hypothetical — checking
+  // writeJobFacts against BASE_QUERY reported `salesperson` and `total` as SELECTED, because
+  // QUOTE_FIELDS carries a salesperson and INVOICE_FIELDS carries a total. Per-entity checking
+  // is what makes the fence precise.
   BASE_QUERY,
   QUOTES_PAGE_QUERY,
   JOBS_PAGE_QUERY,
   INVOICES_PAGE_QUERY,
+  JOB_FIELDS,
+  INVOICE_FIELDS,
+  QUOTE_FIELDS,
 };
