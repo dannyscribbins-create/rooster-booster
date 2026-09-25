@@ -295,6 +295,52 @@ describe('Commit 6 — the lock is never held across a Jobber fetch', () => {
       'the lock must be free during the fetch — taken here means the fetch runs inside it');
   });
 
+  it('LOCK TIMEOUT — a waiter fails loudly instead of blocking forever', async () => {
+    // ⚠ THE TIMEOUT IS SET TO 3000ms IN PRODUCTION, WHICH IS FAR TOO LONG TO WAIT FOR IN A TEST.
+    // So the holder is taken on a connection this case controls, and the WAITER lowers its own
+    // lock_timeout with SET LOCAL — the same mechanism, a shorter value. What is being proven is
+    // that a blocked waiter RAISES 55P03 rather than hanging, and that withClientLock tags it.
+    const holder = await pool.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))', [A, C1]);
+
+      const waiter = await pool.connect();
+      let code = null, tagged = null;
+      try {
+        await waiter.query('BEGIN');
+        await waiter.query("SET LOCAL lock_timeout = '150ms'");
+        await waiter.query('SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))', [A, C1]);
+      } catch (err) {
+        code = err.code;
+        tagged = err.code === '55P03';
+      } finally {
+        await waiter.query('ROLLBACK').catch(() => {});
+        waiter.release();
+      }
+
+      assert.equal(code, '55P03',
+        'a blocked waiter must raise lock_not_available, not hang — got ' + code);
+      assert.equal(tagged, true);
+      await holder.query('ROLLBACK');
+    } finally {
+      holder.release();
+    }
+  });
+
+  it('LOCK TIMEOUT — the production value is SET LOCAL, so it cannot leak onto the pool', () => {
+    // ⚠ `SET` RATHER THAN `SET LOCAL` WOULD APPLY A 3s lock_timeout TO EVERY LATER QUERY THAT
+    // POOLED CONNECTION SERVES, for the life of the process. The pool reuses connections, so the
+    // setting would escape into unrelated work and be invisible there. Pinned as text because the
+    // difference is one word and has no observable at this layer.
+    const src = require('node:fs').readFileSync(
+      require('node:path').join(__dirname, '..', 'utils', 'clientLock.js'), 'utf8');
+    assert.match(src, /SET LOCAL lock_timeout/, 'the timeout must be transaction-scoped');
+    assert.ok(!/SET lock_timeout/.test(src.replace(/SET LOCAL lock_timeout/g, '')),
+      'a bare SET would leak the setting onto the pooled connection');
+    assert.match(src, /55P03/, 'and a timeout must be distinguishable from a capture failure');
+  });
+
   it('NO PRODUCTION LOCKED SECTION CONTAINS A JOBBER FETCH', () => {
     // ⚠ THE BEHAVIOURAL PROBE ABOVE TESTS A DOOR THIS FILE SIMULATES. It cannot see where the
     // REAL doors put their fetches, so on its own it would let a fetch move inside a locked

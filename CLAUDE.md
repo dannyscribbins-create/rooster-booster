@@ -385,8 +385,19 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1901 server tests across 312 suites, and 1358 React tests across 82 files** (measured 2026-09-25 by the per-client-lock commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1901 · suites 312 · pass 1901 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PER-CLIENT-LOCK COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1903 server tests across 312 suites, and 1358 React tests across 82 files** (measured 2026-09-25 by the lock-timeout commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1903 · suites 312 · pass 1903 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE LOCK-TIMEOUT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1901 → 1903 is **+2**, both appended to an EXISTING describe in `clientLock.test.js`, so
+  **suites hold at 312** — the expected shape when a file grows rather than a file arriving. React
+  did not move and was re-measured. **All four predicted before the run and matched.**
+  ⚠ **AND THE KEY GUARD-PROOFS WERE RE-RUN IN A STRICTLY BETTER FORM, ON DANNY'S INSTRUCTION.**
+  The previous entry's (ii) and (iii) rewrote the lock's SQL to a one-parameter call: the
+  behavioural case did red, but so did the source fence, because the fence pins the exact two-key
+  text. Re-run by corrupting only the BOUND VALUES — contractor bound to both arguments, then
+  client bound to both — the SQL text is byte-identical to production, the source fence stays
+  GREEN, and each injection reds exactly its own behavioural case. **An injection that also trips
+  a text fence is reporting two things at once; one of them is not evidence about the behaviour.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PER-CLIENT-LOCK COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
   Server 1892 → 1901 is **+9**, one new file (`clientLock.test.js`); suites 309 → 312 is that
   file's **three** top-level describes. React did not move — no `src/` file was touched — and was
   re-measured. **All four predicted before the run and matched.** Counted with an anchored

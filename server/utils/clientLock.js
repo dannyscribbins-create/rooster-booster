@@ -82,6 +82,31 @@ async function withClientLock(pool, { contractorId, jobberClientId }, fn) {
   const tx = await pool.connect();
   try {
     await tx.query('BEGIN');
+    // ── LOCK TIMEOUT (follow-up to Commit 6) ────────────────────────────────
+    //
+    // ⚠ WITHOUT THIS A WAITER BLOCKS FOREVER AND HOLDS A POOLED CONNECTION WHILE IT DOES.
+    // That is the worse half of the problem: the pool is 10 connections (pg's default, and
+    // server/db.js sets no `max`), and `connectionTimeoutMillis` is unset — so a caller waiting
+    // for a slot ALSO waits forever. One stuck holder could therefore take the whole pool down
+    // with no error anywhere, which is the failure mode this repo files under "reports health it
+    // cannot observe".
+    //
+    // ⚠ 3000ms, AND THE NUMBER IS DERIVED RATHER THAN PICKED. The locked section was measured at
+    // median 9.3ms / max 15.4ms locally for a full page of every connection. Railway is slower —
+    // app and Postgres are separate services, so each of the section's ~10 statements pays a hop;
+    // a pessimistic Railway hold is on the order of 150ms. 3000ms is therefore ~195x the measured
+    // median and still ~20 queued events deep at the pessimistic figure, so it cannot fire on
+    // legitimate same-client contention. And it is bounded: a pathological wait gives a pool slot
+    // back in 3s instead of never.
+    // ⚠ RE-DERIVE IT FROM A RAILWAY MEASUREMENT BEFORE TREATING IT AS TUNED. It is a first value
+    // computed from a LOCAL number, which is exactly the kind of figure this repo requires a
+    // source for — the source is the measurement recorded at the top of this file, and that
+    // measurement is local.
+    //
+    // ⚠ SET LOCAL, NOT SET. It reverts when the transaction ends, so it cannot leak onto the
+    // pooled connection and silently apply a 3s lock_timeout to every later query that connection
+    // serves. A plain SET here would be a per-connection setting escaping into unrelated work.
+    await tx.query("SET LOCAL lock_timeout = '3000ms'");
     // ⚠ hashtext() IS STABLE ACROSS CONNECTIONS AND RESTARTS, which is the whole requirement —
     // a JS hash would have to agree between every replica and every Node version. Postgres
     // computes both keys, so the lock identity is a property of the database, not of the caller.
@@ -91,6 +116,18 @@ async function withClientLock(pool, { contractorId, jobberClientId }, fn) {
     await tx.query('COMMIT');
     return result;
   } catch (err) {
+    // ⚠ A LOCK TIMEOUT IS TAGGED SO A CALLER CAN TELL CONTENTION FROM A BAD CAPTURE.
+    // Postgres raises SQLSTATE 55P03 (lock_not_available) when lock_timeout expires. Without this
+    // tag every door would log "capture failed" for what is really "another event for this client
+    // held the lock" — two different situations that want different handling, recorded under one
+    // message. The flag is additive: nothing has to read it, and the doors that do not still
+    // behave exactly as before.
+    if (err && err.code === '55P03') {
+      err.lockTimeout = true;
+      err.message = `withClientLock: timed out after 3000ms waiting for the lock on client `
+        + `${jobberClientId} (contractor ${contractorId}) — another event for the SAME client held `
+        + `it; this is contention, not a capture failure: ${err.message}`;
+    }
     try {
       await tx.query('ROLLBACK');
     } catch (rollbackErr) {
