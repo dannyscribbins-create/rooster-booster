@@ -89,12 +89,30 @@ function verifyJobberWebhookSignature(req, res) {
 //   - waitingForFinancedPayment = boolean — defer processing if true
 //   - Job Type lives at label === "Job Type" → valueDropdown (CustomFieldDropdown)
 //   - archivedJobs must be fetched alongside jobs — archived jobs still carry job type
-async function fetchInvoiceWithJobs(invoiceId, token) {
-  const response = await retryWithBackoff(
-    () => axios.post(
-      'https://api.getjobber.com/api/graphql',
-      {
-        query: `query GetInvoiceWithJobs($id: EncodedId!) {
+//
+// ⚠ BOTH JOB CONNECTIONS ARE PAGED TO EXHAUSTION (3d Phase 1a Commit 3c, Danny's ruling). They
+// read `jobs(first: 10)` and `archivedJobs(first: 10)` with NO pageInfo on either, so an invoice
+// covering more than ten jobs lost the rest with nothing to say so — and
+// assertInvoiceJobsComplete could not catch it, because a missing pageInfo makes hasNextPage
+// `undefined`, which is not `true`. **An absent field reads as health.**
+//
+// ⚠ AND THE CONSEQUENCE WAS A WRONG BONUS, NOT A MISSING ONE, WHICH IS WHY IT IS ON THE MONEY
+// PATH. evaluateReferral (server/referralRules.js) collects Job Type custom fields from
+// `jobs.nodes` PLUS `archivedJobs.nodes` and picks a payout schedule from them: a Full Roof label
+// selects the ESCALATING schedule, and a Repair label a different one. Truncating the job set can
+// drop the job carrying the Full Roof label, so a referral is paid on the wrong schedule — or
+// returns `no_job_type_found` and is not paid at all. Both are silent and both are money.
+//
+// ⚠ 50 IS A PAGE SIZE, NOT A CAP. A cursor anomaly and the page cap both THROW rather than
+// returning a short set, and the caller's existing catch turns a throw into a recorded skip with
+// NO money-path action — see the invoice-paid handler's fetch block.
+const INVOICE_JOB_NODE_FIELDS = `id
+                customFields {
+                  ... on CustomFieldText { label valueText }
+                  ... on CustomFieldDropdown { label valueDropdown }
+                }`;
+
+const INVOICE_WITH_JOBS_QUERY = `query GetInvoiceWithJobs($id: EncodedId!) {
           invoice(id: $id) {
             id
             invoiceNumber
@@ -103,47 +121,63 @@ async function fetchInvoiceWithJobs(invoiceId, token) {
             waitingForFinancedPayment
             amounts { total }
             client { id name }
-            jobs(first: 10) {
-              nodes {
-                id
-                customFields {
-                  ... on CustomFieldText { label valueText }
-                  ... on CustomFieldDropdown { label valueDropdown }
-                }
-              }
+            jobs(first: 50) {
+              nodes { ${INVOICE_JOB_NODE_FIELDS} }
+              pageInfo { hasNextPage endCursor }
             }
-            archivedJobs(first: 10) {
-              nodes {
-                id
-                customFields {
-                  ... on CustomFieldText { label valueText }
-                  ... on CustomFieldDropdown { label valueDropdown }
-                }
-              }
+            archivedJobs(first: 50) {
+              nodes { ${INVOICE_JOB_NODE_FIELDS} }
+              pageInfo { hasNextPage endCursor }
             }
           }
-        }`,
-        variables: { id: invoiceId },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
-        },
-      }
-    ),
-    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
-  );
+        }`;
+
+const INVOICE_JOBS_PAGE_QUERY = `query GetInvoiceJobsPage($id: EncodedId!, $after: String) {
+          invoice(id: $id) {
+            jobs(first: 50, after: $after) {
+              nodes { ${INVOICE_JOB_NODE_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }`;
+
+const INVOICE_ARCHIVED_JOBS_PAGE_QUERY = `query GetInvoiceArchivedJobsPage($id: EncodedId!, $after: String) {
+          invoice(id: $id) {
+            archivedJobs(first: 50, after: $after) {
+              nodes { ${INVOICE_JOB_NODE_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }`;
+
+async function fetchInvoiceWithJobs(invoiceId, token) {
+  const label = `fetchInvoiceWithJobs ${invoiceId}`;
+  const response = await capturePost(INVOICE_WITH_JOBS_QUERY, { id: invoiceId }, token);
 
   // ⚠ ORDER MATTERS: read the errors array BEFORE the absence check. Both produce a throw, but
   // only this one says WHY — a 200-with-errors otherwise surfaced as "no invoice returned",
   // which reads as a deleted invoice rather than a failed query.
-  assertNoJobberGraphQLErrors(response, `fetchInvoiceWithJobs ${invoiceId}`);
-  if (!response.data?.data?.invoice) {
+  assertNoJobberGraphQLErrors(response, label);
+  const invoice = response.data?.data?.invoice;
+  if (!invoice) {
     throw new Error(`fetchInvoiceWithJobs: no invoice returned for id ${invoiceId}`);
   }
-  return response.data.data.invoice;
+
+  // ⚠ `root: 'invoice'` — the shared pager, not a second copy of the loop. It throws on
+  // hasNextPage-with-no-endCursor, on an absent connection, on a mid-page errors array and on the
+  // page cap, which is the whole point: every one of those would otherwise be a short job set.
+  const [jobs, archivedJobs] = await Promise.all([
+    pageClientConnection({
+      query: INVOICE_JOBS_PAGE_QUERY, clientId: invoiceId, token,
+      field: 'jobs', firstPage: invoice.jobs, label, root: 'invoice',
+    }),
+    pageClientConnection({
+      query: INVOICE_ARCHIVED_JOBS_PAGE_QUERY, clientId: invoiceId, token,
+      field: 'archivedJobs', firstPage: invoice.archivedJobs, label, root: 'invoice',
+    }),
+  ]);
+
+  return { ...invoice, jobs: { nodes: jobs }, archivedJobs: { nodes: archivedJobs } };
 }
 
 // ── CLIENT JOBS FETCH (for job-update pipeline check) ─────────────────────────
@@ -2023,6 +2057,10 @@ router._captureQueries = {
   RELATED_QUOTES_PAGE_QUERY,
   RELATED_REQUESTS_PAGE_QUERY,
   RELATED_INVOICES_PAGE_QUERY,
+  // Commit 3c — the invoice fetch's own three queries, so the paging tests read the REAL text.
+  INVOICE_WITH_JOBS_QUERY,
+  INVOICE_JOBS_PAGE_QUERY,
+  INVOICE_ARCHIVED_JOBS_PAGE_QUERY,
 };
 // The per-entity field selections, for the mechanical reads-vs-selects fence. Separate from the
 // queries above because a whole-query check passes when a field appears anywhere in it.

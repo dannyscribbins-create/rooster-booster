@@ -385,8 +385,24 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1809 server tests across 295 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the import-fact-capture commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1809 · suites 295 · pass 1809 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE IMPORT-FACT-CAPTURE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1818 server tests across 296 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the invoice-jobs-paging commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1818 · suites 296 · pass 1818 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE INVOICE-JOBS-PAGING COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1809 → 1818 is **+9**, one new describe appended to `captureFetchContract.test.js`;
+  suites 295 → 296 is that describe. React did not move — no `src/` file touched — and was
+  re-measured. **All four predicted before the run and matched.**
+  ⚠ **AN ABSENT FIELD READ AS HEALTH, AND THAT IS THE DEFECT WORTH REMEMBERING.**
+  `fetchInvoiceWithJobs` selected `jobs(first: 10)` and `archivedJobs(first: 10)` with **no
+  `pageInfo` on either**, so `assertInvoiceJobsComplete` could not catch a truncation:
+  `hasNextPage` was `undefined`, and `undefined` is not `true`. A completeness check that reads a
+  field nobody selects reports completeness it never observed.
+  ⚠ **AND THE CONSEQUENCE WAS A WRONG BONUS, NOT A MISSING ONE.** `evaluateReferral`
+  (`server/referralRules.js`) collects Job Type custom fields from `jobs.nodes` PLUS
+  `archivedJobs.nodes` and picks a payout schedule from them — a Full Roof label selects the
+  ESCALATING schedule. Dropping the job that carries that label pays on the wrong schedule, or
+  returns `no_job_type_found` and pays nothing. **Silent, and money.** The regression fixture puts
+  the deciding label on the **61st** archived node on purpose, past any plausible cap.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE IMPORT-FACT-CAPTURE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.* It read **1809 / 295 / 1342 / 80**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE IMPORT-FACT-CAPTURE COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 1798 → 1809 is **+11 = 8 + 3**: eight in a new describe appended to
   `repImportScope.test.js` and three appended to an EXISTING describe in
   `captureFetchContract.test.js` (the mechanical fence gaining the import's selections). Suites

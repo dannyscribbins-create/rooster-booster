@@ -566,3 +566,170 @@ describe('capture fetch — (iv) a fetched invoice carries money, dates, status 
     // jobs.nodes and then invoices.nodes.
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+describe('capture fetch — (v) fetchInvoiceWithJobs pages BOTH job connections to exhaustion', () => {
+// ═════════════════════════════════════════════════════════════════════════════
+
+  // ⚠ THE MONEY PATH, AND THE OLD DEFECT WAS A WRONG BONUS RATHER THAN A MISSING ONE.
+  // evaluateReferral collects Job Type custom fields from jobs.nodes PLUS archivedJobs.nodes and
+  // picks a payout schedule from them — a Full Roof label selects the ESCALATING schedule.
+  // `archivedJobs(first: 10)` with no pageInfo could drop the job carrying that label, so the
+  // referral paid on the wrong schedule, or returned no_job_type_found and was not paid at all.
+  // ⚠ AND assertInvoiceJobsComplete COULD NOT SEE IT: with no pageInfo selected, hasNextPage is
+  // `undefined`, which is not `true`. An absent field reads as health.
+
+  const invoiceQueries = jobberRouter._captureQueries;
+
+  // A job carrying a Job Type label, so a dropped node is a dropped payout decision.
+  const jobNode = (i, label) => ({
+    id: `aj-${i}`,
+    customFields: label ? [{ label: 'Job Type', valueDropdown: label }] : [],
+  });
+
+  // ⚠ THE HARNESS ANSWERS FROM WHAT THE QUERY SELECTS, WHICH IS THE LESSON FROM 3a-2 AND 3b.
+  // Twice in two commits an injection produced NO red because the stub returned a fixed object
+  // regardless of the query. Here: a page is only ever returned when the query asks for that
+  // connection, and pageInfo is only supplied when the query selects it — so restoring
+  // `archivedJobs(first: 10)` with no pageInfo genuinely truncates, exactly as production did.
+  function installInvoice({ jobs = [], archived = [], pageSize = 50 } = {}) {
+    calls = [];
+    const slice = (all, after, query, conn) => {
+      const start = after ? Number(after) : 0;
+      const nodes = all.slice(start, start + pageSize);
+      const end = start + nodes.length;
+      const out = { nodes };
+      // pageInfo ONLY if the query selected it for this connection.
+      const block = sliceConnectionBlock(query, conn);
+      if (/pageInfo/.test(block)) {
+        out.pageInfo = { hasNextPage: end < all.length, endCursor: end < all.length ? String(end) : null };
+      }
+      return out;
+    };
+
+    axios.post = async (url, body, config) => {
+      calls.push({ query: body.query, variables: body.variables, headers: config.headers });
+      const q = body.query;
+      if (/GetInvoiceJobsPage/.test(q)) {
+        return { data: { data: { invoice: { jobs: slice(jobs, body.variables.after, q, 'jobs') } } } };
+      }
+      if (/GetInvoiceArchivedJobsPage/.test(q)) {
+        return { data: { data: { invoice: { archivedJobs: slice(archived, body.variables.after, q, 'archivedJobs') } } } };
+      }
+      if (!/GetInvoiceWithJobs/.test(q)) throw new Error('unexpected query in this fixture');
+      const invoice = {
+        id: 'inv-money', invoiceNumber: 5555, invoiceStatus: 'paid', issuedDate: '2026-01-01T00:00:00Z',
+        waitingForFinancedPayment: false, amounts: { total: 12000 }, client: { id: 'jc-1', name: 'C' },
+      };
+      if (/\bjobs\(first:/.test(q)) invoice.jobs = slice(jobs, null, q, 'jobs');
+      if (/\barchivedJobs\(first:/.test(q)) invoice.archivedJobs = slice(archived, null, q, 'archivedJobs');
+      return { data: { data: { invoice } } };
+    };
+  }
+
+  // Returns just the named connection's selection, by brace matching, so a pageInfo check cannot
+  // be satisfied by the OTHER connection selecting one.
+  function sliceConnectionBlock(query, conn) {
+    const at = query.indexOf(`${conn}(first:`);
+    if (at < 0) return '';
+    const open = query.indexOf('{', at);
+    if (open < 0) return '';
+    let depth = 0;
+    for (let i = open; i < query.length; i += 1) {
+      if (query[i] === '{') depth += 1;
+      else if (query[i] === '}') { depth -= 1; if (depth === 0) return query.slice(at, i + 1); }
+    }
+    return query.slice(at);
+  }
+
+  it('both job connections select pageInfo, or truncation cannot be detected at all', () => {
+    for (const conn of ['jobs', 'archivedJobs']) {
+      const block = sliceConnectionBlock(invoiceQueries.INVOICE_WITH_JOBS_QUERY, conn);
+      assert.ok(block.length > 0, `the invoice query must select ${conn}`);
+      assert.match(block, /pageInfo\s*\{[^}]*hasNextPage/, `${conn} must select hasNextPage`);
+      assert.match(block, /pageInfo\s*\{[^}]*endCursor/, `${conn} must select endCursor — a cursor-less pager stops silently`);
+    }
+  });
+
+  it('an invoice with MORE THAN ONE PAGE of archived jobs returns every one of them', async () => {
+    const archived = Array.from({ length: 63 }, (_, i) => jobNode(i, i === 60 ? 'Full Roof' : 'Repair'));
+    installInvoice({ archived });
+    const invoice = await fetchInvoiceWithJobs('inv-money', TOKEN);
+    assert.equal(invoice.archivedJobs.nodes.length, 63);
+    // ⚠ THE 61st NODE CARRIES THE Full Roof LABEL ON PURPOSE. It is past any first:10 or first:50
+    // cap, so a truncating fetch drops the label that selects the escalating payout schedule.
+    const labels = invoice.archivedJobs.nodes.flatMap((j) => (j.customFields || []).map((f) => f.valueDropdown));
+    assert.ok(labels.includes('Full Roof'), 'the Job Type that decides the payout must survive paging');
+  });
+
+  it('an invoice with more than one page of LIVE jobs returns every one of them', async () => {
+    const jobs = Array.from({ length: 51 }, (_, i) => jobNode(i, 'Repair'));
+    installInvoice({ jobs });
+    const invoice = await fetchInvoiceWithJobs('inv-money', TOKEN);
+    assert.equal(invoice.jobs.nodes.length, 51);
+  });
+
+  it('both connections page independently in one fetch', async () => {
+    installInvoice({
+      jobs: Array.from({ length: 52 }, (_, i) => jobNode(`l${i}`, 'Repair')),
+      archived: Array.from({ length: 55 }, (_, i) => jobNode(`a${i}`, 'Repair')),
+    });
+    const invoice = await fetchInvoiceWithJobs('inv-money', TOKEN);
+    assert.equal(invoice.jobs.nodes.length, 52);
+    assert.equal(invoice.archivedJobs.nodes.length, 55);
+  });
+
+  it('a single page makes NO follow-up request — paging is not a per-call cost', async () => {
+    installInvoice({ jobs: [jobNode(1, 'Repair')], archived: [] });
+    await fetchInvoiceWithJobs('inv-money', TOKEN);
+    assert.equal(calls.length, 1, 'the common small invoice must still cost one request');
+  });
+
+  it('hasNextPage with NO endCursor THROWS rather than returning a short job set', async () => {
+    installInvoice({ archived: [jobNode(1, 'Repair')] });
+    const saved = axios.post;
+    axios.post = async (url, body, config) => {
+      const res = await saved(url, body, config);
+      if (/GetInvoiceWithJobs/.test(body.query)) {
+        res.data.data.invoice.archivedJobs.pageInfo = { hasNextPage: true, endCursor: null };
+      }
+      return res;
+    };
+    await assert.rejects(() => fetchInvoiceWithJobs('inv-money', TOKEN), /hasNextPage with no endCursor/);
+  });
+
+  it('an errors array on a FOLLOW-UP job page is a failure, not a short set', async () => {
+    const archived = Array.from({ length: 60 }, (_, i) => jobNode(i, 'Repair'));
+    installInvoice({ archived });
+    const saved = axios.post;
+    axios.post = async (url, body, config) => {
+      if (/GetInvoiceArchivedJobsPage/.test(body.query)) {
+        return { data: { errors: [{ message: 'throttled mid-page' }], data: { invoice: null } } };
+      }
+      return saved(url, body, config);
+    };
+    await assert.rejects(() => fetchInvoiceWithJobs('inv-money', TOKEN), /throttled mid-page/);
+  });
+
+  it('a 200 carrying errors on the FIRST page is a failure, with the GraphQL message', async () => {
+    calls = [];
+    axios.post = async () => ({ data: { errors: [{ message: 'bad field' }], data: { invoice: null } } });
+    await assert.rejects(
+      () => fetchInvoiceWithJobs('inv-money', TOKEN),
+      (err) => {
+        assert.match(err.message, /Jobber GraphQL error/);
+        assert.doesNotMatch(err.message, /no invoice returned/);
+        return true;
+      }
+    );
+  });
+
+  it('the invoice still carries the money and status the referral engine reads', async () => {
+    installInvoice({ jobs: [jobNode(1, 'Full Roof')] });
+    const invoice = await fetchInvoiceWithJobs('inv-money', TOKEN);
+    assert.equal(invoice.amounts.total, 12000);
+    assert.equal(invoice.invoiceStatus, 'paid');
+    assert.equal(invoice.waitingForFinancedPayment, false);
+    assert.equal(invoice.client.id, 'jc-1');
+  });
+});

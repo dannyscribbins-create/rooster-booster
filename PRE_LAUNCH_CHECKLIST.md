@@ -5616,16 +5616,26 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       whether a burst of webhooks for many clients can exhaust the bucket faster than 500/s
       restores it. Read `requestedQueryCost` off a real response before setting any number.
 
-- [ ] ⚠ **`fetchInvoiceWithJobs` CAN TRUNCATE AN INVOICE'S JOB SET SILENTLY** (raised 2026-09-25
-      in Commit 3a). It selects `jobs(first: 10)` and `archivedJobs(first: 10)` with **no
-      `pageInfo` on either**, so an invoice covering more than ten jobs loses the rest with
-      nothing to say so — and `assertInvoiceJobsComplete` cannot catch it, because a missing
-      `pageInfo` makes `hasNextPage` `undefined`, which is not `true`. **An absent field reads as
-      health.** It feeds the referral rules engine's job-type detection inside the invoice-paid
-      handler, so the blast radius is a wrong job type on a big multi-job invoice.
-      **Fix: add `pageInfo { hasNextPage }` to both connections and decide what the handler does
-      when the set is incomplete** — throwing there stops a referral conversion on the money path,
-      so the degradation needs a ruling rather than a default.
+- [x] **✅ FIXED — `fetchInvoiceWithJobs` TRUNCATED AN INVOICE'S JOB SET SILENTLY** (raised
+      2026-09-25 in Commit 3a, fixed in Commit 3c under Danny's ruling: same rule as every
+      capture-path fetch — page to exhaustion, fail loudly, never truncate). Both connections now
+      select `pageInfo` and are paged to exhaustion through the SHARED pager
+      (`pageClientConnection`, which gained a `root` option rather than growing a second copy of
+      the loop). 50 is a page size, not a cap; a cursor anomaly, an absent connection, a mid-page
+      errors array and the page cap all throw.
+      ⚠ **THE ORIGINAL DEFECT IS THE ONE TO REMEMBER: AN ABSENT FIELD READ AS HEALTH.** With no
+      `pageInfo` selected, `assertInvoiceJobsComplete` saw `hasNextPage === undefined`, which is
+      not `true`, so a completeness check reported completeness it had no way to observe.
+      ⚠ **AND THE CONSEQUENCE WAS A WRONG BONUS, NOT A MISSING ONE.** `evaluateReferral` collects
+      Job Type custom fields from `jobs.nodes` PLUS `archivedJobs.nodes` and picks a payout
+      schedule from them — a Full Roof label selects the escalating schedule. Dropping the job
+      carrying that label pays on the wrong schedule, or returns `no_job_type_found` and pays
+      nothing at all.
+      **The caller needed NO change, and that was verified rather than assumed:** the invoice-paid
+      handler's existing catch already calls `logError` with source
+      `POST /webhooks/jobber/invoice-paid — fetchInvoiceWithJobs` and `return`s — and the fetch sits
+      far above `evaluateReferral`, so a throw takes **no money-path action** on a partial set. A
+      non-401 throw takes the `else` branch; the 401 force-refresh retry is unaffected.
       Danny's ruling: an invoice's job set comes from `Invoice.jobs` **and**
       `Invoice.archivedJobs`. Commit 3's `writeInvoiceJobLinks` handles both and records which
       connection each link came from, **and is tested on both** — but Commit 2's capture queries

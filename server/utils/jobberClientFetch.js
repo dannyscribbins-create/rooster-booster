@@ -240,7 +240,7 @@ function assertInvoiceJobsComplete(invoiceNodes, label) {
  * ⚠ A missing endCursor with hasNextPage true is a THROW, never a quiet stop — that is the
  * shape that returns a short answer and looks complete.
  */
-async function pageClientConnection({ query, clientId, token, field, firstPage, label }) {
+async function pageClientConnection({ query, clientId, token, field, firstPage, label, root = 'client' }) {
   const nodes = [...(firstPage?.nodes || [])];
   let pageInfo = firstPage?.pageInfo;
   let pages = 1;
@@ -256,7 +256,10 @@ async function pageClientConnection({ query, clientId, token, field, firstPage, 
     const response = await capturePost(query, { id: clientId, after: pageInfo.endCursor }, token);
     assertNoJobberGraphQLErrors(response, `${label} (${field} page ${pages + 1})`);
 
-    const connection = response.data?.data?.client?.[field];
+    // ⚠ `root` EXISTS BECAUSE Invoice.jobs IS PAGED THE SAME WAY Client.jobs IS (Commit 3c), and
+    // a second copy of this loop is what CLAUDE.md's shared-utility rule forbids. It defaults to
+    // 'client' so every existing caller is unchanged.
+    const connection = response.data?.data?.[root]?.[field];
     if (!connection) {
       throw new Error(`${label}: ${field} connection absent on page ${pages + 1}`);
     }
