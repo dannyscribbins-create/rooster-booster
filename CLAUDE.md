@@ -385,8 +385,38 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1874 server tests across 307 suites, and 1358 React tests across 82 files** (measured 2026-09-25 by the paid-client-audience commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1874 · suites 307 · pass 1874 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PAID-CLIENT-AUDIENCE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1892 server tests across 309 suites, and 1358 React tests across 82 files** (measured 2026-09-25 by the capture-then-decide commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1892 · suites 309 · pass 1892 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CAPTURE-THEN-DECIDE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1874 → 1892 is **+18 = 16 + 2**: sixteen in one new file (`captureThenDecide.test.js`)
+  and **two in an EXISTING describe** in `captureFetchContract.test.js`, where the mechanical
+  reads-vs-selects fence gained a fourth writer over its two selections. Suites 307 → 309 is the
+  new file's **two** top-level describes only. React did not move — no `src/` file was touched —
+  and was re-measured rather than carried. **All four predicted before the run and matched.**
+  ⚠ **THE FENCE THAT WAS SUPPOSED TO CATCH THIS ARC'S RECURRING DEFECT COVERED TWO WRITERS OUT
+  OF FOUR, AND ITS GREEN WAS EVIDENCE ABOUT THOSE TWO.** `writeQuoteFacts` keys its row on
+  `n.client.id` and **neither capture query selected `client` on a quote** — so a live capture
+  filtered out every quote and reported success having written nothing. Invisible because the only
+  writer of quote facts had been the IMPORT, whose own query does select it. The same hole existed
+  on `requests`. Both columns added, and the fence widened, because fixing the columns alone would
+  leave the next missing column to ship identically. **A mechanism reporting health it never
+  observed, inside the mechanism built to stop exactly that.**
+  ⚠ **SEVEN GUARD-PROOFS, AND FOUR OF THEM WERE INVALID ON THEIR FIRST WRITING — EVERY ONE
+  READING GREEN.** Each was a plausible edit that did not reintroduce the defect: (i) inserted a
+  throwaway decide above the capture and left the real one below; (vi) targeted paging that the
+  file under test never exercises; (vii) failed three separate times — it guarded one property
+  access so the code THREW instead of misbehaving, then hit the CAPTURE gate instead of the TAG
+  gate (Commit 5 gave `upsertAndTagClient` two `if (relatedData)` blocks), then finally fired once
+  the test got a timing control. **A green result from the wrong injection is indistinguishable
+  from a fence that does not fire, and it is the more flattering reading.**
+  ⚠ **AND TWO OF THIS COMMIT'S OWN NEW CASES WERE VACUOUS, BOTH FOUND BY A GUARD-PROOF REFUSING
+  TO GO RED.** The PARITY case handed the door the same data it had captured, so deciding from the
+  live object and from the facts gave one answer — repaired so the two sources DISAGREE. And the
+  failed-fetch case waited on an observable that precedes the code under test, twice: first an
+  `error_log` row the FETCH writes, then `last_synced_at` which the UPSERT bumps. **An absence
+  assertion needs a timing control, and its paired positive is what supplies one.**
+  ⚠ **AND A `git checkout` IS STILL NOT HOW A GUARD-PROOF IS REVERTED** — see the previous entry.
+  Every revert here was an inverse patch, each verified byte-identical by sha256.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PAID-CLIENT-AUDIENCE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
   **BOTH HALVES MOVED, EACH BY ONE NEW FILE.** Server 1862 → 1874 is **+12**, one new file
   (`payingClientAudience.test.js`); suites 305 → 307 is that file's **two** top-level describes.
   React 1353 → 1358 is **+5** in one new file (`bareTagGroup.test.jsx`), and 81 → 82 is that file.

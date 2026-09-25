@@ -47,15 +47,35 @@ const { jobberShouldRetry } = require('./retryHelpers');
 const JOBBER_GRAPHQL_URL = 'https://api.getjobber.com/api/graphql';
 const JOBBER_API_VERSION = '2026-05-12';
 
-// Page size per round trip. Introspection reported the throttle at maximumAvailable 10000 and
-// restoreRate 500/s, so 50 nodes per connection per round is comfortably inside it while
-// keeping the number of round trips low for the common small client.
-const PAGE_SIZE = 50;
+// Page size per round trip.
+//
+// ⚠ LOWERED 50 → 20 IN 3d PHASE 1a COMMIT 5, AND THE REASON IS `requestedQueryCost`, NOT
+// `actualQueryCost`. Danny measured this query in GraphiQL at the pinned 2026-05-12 (client
+// Adrianne Boswell, first page): **requested 7730, actual 240** — a ~32× gap. Jobber checks
+// the REQUESTED figure against the available bucket BEFORE running the query and refunds the
+// unused part afterwards, so at ~7730 reserved against a 10000 ceiling **a capture only runs
+// when the bucket is nearly full.** Any concurrent Jobber use — the rep sweep, a webhook
+// burst, an import — throttles captures that in truth cost a few hundred points each.
+// ⚠ AND ONE CLIENT EDIT SENDS TWO OF THEM: client-create and client-update call
+// fetchFullClient AND fetchClientRelatedData (requested 8128), back to back.
+// ⚠ SMALLER PAGES LOSE NOTHING HERE **BECAUSE EVERY CLIENT-LEVEL CONNECTION IS PAGED TO
+// EXHAUSTION** (N3, Commit 2) — pageClientConnection throws rather than returning a short
+// answer. The cost of a lower number is more round trips on a large client, each one cheap
+// enough to be admitted when the bucket is only part-full, which is the trade being made.
+const PAGE_SIZE = 20;
 
 // Nested job ids per invoice. This is the ONE remaining nested cap and it is not a record
 // cap: it bounds how many jobs a SINGLE invoice may name. A cap that could silently drop a
 // job id would break the invoice-to-sale link, so it THROWS rather than truncating — see
 // assertInvoiceJobsComplete below.
+//
+// ⚠ DELIBERATELY **NOT** LOWERED IN COMMIT 5, AND THIS IS THE ONE PLACE WHERE "smaller pages
+// lose nothing" IS FALSE. This connection is NOT paged — `assertInvoiceJobsComplete` THROWS
+// when it overflows. So cutting it to 10 would not shrink a page; it would turn every invoice
+// naming 11+ jobs into a hard capture failure, and under Commit 5's rule 2 a failed capture
+// means **no decision is written for that client at all.** It is the largest single term in
+// the requested cost (invoices × (jobs + archivedJobs)) and it still stays at 50 for that
+// reason. Lowering it requires paging it first, which is its own commit.
 const INVOICE_JOBS_PAGE_SIZE = 50;
 
 // A runaway guard, not a record cap. Reaching it means the connection is larger than any real
@@ -90,7 +110,13 @@ const CLIENT_SCALARS = `
             phones { number description }
             emails { address description }`;
 
-const QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id }`;
+// ⚠ `client { id }` IS LOAD-BEARING AND WAS ABSENT UNTIL COMMIT 5. writeQuoteFacts filters
+// `n?.id && n.client?.id`, so a quote without it is DROPPED SILENTLY — no error, no row, and a
+// capture that reports success having written nothing. It was invisible while the only writer of
+// quote facts was the IMPORT, whose own query does select it (repImportScope.js); the moment a
+// LIVE door captures, the omission decides every quote. Same shape as the font columns the
+// branding loader never selected: a consumer reading a field no query asks for takes the default.
+const QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id } client { id }`;
 
 // ⚠ EVERY FIELD BELOW IS READ BY A FACT WRITER IN server/utils/factCapture.js, AND THAT IS NOT
 // A COINCIDENCE — it is enforced. The mechanical fence in
@@ -170,8 +196,8 @@ const INVOICES_PAGE_QUERY = `query GetClientInvoicesPage($id: EncodedId!, $after
  * Output: the axios response.
  * ⚠ Every caller must pass its result through assertNoJobberGraphQLErrors.
  */
-async function capturePost(query, variables, token) {
-  return retryWithBackoff(
+async function capturePost(query, variables, token, meta = {}) {
+  const response = await retryWithBackoff(
     () => axios.post(
       JOBBER_GRAPHQL_URL,
       { query, variables },
@@ -185,6 +211,45 @@ async function capturePost(query, variables, token) {
     ),
     { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
   );
+  logCaptureCost(response, meta);
+  return response;
+}
+
+/**
+ * Logs one line per capture-path Jobber fetch carrying the throttle figures.
+ * Inputs: the axios response, and { door, contractorId, label } naming who asked.
+ * Output: nothing. Never throws — a logging failure must not fail a capture.
+ *
+ * ⚠ IT LOGS `requestedQueryCost` FIRST BECAUSE THAT IS THE FIGURE THAT THROTTLES. Jobber
+ * reserves the REQUESTED amount against the available bucket before running the query and
+ * refunds the unused part after, so a capture whose ACTUAL cost is 240 can still be refused
+ * when the bucket holds 7000. Danny measured exactly that gap in GraphiQL at 2026-05-12:
+ * GetClient requested 7730 / actual 240, GetClientRelated requested 8128 / actual 351.
+ * **A log that showed only `actualQueryCost` would report a system nowhere near its limit
+ * while captures were being throttled** — the health-it-cannot-observe shape.
+ *
+ * ⚠ NO CLIENT DATA BEYOND THE ID. The line carries the door, the contractor, a label and the
+ * four throttle numbers. Names, emails and phones are in the response and none of them go here.
+ *
+ * ⚠ AND THE NUMBERS COME FROM THE RESPONSE, NOT FROM A CONSTANT. `fullJobberImport`'s pacing
+ * compares a hardcoded PAGE_COST against the bucket, and that constant's own comment records it
+ * as unsourced; this line is what makes the real figure observable per query shape.
+ */
+function logCaptureCost(response, { door = 'capture', contractorId = null, label = null } = {}) {
+  try {
+    const cost = response?.data?.extensions?.cost;
+    if (!cost) return;
+    const t = cost.throttleStatus || {};
+    // diagnostic log — intentional
+    console.log(
+      `[capture-cost] door=${door} contractor=${contractorId || '-'}`
+      + `${label ? ` q=${label}` : ''}`
+      + ` requested=${cost.requestedQueryCost} actual=${cost.actualQueryCost}`
+      + ` available=${t.currentlyAvailable} max=${t.maximumAvailable} restore=${t.restoreRate}`
+    );
+  } catch {
+    // A cost line is an observation, never a precondition.
+  }
 }
 
 /**
@@ -240,7 +305,7 @@ function assertInvoiceJobsComplete(invoiceNodes, label) {
  * ⚠ A missing endCursor with hasNextPage true is a THROW, never a quiet stop — that is the
  * shape that returns a short answer and looks complete.
  */
-async function pageClientConnection({ query, clientId, token, field, firstPage, label, root = 'client' }) {
+async function pageClientConnection({ query, clientId, token, field, firstPage, label, root = 'client', meta = {} }) {
   const nodes = [...(firstPage?.nodes || [])];
   let pageInfo = firstPage?.pageInfo;
   let pages = 1;
@@ -253,7 +318,8 @@ async function pageClientConnection({ query, clientId, token, field, firstPage, 
       throw new Error(`${label}: ${field} exceeded ${MAX_PAGES} pages — refusing to return a partial set`);
     }
 
-    const response = await capturePost(query, { id: clientId, after: pageInfo.endCursor }, token);
+    const response = await capturePost(query, { id: clientId, after: pageInfo.endCursor }, token,
+      { ...meta, label: `${meta.label || field} p${pages + 1}` });
     assertNoJobberGraphQLErrors(response, `${label} (${field} page ${pages + 1})`);
 
     // ⚠ `root` EXISTS BECAUSE Invoice.jobs IS PAGED THE SAME WAY Client.jobs IS (Commit 3c), and
@@ -286,10 +352,15 @@ async function pageClientConnection({ query, clientId, token, field, firstPage, 
  * deriveAndSaveTags and every branch reads an empty array, so it returns 'lead' for the whole
  * book with no error and the dependent stat sits at zero forever.
  */
-async function fetchFullClient(clientId, token) {
+async function fetchFullClient(clientId, token, costMeta = {}) {
   const label = `fetchFullClient ${clientId}`;
+  // ⚠ OPTIONAL AND ADDITIVE (Commit 5). Every existing caller keeps working unchanged; a caller
+  // that knows its door and contractor passes them so the cost line can be attributed. It is
+  // the DOOR that makes the log useful — an untagged cost line cannot tell a webhook burst
+  // from the sweep, which is the only question the numbers are being read to answer.
+  const meta = { door: costMeta.door || 'fetchFullClient', contractorId: costMeta.contractorId || null, label: 'GetClient' };
 
-  const response = await capturePost(BASE_QUERY, { id: clientId }, token);
+  const response = await capturePost(BASE_QUERY, { id: clientId }, token, meta);
   assertNoJobberGraphQLErrors(response, label);
 
   const client = response.data?.data?.client;
@@ -298,9 +369,9 @@ async function fetchFullClient(clientId, token) {
   }
 
   const [quoteNodes, jobNodes, invoiceNodes] = await Promise.all([
-    pageClientConnection({ query: QUOTES_PAGE_QUERY, clientId, token, field: 'quotes', firstPage: client.quotes, label }),
-    pageClientConnection({ query: JOBS_PAGE_QUERY, clientId, token, field: 'jobs', firstPage: client.jobs, label }),
-    pageClientConnection({ query: INVOICES_PAGE_QUERY, clientId, token, field: 'invoices', firstPage: client.invoices, label }),
+    pageClientConnection({ query: QUOTES_PAGE_QUERY, clientId, token, field: 'quotes', firstPage: client.quotes, label, meta }),
+    pageClientConnection({ query: JOBS_PAGE_QUERY, clientId, token, field: 'jobs', firstPage: client.jobs, label, meta }),
+    pageClientConnection({ query: INVOICES_PAGE_QUERY, clientId, token, field: 'invoices', firstPage: client.invoices, label, meta }),
   ]);
 
   assertInvoiceJobsComplete(invoiceNodes, label);

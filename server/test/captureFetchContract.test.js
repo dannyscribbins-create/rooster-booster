@@ -233,6 +233,19 @@ describe('capture fetch — (ii) THE BOUNDARY FENCE: what consumers read must be
       'fetchClientRelatedData RELATED_INVOICE_FIELDS': jobberRouter._captureFields.RELATED_INVOICE_FIELDS,
       'repImportScope REP_INVOICE_FIELDS': repImport.REP_INVOICE_FIELDS,
     }],
+    // ⚠ THE QUOTE WRITER WAS NOT IN THIS LIST UNTIL COMMIT 5, AND THE GAP SHIPPED THE DEFECT
+    // THIS FENCE EXISTS TO CATCH. writeQuoteFacts keys its row on `n.client.id`, and NEITHER
+    // live selection carried `client { id }` — so a live capture filtered out every quote and
+    // reported success having written nothing. It was invisible because the only writer of
+    // quote facts was the IMPORT, whose own query does select it.
+    // ⚠ THE FENCE PASSED THE WHOLE TIME, AND THAT IS THE ENTRY WORTH KEEPING: it covered
+    // writeJobFacts and writeInvoiceFacts only, so its green was evidence about two writers
+    // out of four — a mechanism reporting health it never observed. Fixing the two columns
+    // without widening the list would leave the next missing column to ship the same way.
+    ['writeQuoteFacts', {
+      'fetchFullClient QUOTE_FIELDS': fetchModule.QUOTE_FIELDS,
+      'fetchClientRelatedData RELATED_QUOTE_FIELDS': jobberRouter._captureFields.RELATED_QUOTE_FIELDS,
+    }],
   ];
 
   for (const [writer, selections] of WRITER_SELECTIONS) {

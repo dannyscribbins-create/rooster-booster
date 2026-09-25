@@ -29,6 +29,14 @@ const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
 const { refreshTokenIfNeeded, getFreshContractorAccessToken, fetchRequestById, fetchAttributionData } = require('../../crm/jobber');
 const { attributeFromRequest } = require('../../utils/requestAttribution');
+// ── CAPTURE-THEN-DECIDE (3d Phase 1a Commit 5) ───────────────────────────────
+// ⚠ classifyPipelineStatus IS STILL IMPORTED ABOVE AND IS NO LONGER A DECISION INPUT HERE.
+// syncSingleClient (the nightly/pipeline_cache path) still uses it; the two webhook doors in
+// this file do not. Removing the import would break that other consumer, so the rule is
+// enforced by the fence in server/test/captureThenDecide.test.js rather than by absence.
+const { captureClientFacts } = require('../../utils/factCapture');
+const { decideFromFacts } = require('../../utils/attributionDecide');
+const { runAttributionEngine } = require('../../utils/attributionEngine');
 const { isInvoicePaid, PAID_STATUS } = require('../../utils/invoicePaid');
 const {
   fetchFullClient,
@@ -256,6 +264,29 @@ async function fetchClientJobsForJobUpdate(clientId, token) {
 // JOB_FIELDS in server/utils/jobberClientFetch.js for the type-by-type list.
 // ⚠ customFields STAYS: deriveJobberTags reads it off each job for the work_category and
 // material_type tags, and it is the one thing here that is NOT a fact-writer field.
+// ── CAPTURE PAGE SIZES (3d Phase 1a Commit 5) ────────────────────────────────
+//
+// ⚠ THESE WERE FIVE HARDCODED `first: 50` LITERALS UNTIL COMMIT 5, AND A COST FIX CANNOT BE
+// APPLIED TO A NUMBER THAT IS WRITTEN OUT FIVE TIMES. They are named here so the value moves
+// once, and so the fence in server/test/captureFetchContract.test.js can read it.
+//
+// ⚠ 20, NOT 50, BECAUSE `requestedQueryCost` IS WHAT THROTTLES — NOT `actualQueryCost`.
+// Danny measured GetClientRelated in GraphiQL at the pinned 2026-05-12: **requested 8128,
+// actual 351.** Jobber reserves the REQUESTED figure against the available bucket before
+// running the query and refunds the remainder, so at ~8128 against a 10000 ceiling this
+// capture is admitted **only when the bucket is nearly full** — and client-create/-update send
+// fetchFullClient (requested 7730) immediately before it.
+// ⚠ SMALLER PAGES LOSE NOTHING because all four client-level connections below are paged to
+// exhaustion by pageClientConnection, which throws rather than returning a short answer.
+const RELATED_PAGE_SIZE = 20;
+
+// ⚠ STAYS AT 50, AND THE ASYMMETRY IS DELIBERATE — see the matching note at
+// INVOICE_JOBS_PAGE_SIZE in server/utils/jobberClientFetch.js. This connection is NOT paged:
+// assertInvoiceJobsComplete THROWS when it overflows, so lowering it would convert an invoice
+// naming 11+ jobs from a capture into a hard failure, and under Commit 5's rule 2 that means no
+// decision is written for the client at all.
+const RELATED_INVOICE_JOBS_PAGE_SIZE = 50;
+
 const RELATED_JOB_FIELDS = `id jobNumber jobStatus jobType title
                 createdAt updatedAt startAt endAt completedAt
                 total invoicedTotal uninvoicedTotal
@@ -270,10 +301,12 @@ const RELATED_INVOICE_FIELDS = `id invoiceNumber invoiceStatus
                 client { id }
                 amounts { total subtotal invoiceBalance paymentsTotal
                           depositAmount discountAmount taxAmount }
-                jobs(first: 50) { nodes { id } pageInfo { hasNextPage } }
-                archivedJobs(first: 50) { nodes { id } pageInfo { hasNextPage } }`;
+                jobs(first: ${RELATED_INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }
+                archivedJobs(first: ${RELATED_INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }`;
 
-const RELATED_QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id }`;
+// ⚠ `client { id }` ADDED IN COMMIT 5 — see the note at QUOTE_FIELDS in jobberClientFetch.js.
+// Without it writeQuoteFacts drops every quote and the capture writes nothing, silently.
+const RELATED_QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id } client { id }`;
 
 const RELATED_BASE_QUERY = `query GetClientRelated($id: EncodedId!) {
           client(id: $id) {
@@ -283,19 +316,19 @@ const RELATED_BASE_QUERY = `query GetClientRelated($id: EncodedId!) {
               ... on CustomFieldText { label valueText }
               ... on CustomFieldDropdown { label valueDropdown }
             }
-            jobs(first: 50) {
+            jobs(first: ${RELATED_PAGE_SIZE}) {
               nodes { ${RELATED_JOB_FIELDS} }
               pageInfo { hasNextPage endCursor }
             }
-            quotes(first: 50) {
+            quotes(first: ${RELATED_PAGE_SIZE}) {
               nodes { ${RELATED_QUOTE_FIELDS} }
               pageInfo { hasNextPage endCursor }
             }
-            requests(first: 50) {
-              nodes { id requestStatus createdAt }
+            requests(first: ${RELATED_PAGE_SIZE}) {
+              nodes { id requestStatus createdAt client { id } }
               pageInfo { hasNextPage endCursor }
             }
-            invoices(first: 50) {
+            invoices(first: ${RELATED_PAGE_SIZE}) {
               nodes { ${RELATED_INVOICE_FIELDS} }
               pageInfo { hasNextPage endCursor }
             }
@@ -304,7 +337,7 @@ const RELATED_BASE_QUERY = `query GetClientRelated($id: EncodedId!) {
 
 const RELATED_JOBS_PAGE_QUERY = `query GetClientRelatedJobsPage($id: EncodedId!, $after: String) {
           client(id: $id) {
-            jobs(first: 50, after: $after) {
+            jobs(first: ${RELATED_PAGE_SIZE}, after: $after) {
               nodes { ${RELATED_JOB_FIELDS} }
               pageInfo { hasNextPage endCursor }
             }
@@ -313,7 +346,7 @@ const RELATED_JOBS_PAGE_QUERY = `query GetClientRelatedJobsPage($id: EncodedId!,
 
 const RELATED_QUOTES_PAGE_QUERY = `query GetClientRelatedQuotesPage($id: EncodedId!, $after: String) {
           client(id: $id) {
-            quotes(first: 50, after: $after) {
+            quotes(first: ${RELATED_PAGE_SIZE}, after: $after) {
               nodes { ${RELATED_QUOTE_FIELDS} }
               pageInfo { hasNextPage endCursor }
             }
@@ -322,8 +355,8 @@ const RELATED_QUOTES_PAGE_QUERY = `query GetClientRelatedQuotesPage($id: Encoded
 
 const RELATED_REQUESTS_PAGE_QUERY = `query GetClientRelatedRequestsPage($id: EncodedId!, $after: String) {
           client(id: $id) {
-            requests(first: 50, after: $after) {
-              nodes { id requestStatus createdAt }
+            requests(first: ${RELATED_PAGE_SIZE}, after: $after) {
+              nodes { id requestStatus createdAt client { id } }
               pageInfo { hasNextPage endCursor }
             }
           }
@@ -331,17 +364,22 @@ const RELATED_REQUESTS_PAGE_QUERY = `query GetClientRelatedRequestsPage($id: Enc
 
 const RELATED_INVOICES_PAGE_QUERY = `query GetClientRelatedInvoicesPage($id: EncodedId!, $after: String) {
           client(id: $id) {
-            invoices(first: 50, after: $after) {
+            invoices(first: ${RELATED_PAGE_SIZE}, after: $after) {
               nodes { ${RELATED_INVOICE_FIELDS} }
               pageInfo { hasNextPage endCursor }
             }
           }
         }`;
 
-async function fetchClientRelatedData(clientId, token) {
+async function fetchClientRelatedData(clientId, token, meta = {}) {
   const label = `fetchClientRelatedData ${clientId}`;
+  // ⚠ OPTIONAL AND ADDITIVE (Commit 5) — see the matching note in fetchFullClient. The door is
+  // what makes a cost line answer anything; an untagged one cannot separate a webhook burst
+  // from the sweep, which is the whole question the numbers are read for.
+  const costMeta = { door: meta.door || 'fetchClientRelatedData', contractorId: meta.contractorId || null };
 
-  const response = await capturePost(RELATED_BASE_QUERY, { id: clientId }, token);
+  const response = await capturePost(RELATED_BASE_QUERY, { id: clientId }, token,
+    { ...costMeta, label: 'GetClientRelated' });
   assertNoJobberGraphQLErrors(response, label);
 
   const client = response.data?.data?.client;
@@ -349,10 +387,10 @@ async function fetchClientRelatedData(clientId, token) {
   if (!client) return null;
 
   const [jobNodes, quoteNodes, requestNodes, invoiceNodes] = await Promise.all([
-    pageClientConnection({ query: RELATED_JOBS_PAGE_QUERY, clientId, token, field: 'jobs', firstPage: client.jobs, label }),
-    pageClientConnection({ query: RELATED_QUOTES_PAGE_QUERY, clientId, token, field: 'quotes', firstPage: client.quotes, label }),
-    pageClientConnection({ query: RELATED_REQUESTS_PAGE_QUERY, clientId, token, field: 'requests', firstPage: client.requests, label }),
-    pageClientConnection({ query: RELATED_INVOICES_PAGE_QUERY, clientId, token, field: 'invoices', firstPage: client.invoices, label }),
+    pageClientConnection({ query: RELATED_JOBS_PAGE_QUERY, clientId, token, field: 'jobs', firstPage: client.jobs, label, meta: costMeta }),
+    pageClientConnection({ query: RELATED_QUOTES_PAGE_QUERY, clientId, token, field: 'quotes', firstPage: client.quotes, label, meta: costMeta }),
+    pageClientConnection({ query: RELATED_REQUESTS_PAGE_QUERY, clientId, token, field: 'requests', firstPage: client.requests, label, meta: costMeta }),
+    pageClientConnection({ query: RELATED_INVOICES_PAGE_QUERY, clientId, token, field: 'invoices', firstPage: client.invoices, label, meta: costMeta }),
   ]);
 
   assertInvoiceJobsComplete(invoiceNodes, label);
@@ -490,7 +528,43 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData) {
   // function's four callers already guard `if (relatedData)`; the other two pass the
   // result of a fetch that resolves to null on failure. A null stage here means "not
   // observed this pass" and the COALESCE below preserves whatever was already stored.
-  const pipelineStage = relatedData ? classifyPipelineStatus(relatedData) : null;
+  // ⚠ CAPTURE, THEN DECIDE (Commit 5). This used to be
+  // `relatedData ? classifyPipelineStatus(relatedData) : null` — a decision taken from the LIVE
+  // fetch. It now comes from decideFromFacts, which reads only saved rows, so this door and the
+  // replay run the same code over the same facts (R5i).
+  //
+  // ⚠ A FAILED CAPTURE YIELDS null, AND null IS NOT A STAGE (rule 2). The upsert below
+  // COALESCEs it, so the stored stage survives untouched — "not observed this pass", exactly as
+  // an absent relatedData already meant. What must never happen is a decision taken from a fact
+  // set a failed capture may have left partial: that would write a confident wrong stage, and
+  // the next event would see a stored answer and have no reason to look again.
+  //
+  // ⚠ IDENTITY AND TAGS BELOW STILL RUN, AND THAT IS DANNY'S RULING (2026-09-25), NOT a reading
+  // of convenience. They are derived from the FETCH, not from the fact tables, so a fact-write
+  // failure says nothing about them — and skipping them would mean a brand-new client got no
+  // jobber_clients row at all on client-create. ⚠ HIS CONDITION IS THE OTHER HALF: they may only
+  // run off a COMPLETE fetch. That already holds structurally — `relatedData` is null when the
+  // fetch failed (Commit 2 made a GraphQL error throw, and every caller catches it to null), and
+  // the tag block below is gated on it. Since 4b `paying_client` can be REMOVED, so deriving
+  // tags from a partial fetch could strip a real one; the guard-proof for that is in
+  // captureThenDecide.test.js.
+  let pipelineStage = null;
+  if (relatedData) {
+    try {
+      await captureClientFacts(pool, { contractorId, client: relatedData });
+      const decided = await decideFromFacts(pool, { contractorId, jobberClientId: fullClient.id });
+      pipelineStage = decided.currentStatus;
+    } catch (capErr) {
+      await logError({
+        req: null,
+        contractorId,
+        error: new Error(`[upsertAndTagClient] capture failed for client ${fullClient.id}, no stage decided: ${capErr.message}`),
+        source: 'upsertAndTagClient — capture',
+        alert: false,
+      });
+      pipelineStage = null;
+    }
+  }
 
   // ── BLANK PROTECTION (Wave 0.2 item 1) ──────────────────────────────────────
   // COALESCE, not EXCLUDED, on the four identity-bearing columns. This upsert has
@@ -1950,7 +2024,23 @@ async function handleStageWebhook(req, topic) {
       return;
     }
 
-    const stage = classifyPipelineStatus(relatedData);
+    // ⚠ CAPTURE, THEN DECIDE (Commit 5) — was `classifyPipelineStatus(relatedData)`, a decision
+    // from the live fetch. A failed capture writes NO stage and returns (rule 2): this handler's
+    // entire job is the decision, so unlike upsertAndTagClient there is nothing else to preserve.
+    try {
+      await captureClientFacts(pool, { contractorId, client: relatedData });
+    } catch (capErr) {
+      await logError({
+        req,
+        contractorId,
+        error: new Error(`[${topic}] ${itemId} -> client ${jobberClientId}: capture failed, no stage written: ${capErr.message}`),
+        source: `POST /webhooks/jobber/${topic} — capture`,
+        alert: false,
+      });
+      return;
+    }
+
+    const { currentStatus: stage, client: factClient } = await decideFromFacts(pool, { contractorId, jobberClientId });
 
     // ⚠ UPDATE ONLY. See the block at the top of this section: a zero-row result is the
     // expected quiet outcome for a client the sync has not mirrored yet, not an error.
@@ -1973,6 +2063,51 @@ async function handleStageWebhook(req, topic) {
     // already committed by the time this runs; a paging failure must leave that
     // standing rather than rolling the handler into its catch. The nightly sync is the
     // backstop, and the failure is recorded.
+    // ── R5j — AN APPROVAL RUNS THE ENGINE, NOT ONLY THE STAGE ──────────────
+    //
+    // ⚠ QUOTE_APPROVED WAS STAGE-ONLY UNTIL COMMIT 5, AND THAT WAS THE GAP. An approved quote
+    // is the strongest signal a client has a salesperson, and until now it moved a display
+    // column and nothing else — the sticky was written only when a REQUEST happened to fire.
+    //
+    // ⚠ THE ANCHOR IS THE QUOTE'S OWN approved_at, READ BACK FROM THE FACTS WE JUST CAPTURED.
+    // Not NOW(), which would drift with delivery lag, and not the client's createdAt — the
+    // request path anchors on the triggering request's createdAt (R2) and this is the same
+    // rule applied to the triggering quote.
+    //
+    // ⚠ ISOLATED, LIKE THE SALES RECOMPUTE BELOW. The stage is already committed; an engine
+    // failure must leave it standing rather than rolling this handler into its catch.
+    if (topic === 'quote-approved') {
+      try {
+        const { rows: qRows } = await pool.query(
+          `SELECT approved_at FROM crm_quote_facts
+            WHERE contractor_id = $1 AND jobber_quote_id = $2`,
+          [contractorId, itemId]
+        );
+        const referralAnchor = qRows[0]?.approved_at || null;
+        await runAttributionEngine(pool, {
+          contractorId,
+          jobberClientId,
+          currentStatus: stage,
+          client: factClient,
+          fetchAttributionData: _fetchAttributionData,
+          token,
+          referralAnchor,
+          // R3, as on the request path — an unresolved client records NOTHING.
+          writeOrphanOnMiss: false,
+          logError,
+        });
+        console.log(`[${topic}] engine ran for client ${jobberClientId} (anchor ${referralAnchor || 'none'})`);
+      } catch (engErr) {
+        await logError({
+          req,
+          contractorId,
+          error: new Error(`[${topic}] stage written but attribution engine failed for client ${jobberClientId}: ${engErr.message}`),
+          source: `POST /webhooks/jobber/${topic} — attribution engine`,
+          alert: false,
+        });
+      }
+    }
+
     if (topic === 'job-create') {
       try {
         const counts = await refreshClientSales(pool, { contractorId, jobberClientId, token });

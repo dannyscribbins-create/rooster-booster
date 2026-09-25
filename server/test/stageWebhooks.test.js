@@ -54,23 +54,41 @@ function post(path, payloadObject) {
 // ⚠ THE CONNECTION SHAPE, deliberately written out. classifyPipelineStatus reads
 // jobs.nodes / quotes.nodes / job.invoices.nodes, and handing it the FLATTENED shape
 // built elsewhere for tag derivation returns 'lead' for everything with no error.
-function related({ jobs = [], quotes = [] } = {}) {
+// ⚠ THE FIXTURE MIRRORS WHAT THE QUERY SELECTS, AND COMMIT 5 MADE THAT BINDING.
+// The door no longer classifies this object — it CAPTURES it into the fact tables and then
+// decides from the rows. So a field the real query selects but this fixture omits is not a
+// cosmetic gap: the writer filters the node out, the capture reports success having written
+// nothing, and every stage reads 'lead'. Two were missing and both were found that way:
+//   · `client { id }` on quotes, jobs and invoices — every writer keys the row on it;
+//   · a TOP-LEVEL `invoices` connection — fetchClientRelatedData returns one, and
+//     captureClientFacts reads client.invoices.nodes as the authoritative invoice set.
+// Before Commit 5 neither mattered, because classifyPipelineStatus walked job.invoices.nodes
+// and never looked at either.
+function related({ jobs = [], quotes = [], invoices = [], requests = [] } = {}) {
   return {
     isCompany: false, isLead: false,
     tags: { nodes: [] }, customFields: [],
-    jobs: { nodes: jobs }, quotes: { nodes: quotes }, requests: { nodes: [] },
+    jobs: { nodes: jobs }, quotes: { nodes: quotes }, requests: { nodes: requests },
+    invoices: { nodes: invoices.length ? invoices : jobs.flatMap((j) => j.invoices?.nodes || []) },
   };
 }
 
-const activeQuote   = () => ({ id: 'q-1', quoteStatus: 'awaiting_response', createdAt: new Date().toISOString() });
-const archivedQuote = () => ({ id: 'q-2', quoteStatus: 'archived', createdAt: new Date().toISOString() });
+const OWNER = { id: CLIENT };
+const activeQuote   = () => ({ id: 'q-1', quoteStatus: 'awaiting_response', createdAt: new Date().toISOString(), client: OWNER });
+const archivedQuote = () => ({ id: 'q-2', quoteStatus: 'archived', createdAt: new Date().toISOString(), client: OWNER });
 const plainJob      = () => ({
   id: 'job-1', jobStatus: 'active', jobType: 'ONE_OFF', completedAt: null,
-  createdAt: new Date().toISOString(), invoices: { nodes: [] }, customFields: [],
+  createdAt: new Date().toISOString(), invoices: { nodes: [] }, customFields: [], client: OWNER,
+});
+const paidInvoice = () => ({
+  id: 'inv-1', invoiceStatus: 'paid', createdAt: new Date().toISOString(),
+  amounts: { total: 500, invoiceBalance: 0 }, client: OWNER,
+  jobs: { nodes: [{ id: 'job-1' }], pageInfo: { hasNextPage: false } },
+  archivedJobs: { nodes: [], pageInfo: { hasNextPage: false } },
 });
 const paidJob = () => ({
   ...plainJob(),
-  invoices: { nodes: [{ id: 'inv-1', invoiceStatus: 'paid', createdAt: new Date().toISOString(), amounts: { total: 500, invoiceBalance: 0 } }] },
+  invoices: { nodes: [paidInvoice()] },
 });
 
 const stageOf = async (id = CLIENT) => {
@@ -116,6 +134,16 @@ after(async () => {
 
 beforeEach(async () => {
   _resetTestOverrides();
+  // ⚠ THE FACT TABLES CLEAR FIRST, AND COMMIT 5 IS WHY THEY HAVE TO. The doors now DECIDE from
+  // these rows, so a job fact left by an earlier case makes the next one read 'sold' no matter
+  // what its own fixture says — which is exactly how this file first failed: an archived-quote
+  // case asserting 'not_sold' read 'sold' from the previous case's job. Before Commit 5 the
+  // decision came from the live fixture and no leak could reach it.
+  await pool.query('DELETE FROM crm_invoice_job_links');
+  await pool.query('DELETE FROM crm_invoice_facts');
+  await pool.query('DELETE FROM crm_job_facts');
+  await pool.query('DELETE FROM crm_quote_facts');
+  await pool.query('DELETE FROM crm_request_facts');
   await pool.query('DELETE FROM jobber_webhook_events');
   await pool.query('DELETE FROM admin_messages');
   await pool.query('DELETE FROM client_rep_assignments');
@@ -294,7 +322,13 @@ describe('Canvass-stage — delivery semantics', () => {
     await waitFor(async () => (await stageOf()) === 'inspection');
 
     // The quote is archived a minute later — a genuine second event.
-    installStageFetches(related({ quotes: [archivedQuote()] }));
+    // ⚠ THE SAME QUOTE ID, ARCHIVED — NOT A DIFFERENT ONE, AND COMMIT 5 IS WHY.
+    // This used to install `archivedQuote()`, which is q-2. While the decision came from the
+    // live fixture that read as "the client's quotes are now all archived". Under
+    // capture-then-decide FACTS ACCUMULATE: capturing q-2 leaves q-1 on disk still ACTIVE, so
+    // the client correctly reads 'inspection' forever and the case hung on its waitFor.
+    // Archiving q-1 is what Jobber actually does, and the upsert updates the row in place.
+    installStageFetches(related({ quotes: [{ ...activeQuote(), quoteStatus: 'archived' }] }));
     await post('/webhooks/jobber/quote-update', envelope({
       topic: 'QUOTE_UPDATE', itemId: 'q-1', occurredAt: '2026-09-21T03:26:55.000Z',
     }));

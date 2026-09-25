@@ -310,11 +310,65 @@ async function writeInvoiceJobLinks(db, contractorId, nodes) {
   return written;
 }
 
+/**
+ * Captures every fact a fetched client carries, in one call, for the live doors.
+ * Inputs: a db/pool/tx, and { contractorId, client } where `client` is the CONNECTION-shape
+ *         client returned by fetchFullClient or fetchClientRelatedData.
+ * Output: { requests, quotes, jobs, invoices, links } — rows offered per writer.
+ * Throws: on any write failure, and on an invoice whose job set is truncated.
+ *
+ * ⚠ IT THROWS RATHER THAN RETURNING A PARTIAL COUNT, AND THAT IS THE WHOLE CONTRACT.
+ * 3d Phase 1a Commit 5 rule 2: if capture for a client fails, the door must NOT decide for that
+ * client. A helper that swallowed and returned counts would let a door read a half-written fact
+ * set as a complete one and write a confident wrong decision — which is worse than no decision,
+ * because the next event would see a stored answer and have no reason to look again.
+ *
+ * ⚠ THE CONNECTION SHAPE, NOT THE FLATTENED ONE. It reads `client.quotes.nodes`,
+ * `client.jobs.nodes`, `client.requests.nodes` and `client.invoices.nodes`. Handing it the
+ * object built for deriveAndSaveTags yields empty arrays for every connection and captures
+ * NOTHING, with no error — CLAUDE.md vacuity shape #12, and the reason this doc block names the
+ * shape instead of leaving it to the caller to infer.
+ *
+ * ⚠ `requests` MAY BE ABSENT AND THAT IS NOT THE SAME AS EMPTY. fetchFullClient does not select
+ * requests at all; fetchClientRelatedData does. Every writer here is an UPSERT and none deletes,
+ * so an absent connection captures zero rows and removes nothing — a client's request facts
+ * survive a capture that never asked about them. Do not "tidy" any writer into a replace.
+ */
+async function captureClientFacts(db, { contractorId, client }) {
+  if (!contractorId) throw new Error('captureClientFacts: contractorId is required');
+  if (!client) throw new Error('captureClientFacts: client is required');
+
+  // ⚠ DEFAULTED TO [] HERE, BECAUSE THE WRITERS DO NOT ALL AGREE ON THAT.
+  // writeJobFacts and writeInvoiceJobLinks guard with `(nodes || [])`; writeRequestFacts and
+  // writeQuoteFacts call `nodes.filter(...)` directly and THROW on undefined. fetchFullClient
+  // selects no `requests` connection at all, so the request door handed writeRequestFacts an
+  // undefined and the whole capture threw — surfacing as `capture_failed` on every request.
+  // The absent connection is a legitimate state (see the doc block above), so it is normalised
+  // at the one place that knows it, rather than by loosening four writers individually.
+  const requestNodes = client.requests?.nodes || [];
+  const quoteNodes   = client.quotes?.nodes   || [];
+  const jobNodes     = client.jobs?.nodes     || [];
+  const invoiceNodes = client.invoices?.nodes || [];
+
+  // ⚠ SEQUENTIAL, NOT Promise.all. writeInvoiceJobLinks DELETEs and re-INSERTs per invoice, and
+  // the throw it raises on a truncated job set must happen before anything reads the links.
+  // Concurrency here buys nothing — these are small writes on one connection — and would make
+  // a partial failure's residue depend on scheduling.
+  const requests = await writeRequestFacts(db, contractorId, requestNodes);
+  const quotes   = await writeQuoteFacts(db, contractorId, quoteNodes);
+  const jobs     = await writeJobFacts(db, contractorId, jobNodes);
+  const invoices = await writeInvoiceFacts(db, contractorId, invoiceNodes);
+  const links    = await writeInvoiceJobLinks(db, contractorId, invoiceNodes);
+
+  return { requests, quotes, jobs, invoices, links };
+}
+
 module.exports = {
   writeRequestFacts,
   writeQuoteFacts,
   writeJobFacts,
   writeInvoiceFacts,
   writeInvoiceJobLinks,
+  captureClientFacts,
   toMoneyString,
 };

@@ -42,6 +42,14 @@ let pool, server, port;
 // engine's GATE_EXCLUSIONS — so the sticky gate fires. That is deliberate: the sticky
 // gate is where the orphan flag lives, so it is the only path on which R3 is observable
 // at all. A 'lead' client would take the provisional branch and prove nothing about R3.
+// ⚠ THE FIXTURE MIRRORS WHAT fetchFullClient's QUERY SELECTS, AND COMMIT 5 MADE THAT BINDING.
+// The door no longer classifies this object — it CAPTURES it into the fact tables and decides
+// from the rows. A field the real query selects but this fixture omits is therefore not
+// cosmetic: the writer filters the node out, capture reports success having written nothing,
+// decideFromFacts returns 'lead', and 'lead' is in the engine's GATE_EXCLUSIONS — so the sticky
+// gate is SKIPPED and every assignment assertion in this file fails with an undefined row.
+// `client { id }` on each job and quote is what every fact writer keys its row on.
+const OWNER = { id: CLIENT };
 function soldClient(overrides = {}) {
   return {
     id: CLIENT,
@@ -49,7 +57,8 @@ function soldClient(overrides = {}) {
     createdAt: new Date('2026-09-01T00:00:00Z').toISOString(),
     customFields: [],
     quotes: { nodes: [] },
-    jobs: { nodes: [{ id: 'job-1', jobStatus: 'active', invoices: { nodes: [] } }] },
+    jobs: { nodes: [{ id: 'job-1', jobStatus: 'active', invoices: { nodes: [] }, client: OWNER }] },
+    invoices: { nodes: [] },
     ...overrides,
   };
 }
@@ -139,6 +148,13 @@ after(async () => {
 beforeEach(async () => {
   _resetTestOverrides();
   sweep._resetTestOverrides();
+  // ⚠ THE FACT TABLES CLEAR TOO, SINCE COMMIT 5. The door decides from these rows, so a job or
+  // quote fact left by an earlier case decides the next one regardless of its own fixture.
+  await pool.query('DELETE FROM crm_invoice_job_links');
+  await pool.query('DELETE FROM crm_invoice_facts');
+  await pool.query('DELETE FROM crm_job_facts');
+  await pool.query('DELETE FROM crm_quote_facts');
+  await pool.query('DELETE FROM crm_request_facts');
   await pool.query('DELETE FROM jobber_webhook_events');
   await pool.query('DELETE FROM admin_messages');
   await pool.query('DELETE FROM flagged_assignments');
@@ -311,6 +327,7 @@ describe('Canvass-3.7 — REQUEST_CREATE / REQUEST_UPDATE attribution (R1, R2)',
       fetchRequestById: async () => triggerRequest(),
       fetchFullClient: async () => soldClient({
         quotes: { nodes: [{
+          client: OWNER,
           id: 'q-1', quoteStatus: 'approved',
           lastTransitioned: { approvedAt: '2026-09-18T16:00:00Z' },
           salesperson: { id: 'ju-quote' },

@@ -5321,6 +5321,23 @@ sale-boundary / payout phase FILED and not built.*
       ~1.5 hours were the campaign import sweeping full history on Recommended** — the unfiltered
       Steps B–E that Step G then trims. See the ruling-3 item below; still not changed, by ruling.
 
+- [x] **✅ MEASURED — THE PER-CLIENT CAPTURE COSTS, READ IN GRAPHIQL BY DANNY (2026-09-25, API
+      2026-05-12, client Adrianne Boswell, first page, the app's own queries).**
+      | query | requestedQueryCost | actualQueryCost | currentlyAvailable after |
+      |---|---|---|---|
+      | `GetClient` (`fetchFullClient`) | **7730** | **240** | 9760 |
+      | `GetClientRelated` (`fetchClientRelatedData`) | **8128** | **351** | 9649 |
+      Bucket: `maximumAvailable` 10000, `restoreRate` 500/s.
+      ⚠ **THE REQUESTED FIGURE IS THE ONE THAT BINDS, AND IT IS ~30× THE REAL COST.** Jobber checks
+      `requestedQueryCost` against the AVAILABLE bucket **before** running a query and refunds the
+      unused part afterwards. At ~8000 requested, a capture runs **only when the bucket is nearly
+      full** — so any concurrent Jobber use (the rep sweep, a webhook burst, an import) throttles
+      captures even though each one really costs a few hundred points.
+      ⚠ **AND ONE CLIENT EDIT SENDS BOTH**: `client-create` and `client-update` call
+      `fetchFullClient` and then `fetchClientRelatedData`, so the two reservations are consecutive,
+      not alternatives. **This is what Commit 5's page-size reduction is for** — the fix is the
+      requested estimate, not the actual charge.
+
 ### Canvass-stage backfill — the rep scope, the fact tables and the replay (BUILT 2026-09-21)
 
 *Rulings 1–10 by Danny, 2026-09-21. Built in one commit after a killed session; the recovery
@@ -5412,11 +5429,21 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       jobber_clients row`. The rep sees these as `client_row_missing`. **The fix is the open WRITE-SIDE
       GAP item in the Canvass-4b section** (the request path should mirror the client), or letting the
       rep steps create a minimal row. **Read N off the first production run before ruling.**
-- [ ] ⚠ **THE FACT TABLES ARE WRITTEN ONLY BY THE FULL IMPORT.** The request webhooks and
-      `repRequestSweep` still attribute live and write no facts, so **a mapping replay sees history
-      as of the last import.** A client whose only request arrived after that import is attributed
-      live if the rep was already mapped, and missed if they were mapped later, until the next import.
-      Small change (write a fact row in `attributeFromRequest`); not in the ruling, so not done.
+- [ ] ⚠ **PARTLY CLOSED BY COMMIT 5 — THE LIVE DOORS NOW WRITE FACTS; THE HISTORY BEFORE THEM IS
+      STILL MISSING, AND THAT IS THE REP-SCOPE RE-IMPORT STEP DANNY RULED STAYS OPEN (2026-09-25).**
+      **What Commit 5 closed:** the request webhooks, `repRequestSweep`, the client webhooks and the
+      quote/job webhooks all CAPTURE request, quote, job and invoice facts before deciding, so from
+      that deploy forward a replay sees everything a live event saw. The original wording — *"the
+      request webhooks and repRequestSweep still attribute live and write no facts"* — is now FALSE
+      rather than merely old, which is why it is corrected here instead of left standing.
+      **What is still open, and it is the whole remaining item:** facts for events that happened
+      BEFORE Commit 5 deployed exist only if the import captured them. So a mapping replay still
+      sees history as of the last import for those clients, and a client whose deciding request
+      predates it is attributed only if the rep was already mapped.
+      ⚠ **THE TAG-BACKFILL RULING DOES NOT REACH THIS.** Danny closed the `paying_client` backfill
+      on the grounds that pre-launch data only needs the function proven; this one is about
+      ATTRIBUTION FACTS AND ASSIGNED DATES, where the missing rows change who owns a client rather
+      than one boolean. **Two different jobs; one ruling does not close the other.**
 - [ ] ⚠ **THE PIPELINE STAGE FROM THE REP SCOPE IS FILL-ONLY, AND THAT IS A LIMIT AS WELL AS A GUARD.**
       The rep window sees no invoices and no job older than the window, so it cannot say `'paid'` and
       must not overwrite Step H+I's full-history verdict (guard-proofed: overwriting regresses `paid`
@@ -5636,10 +5663,10 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       very pill stays collapsed.** Found by the check, not by reading.
       **Its predecessor entry, which this closes, is kept below for the reasoning.**
 
-- [ ] ⚠ **THE `roofmiles` SYSTEM GROUP IS REBUILT INTO A TAG THAT MATCHES NOTHING, IN
-      `AdminCampaigns`' AUDIENCE BUILDER** (found 2026-09-25 in Commit 4c while enumerating the
-      rebuild sites; deliberately NOT fixed — it is a behaviour change nobody asked for, and a
-      pre-existing defect rather than anything 4c introduced).
+- [ ] ⚠ **PRE-LAUNCH FIX (Danny, 2026-09-25) — THE `roofmiles` SYSTEM GROUP IS REBUILT INTO A TAG
+      THAT MATCHES NOTHING, IN `AdminCampaigns`' AUDIENCE BUILDER.** Ruled a pre-launch fix rather
+      than a now-fix; **do not fix it inside the 3d Phase 1a arc.** (Found 2026-09-25 in Commit 4c
+      while enumerating the rebuild sites; a PRE-EXISTING defect, not anything 4c introduced.)
       The summary's system-tag group NORMALISES its values, so a stored `App User` is offered as
       `app_user`, and `AdminCampaigns` then rebuilds it into a prefixed `roofmiles` form. **No
       `contact_tags` row holds that string**, so an audience built on any RoofMiles Tag selects
@@ -5655,9 +5682,27 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       for every group, retiring reconstruction everywhere, or whether `AdminCampaigns` should
       filter the group out as its sibling already does.
 
-- [ ] ⚠ **THE STALE-TAG BACKFILL: `pull_all` IS THE ONLY MODE THAT WOULD CLEAR THEM, AND
-      `recommended` IS ACTIVELY THE WRONG TOOL** (investigated read-only 2026-09-25 after Commit
-      4b; NOTHING WAS RUN).
+- [x] **✅ CLOSED BY RULING — NO STALE-TAG BACKFILL. Danny, 2026-09-25.**
+      **The reason, in his terms: this is PRE-LAUNCH DATA on Accent's real Jobber account, and
+      proving the function is sufficient.** No full bulk import, and no tags-only re-derivation.
+      **Stale `paying_client` rows written under the old status-only rule clear as each client is
+      next re-derived** — the nightly incremental sync and the four webhook topics.
+      ⚠ **AND NEW CONTRACTORS ARE UNAFFECTED BY CONSTRUCTION**, which is the half that makes this
+      a closure rather than an acceptance of drift: their tags are created under the 4a/4b rule from
+      the first derivation, so there is no legacy state for them to carry.
+      ⚠ **THIS CLOSES THE TAG BACKFILL ONLY. IT DOES NOT CLOSE THE REP-SCOPE RE-IMPORT AND REPLAY**
+      (attribution facts and assigned dates), which is a separate pre-launch step and stays open —
+      see *THE FACT TABLES ARE WRITTEN ONLY BY THE FULL IMPORT* under the Canvass-stage backfill
+      section. Two different jobs; one ruling does not reach the other.
+      **The investigation this ruling answers is kept below, because its findings outlive it** — in
+      particular that Step G admits a client only if `isInvoicePaid` holds TODAY, so `recommended`
+      could never have reached the stale rows, and that `recommended` costs the same Jobber traffic
+      as `pull_all` anyway.
+
+<!-- The read-only investigation, kept for its findings rather than as open work. -->
+- [x] **✅ ANSWERED BY THE RULING ABOVE — the read-only backfill investigation (2026-09-25).**
+      Its finding was: **`pull_all` is the only mode that would have cleared the stale rows, and
+      `recommended` is actively the wrong tool.** Nothing was run.
       After 4a/4b, `paying_client` rows created under the old status-only rule clear only when that
       client is re-derived, and only `fullJobberImport` can do that in bulk today.
       ⚠ **STEP G DECIDES WHO GETS RE-DERIVED, AND ITS FIRST BRANCH ADMITS A CLIENT ONLY IF

@@ -35,7 +35,12 @@
 // second engine.
 
 const { runAttributionEngine } = require('./attributionEngine');
-const { classifyPipelineStatus } = require('../crm/pipelineSync');
+// ⚠ classifyPipelineStatus IS GONE FROM THIS FILE (3d Phase 1a Commit 5). It decided from the
+// LIVE FETCH; the decision now comes from decideFromFacts, which reads only saved facts, so the
+// live door and the replay run the same code over the same rows (R5i). Re-importing it here
+// would reintroduce a second definition of "what stage is this client".
+const { captureClientFacts } = require('./factCapture');
+const { decideFromFacts } = require('./attributionDecide');
 const { logError: realLogError } = require('../middleware/errorLogger');
 
 // ── THE ANCHOR (ruling R2) ───────────────────────────────────────────────────
@@ -90,7 +95,7 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
   // client webhooks already use, reused rather than re-specified.
   let fullClient;
   try {
-    fullClient = await fetchFullClient(jobberClientId, token);
+    fullClient = await fetchFullClient(jobberClientId, token, { door: 'request-attribution', contractorId });
   } catch (fetchErr) {
     await logError({
       req: null,
@@ -102,7 +107,37 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
     return 'client_fetch';
   }
 
-  const currentStatus = classifyPipelineStatus(fullClient);
+  // ── CAPTURE, THEN DECIDE (3d Phase 1a Commit 5) ─────────────────────────────
+  //
+  // ⚠ THE ORDER IS THE MECHANISM, NOT A PREFERENCE. decideFromFacts reads SAVED rows, so the
+  // facts this event brought must be on disk before it runs. Reversed, a first-ever request
+  // decides against an empty fact set and gets 'lead' — which is in the engine's
+  // GATE_EXCLUSIONS, so the sticky gate is SKIPPED and nothing is attributed. That failure is
+  // silent and self-consistent: the next event sees a stored answer and has no reason to look.
+  //
+  // ⚠ AND A FAILED CAPTURE MEANS NO DECISION AT ALL (rule 2). Not a 'lead', not a best effort.
+  // The fact tables may be partially written or stale, and a decision taken from them would be
+  // confidently wrong. Returning here leaves the client untouched; the next REQUEST_UPDATE or
+  // the hourly sweep retries, and the row in error_log says why it has not happened yet.
+  try {
+    await captureClientFacts(pool, { contractorId, client: fullClient });
+  } catch (capErr) {
+    await logError({
+      req: null,
+      contractorId,
+      error: new Error(`[request-attribution] request ${request.id}: capture failed for client ${jobberClientId}, no decision written: ${capErr.message}`),
+      source: 'requestAttribution/capture',
+      alert: false,
+    });
+    return 'capture_failed';
+  }
+
+  // ⚠ currentStatus AND client BOTH COME FROM THE FACTS, AND THAT PAIRING IS WHAT R5i MEANS.
+  // attributionReplay.js destructures this exact call and hands both to the engine the same
+  // way; taking the status from facts while passing the LIVE client would give the replay and
+  // the live door two different engine inputs from one set of rows, which is the parity the
+  // fence in this arc exists to hold.
+  const { currentStatus, client: factClient } = await decideFromFacts(pool, { contractorId, jobberClientId });
 
   // ── THE STAGE WRITE (Canvass-stage Part 2; the seventh zero REVERSED) ───────
   //
@@ -142,7 +177,7 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
     contractorId,
     jobberClientId,
     currentStatus,
-    client: fullClient,
+    client: factClient,
     fetchAttributionData,
     token,
     // R2 — the triggering request's own createdAt, never pipeline_cache.created_at.
