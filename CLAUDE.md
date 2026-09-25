@@ -385,8 +385,35 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1842 server tests across 302 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the decideFromFacts commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1842 · suites 302 · pass 1842 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE decideFromFacts COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1852 server tests across 304 suites, and 1342 React tests across 80 files** (measured 2026-09-25 by the one-definition-of-paid commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1852 · suites 304 · pass 1852 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE ONE-DEFINITION-OF-PAID COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1842 → 1852 is **+10 = 7 + 2 + 1**: seven in a new file (`oneDefinitionOfPaid.test.js`),
+  two appended to an EXISTING describe in `referralRules.test.js`, and one appended to an EXISTING
+  describe in `captureFetchContract.test.js`. Suites 302 → 304 is **the new file's TWO describes
+  only** — the other three cases landed inside describes that already existed. React did not move
+  and was re-measured. **All four predicted before the run and matched.**
+  ⚠ **"PAID" IS NOW ONE HELPER — `server/utils/invoicePaid.js` — AND IT LIVES IN ITS OWN MODULE
+  FOR A STRUCTURAL REASON.** `classifyPipelineStatus` needs it and lives in `crm/pipelineSync.js`,
+  which `attributionDecide.js` imports; putting the helper in either file makes a require cycle.
+  ⚠ **TWENTY-TWO EXISTING TESTS WENT RED, AND EVERY ONE WAS A FIXTURE ENCODING THE OLD RULE** —
+  `invoiceStatus: 'paid'` with no `invoiceBalance`. Repaired by adding `invoiceBalance: 0` ONLY
+  where it was absent, so the cases that deliberately set a NON-ZERO balance keep the distinction
+  they exist to test.
+  ⚠ **AND A FIXTURE OF MINE GOT THE SHAPE WRONG THREE TIMES RUNNING, WHICH IS THE ENTRY WORTH
+  KEEPING.** `deriveAndSaveTags` takes the FLATTENED shape (`jobs` and `job.invoices` as plain
+  arrays) while `classifyPipelineStatus` takes the CONNECTION shape — CLAUDE.md's vacuity shape
+  #12, two consumers of one fetch needing opposite shapes. I wrote `quotes: { nodes: [] }`, then
+  `invoices: { nodes: [] }`, then `jobs: { nodes: [] }`. **Each time the only symptom was the
+  PAIRED POSITIVE failing with nothing in `error_log`**, because `deriveAndSaveTags` catches its
+  own TypeError and logs it. A function that swallows needs a positive control; negative
+  assertions alone would all have passed against tagging that never ran.
+  ⚠ **AND THE TAG THE HELPER DRIVES IS `paying_client`, NOT `invoice:paid`.** `invoice:<status>`
+  comes from `INVOICE_STATUS_MAP` and is a VERBATIM MIRROR of Jobber's status across all five
+  values, not a paid-ness decision. Three of my case names said `invoice:paid` while asserting
+  `paying_client`; renamed, because a name that misstates its own assertion is the inverted-record
+  failure.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE decideFromFacts COMMIT ITSELF, BECAUSE IT SHIPS TESTS.* It read **1842 / 302 / 1342 / 80**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE decideFromFacts COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 1818 → 1842 is **+24**, one new file (`attributionDecide.test.js`); suites 296 → 302 is
   that file's **six** top-level describes. React did not move — no `src/` file touched — and was
   re-measured. **All four predicted before the run and matched.** Three EXISTING suites had

@@ -50,7 +50,7 @@ const jobFor = (clientId) => ({
 
 const paidInvoiceFor = (clientId) => ({
   id: `inv-${clientId}`, invoiceStatus: 'paid',
-  createdAt: new Date().toISOString(), amounts: { total: 1200 },
+  createdAt: new Date().toISOString(), amounts: { total: 1200, invoiceBalance: 0 },
   client: { id: clientId },
 });
 

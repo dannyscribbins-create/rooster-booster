@@ -14,7 +14,7 @@ function makeInvoice(overrides = {}) {
     invoiceNumber: 'INV-RULES-001',
     issuedDate: '2024-06-01',
     waitingForFinancedPayment: false,
-    amounts: { total: 1000 },
+    amounts: { total: 1000, invoiceBalance: 0 },
     client: { id: 'jc-rules-001' },
     jobs: {
       nodes: [{
@@ -56,6 +56,26 @@ describe('evaluateReferral — referral rules engine', () => {
       jobberLabel: 'Roof Replacement',
       flatAmount: 250,
     });
+  });
+
+  // ── THE ONE DEFINITION OF PAID, ON THE MONEY PATH (3d Phase 1a Commit 4a) ────
+  //
+  // ⚠ THIS GATE USED TO READ `invoiceData.invoiceStatus !== 'paid'` — THE STATUS ALONE — SO A
+  // REFERRAL COULD BE PAID A BONUS ON AN INVOICE NOBODY HAD SETTLED. isInvoicePaid requires a
+  // zero balance and a total above zero as well. These are the two shapes the old gate admitted;
+  // the qualified case directly below is the paired positive that proves the gate still opens.
+  it('an invoice with status paid but a NON-ZERO balance does not qualify — nobody has paid it', async () => {
+    const result = await evaluateReferral('accent-roofing',
+      makeInvoice({ amounts: { total: 1000, invoiceBalance: 250 } }), 'Test Referrer');
+    assert.equal(result.qualified, false, `a $250 outstanding balance is not a paid invoice — got: ${JSON.stringify(result)}`);
+    assert.equal(result.reason, 'invoice_not_paid');
+  });
+
+  it('a $0 invoice with status paid does not qualify — zero-value work earns no bonus', async () => {
+    const result = await evaluateReferral('accent-roofing',
+      makeInvoice({ amounts: { total: 0, invoiceBalance: 0 } }), 'Test Referrer');
+    assert.equal(result.qualified, false, `a $0 invoice must not pay a referral bonus — got: ${JSON.stringify(result)}`);
+    assert.equal(result.reason, 'invoice_not_paid');
   });
 
   // ── TEST 2.1 ──────────────────────────────────────────────────────────────────

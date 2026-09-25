@@ -70,7 +70,7 @@ const plainJob      = () => ({
 });
 const paidJob = () => ({
   ...plainJob(),
-  invoices: { nodes: [{ id: 'inv-1', invoiceStatus: 'paid', createdAt: new Date().toISOString(), amounts: { total: 500 } }] },
+  invoices: { nodes: [{ id: 'inv-1', invoiceStatus: 'paid', createdAt: new Date().toISOString(), amounts: { total: 500, invoiceBalance: 0 } }] },
 });
 
 const stageOf = async (id = CLIENT) => {

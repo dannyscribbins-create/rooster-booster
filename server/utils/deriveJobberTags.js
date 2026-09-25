@@ -1,5 +1,6 @@
 const { removeTagsByPrefix, upsertTag, replaceTagGroup } = require('./tags');
 const { logError } = require('../middleware/errorLogger');
+const { isInvoicePaid } = require('./invoicePaid');
 
 // Normalize a string for use as a tag suffix: lowercase, non-alphanumeric → underscore.
 function normalizeTagValue(str) {
@@ -305,7 +306,9 @@ async function deriveAndSaveTags(pool, contractorId, jobberClientId, clientData,
 
     // ── VALUE BRACKET (most recent PAID invoice) ──────────────────────────────
     const paidInvoices = allInvoices
-      .filter(inv => (inv.invoiceStatus || '').toLowerCase() === 'paid' && inv.amounts?.total !== undefined);
+      // ⚠ THE ONE DEFINITION (4a). The revenue sum must only count invoices the rest of the app
+      // calls paid; the status alone included $0 and unsettled invoices in a client's revenue.
+      .filter(inv => isInvoicePaid(inv) && inv.amounts?.total !== undefined);
 
     if (paidInvoices.length > 0) {
       const sortedPaid = sortByCreatedAtDesc(paidInvoices);
@@ -325,7 +328,9 @@ async function deriveAndSaveTags(pool, contractorId, jobberClientId, clientData,
 
     // ── PAYING CLIENT (lifetime — never removed) ──────────────────────────────
     const hasAnyPaidInvoice = allInvoices.some(
-      inv => (inv.invoiceStatus || '').toLowerCase() === 'paid'
+      // ⚠ THE ONE DEFINITION (4a) — this drives the invoice:paid tag, which drives campaign
+      // audiences, so a looser definition here mails people the app does not consider paying.
+      isInvoicePaid
     );
     if (hasAnyPaidInvoice) {
       await upsertTag(pool, identifier, contractorId, 'paying_client', 'jobber_crm');

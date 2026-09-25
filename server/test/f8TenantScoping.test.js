@@ -147,7 +147,7 @@ describe('Wave 0.3 F8 — tenant scoping on user matching (RED first)', () => {
 
   const PAID_INVOICE = {
     invoiceStatus: 'paid', invoiceNumber: 'INV-F8', issuedDate: '2026-06-10',
-    waitingForFinancedPayment: false, amounts: { total: 10000 },
+    waitingForFinancedPayment: false, amounts: { total: 10000, invoiceBalance: 0 },
     client: { id: 'jc-f8', name: 'Test Client' },
     jobs: { nodes: [{ id: 'job-f8', customFields: [{ label: 'Job Type', valueDropdown: 'Roof Replacement' }] }] },
     archivedJobs: { nodes: [] },

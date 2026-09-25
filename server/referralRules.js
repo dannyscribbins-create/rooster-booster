@@ -22,6 +22,7 @@
 'use strict';
 
 const { pool } = require('./db');
+const { isInvoicePaid } = require('./utils/invoicePaid');
 
 // ── MAIN EXPORT ───────────────────────────────────────────────────────────────
 // contractorId: string — e.g. 'accent-roofing'
@@ -35,7 +36,10 @@ async function evaluateReferral(contractorId, invoiceData, referredBy) {
   // Defensive safety net: only process paid invoices. The webhook handler guards
   // on invoiceStatus before calling here, but this prevents accidental execution
   // if a future caller omits that check.
-  if (invoiceData.invoiceStatus !== 'paid') {
+  // ⚠ THE ONE DEFINITION (4a), AND THIS IS THE SITE WHERE IT PAYS MONEY. It read the status
+  // alone, so a paid-but-unsettled invoice or a $0 invoice could qualify a referral for a bonus.
+  // fetchInvoiceWithJobs now selects invoiceBalance alongside total.
+  if (!isInvoicePaid(invoiceData)) {
     return { qualified: false, reason: 'invoice_not_paid' };
   }
 

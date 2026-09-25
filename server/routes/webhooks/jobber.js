@@ -29,6 +29,7 @@ const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
 const { refreshTokenIfNeeded, getFreshContractorAccessToken, fetchRequestById, fetchAttributionData } = require('../../crm/jobber');
 const { attributeFromRequest } = require('../../utils/requestAttribution');
+const { isInvoicePaid, PAID_STATUS } = require('../../utils/invoicePaid');
 const {
   fetchFullClient,
   assertNoJobberGraphQLErrors,
@@ -119,7 +120,7 @@ const INVOICE_WITH_JOBS_QUERY = `query GetInvoiceWithJobs($id: EncodedId!) {
             invoiceStatus
             issuedDate
             waitingForFinancedPayment
-            amounts { total }
+            amounts { total invoiceBalance }
             client { id name }
             jobs(first: 50) {
               nodes { ${INVOICE_JOB_NODE_FIELDS} }
@@ -973,7 +974,12 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       // (a) Cheap early exit — skip non-paid invoice updates before any DB or API calls.
       // Jobber sends INVOICE_UPDATE for all status changes; only 'paid' is actionable here.
       const rawInvoiceStatus = payload?.data?.invoice?.invoiceStatus;
-      if (rawInvoiceStatus !== undefined && rawInvoiceStatus !== 'paid') {
+      // ⚠ PAID_STATUS, NOT isInvoicePaid, AND THE DISTINCTION IS REAL. The webhook PAYLOAD
+      // carries a status and no amounts, so this cannot decide paid-ness — it only skips updates
+      // that definitely are not. The authoritative decision is made below against the FETCHED
+      // invoice. Using the shared constant keeps the literal out of this file without pretending
+      // the payload can answer a question it has no data for.
+      if (rawInvoiceStatus !== undefined && rawInvoiceStatus !== PAID_STATUS) {
         console.log(`[invoice-paid] raw invoiceStatus is '${rawInvoiceStatus}' — skipping`);
         return;
       }
@@ -1072,7 +1078,9 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       }
 
       // (b) Guard — bail if invoice is not paid per the Jobber API response
-      if (invoiceWithJobs.invoiceStatus !== 'paid') {
+      // ⚠ THE ONE DEFINITION (4a). This is the AUTHORITATIVE check — the payload pre-filter
+      // above is only a cheap early exit — so it decides whether a referral is evaluated at all.
+      if (!isInvoicePaid(invoiceWithJobs)) {
         console.log(`[invoice-paid] fetched invoice ${invoiceId} has status '${invoiceWithJobs.invoiceStatus}' — skipping`);
         return;
       }

@@ -5599,8 +5599,42 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       REFERRAL RULES ENGINE on the money path, not the fact tables, so it is not capture-path and
       making it throw is not a change to fold into a commit about archivedJobs.
 
-- [ ] ⚠ **SEVEN SITES STILL DEFINE "PAID" AS THE STATUS ALONE, AND THE DECISION IS NOW STRICTER
-      THAN ALL OF THEM** (raised 2026-09-25 by Commit 4; Danny ruled it a later commit, not now).
+- [ ] ⚠ **`invoice:paid` IS A STATUS MIRROR, NOT A PAID DECISION — AND CAMPAIGN AUDIENCES CAN
+      READ IT AS ONE** (raised 2026-09-25 in Commit 4a; deliberately NOT changed, because changing
+      it needs a ruling).
+      `deriveJobberTags` writes `invoice:<status>` from `INVOICE_STATUS_MAP`, a **verbatim mirror**
+      of Jobber's latest-invoice status across all five values (`awaiting_payment` · `paid` ·
+      `past_due` · `bad_debt`, plus `voided` unmapped). It does NOT go through `isInvoicePaid`, and
+      it should not: rewriting only the `paid` entry would make the map misreport Jobber's status.
+      ⚠ **BUT `invoice:paid` LOOKS EXACTLY LIKE A PAID MARKER TO WHOEVER BUILDS AN AUDIENCE**, and
+      after 4a it can disagree with the app's actual definition: a client whose latest invoice has
+      status `paid` with a NON-ZERO balance, or with total 0, gets `invoice:paid` but NOT
+      `paying_client`. Two tags that look synonymous and are not.
+      **The markers the helper DOES drive are `paying_client` (lifetime, never removed) and the
+      `value:under_5k` / `value:5k_to_15k` / `value:over_15k` bracket.**
+      **What to decide:** whether `invoice:paid` should be renamed (e.g. `invoice_status:paid`) so
+      the mirror cannot be mistaken for the decision, or left and documented for audience authors.
+
+- [x] **✅ DONE — ALL SEVEN STATUS-ONLY SITES NOW USE THE ONE HELPER** (3d Phase 1a Commit 4a,
+      2026-09-25, on Danny's ruling that the whole app agree so the paid marker means a truly
+      paying client). `server/utils/invoicePaid.js` is the single definition:
+      `invoiceStatus = 'paid'` AND `invoiceBalance = 0` AND `total > 0`. All seven moved onto it,
+      eight feeding queries widened to select all three fields, and two fences added — a
+      one-definition source fence that fails naming any file comparing a status to the literal, and
+      a mechanical check that every invoice selection in `server/` carries all three fields.
+      ⚠ **THE HELPER IS IN ITS OWN MODULE FOR A STRUCTURAL REASON**, not tidiness:
+      `classifyPipelineStatus` needs it and lives in `crm/pipelineSync.js`, which
+      `attributionDecide.js` imports — either home would be a require cycle.
+      ⚠ **THE WEBHOOK PAYLOAD PRE-FILTER USES `PAID_STATUS`, NOT THE HELPER, AND THAT IS CORRECT.**
+      The payload carries a status and no amounts, so it cannot decide paid-ness; it only skips
+      updates that definitely are not. The authoritative decision is made below it against the
+      FETCHED invoice. Using the shared constant keeps the literal out of the file without
+      pretending the payload can answer a question it has no data for.
+
+- [x] **✅ SUPERSEDED BY THE ENTRY ABOVE — the finding that seven sites defined paid as the status
+      alone** (raised 2026-09-25 by Commit 4). Kept because the two divergent shapes are the
+      transferable part: **status paid with a NON-ZERO balance**, and **status paid with TOTAL 0**.
+      Both used to mark a client as paying, and both used to qualify a referral for a bonus.
       `isInvoicePaid` in `server/utils/attributionDecide.js` requires **all three**:
       `invoiceStatus = 'paid'` AND `invoiceBalance = 0` AND `total > 0`. These seven still test the
       status alone: `crm/pipelineSync.js:114` · `jobs/fullJobberImport.js:618` ·

@@ -332,6 +332,52 @@ describe('capture fetch — (ii) THE BOUNDARY FENCE: what consumers read must be
     }
   });
 
+  // ⚠ ANY QUERY WHOSE INVOICES REACH isInvoicePaid MUST SELECT ALL THREE FIELDS IT READS (4a).
+  // The helper needs invoiceStatus, amounts.total AND amounts.invoiceBalance. A query missing one
+  // does not fail — it returns undefined, the helper rejects the invoice, and the client silently
+  // reads as 'sold' instead of 'paid'. That is a wrong answer shaped exactly like a correct one,
+  // and it is the same class as the 42 fields 3a-2 found missing.
+  // ⚠ IT WALKS EVERY INVOICE SELECTION IN server/, not a list of the ones I remembered.
+  it('every invoice selection in server/ carries all three fields isInvoicePaid reads', () => {
+    const { readdirSync, statSync } = require('node:fs');
+    const REPO = join(__dirname, '..');
+    const files = [];
+    (function walk(dir) {
+      for (const name of readdirSync(dir)) {
+        if (name === 'node_modules' || name === 'test') continue;
+        const p = join(dir, name);
+        if (statSync(p).isDirectory()) walk(p);
+        else if (name.endsWith('.js')) files.push(p);
+      }
+    })(REPO);
+
+    const missing = [];
+    let selections = 0;
+    for (const file of files) {
+      const src = readFileSync(file, 'utf8');
+      // Each `amounts {` block is one invoice money selection.
+      let from = 0;
+      for (;;) {
+        const at = src.indexOf('amounts {', from);
+        if (at < 0) break;
+        const close = src.indexOf('}', at);
+        const block = src.slice(at, close < 0 ? src.length : close + 1);
+        selections += 1;
+        const rel = file.slice(REPO.length + 1).split('\\').join('/');
+        const line = src.slice(0, at).split('\n').length;
+        if (!/\btotal\b/.test(block)) missing.push(`${rel}:${line} — amounts block omits total`);
+        if (!/\binvoiceBalance\b/.test(block)) missing.push(`${rel}:${line} — amounts block omits invoiceBalance`);
+        from = at + 1;
+      }
+    }
+
+    // ⚠ NON-VACUITY: if the walk finds no selections the assertion below is meaningless.
+    assert.ok(selections >= 8, `only ${selections} invoice money selections found — the walk is probably broken`);
+    assert.deepEqual(missing, [],
+      'isInvoicePaid reads invoiceStatus, amounts.total and amounts.invoiceBalance. A selection '
+      + `missing one makes a paid invoice read as unpaid, silently:\n  ${missing.join('\n  ')}`);
+  });
+
   it('an invoice selects its job ids, so the invoice-to-sale link exists at all', () => {
     for (const [name, query] of Object.entries(FETCH_QUERIES)) {
       assert.match(query, /jobs\(first:\s*\d+\)\s*\{\s*nodes\s*\{\s*id\s*\}/, `${name} must select the invoice's job ids`);
@@ -619,7 +665,7 @@ describe('capture fetch — (v) fetchInvoiceWithJobs pages BOTH job connections 
       if (!/GetInvoiceWithJobs/.test(q)) throw new Error('unexpected query in this fixture');
       const invoice = {
         id: 'inv-money', invoiceNumber: 5555, invoiceStatus: 'paid', issuedDate: '2026-01-01T00:00:00Z',
-        waitingForFinancedPayment: false, amounts: { total: 12000 }, client: { id: 'jc-1', name: 'C' },
+        waitingForFinancedPayment: false, amounts: { total: 12000, invoiceBalance: 0 }, client: { id: 'jc-1', name: 'C' },
       };
       if (/\bjobs\(first:/.test(q)) invoice.jobs = slice(jobs, null, q, 'jobs');
       if (/\barchivedJobs\(first:/.test(q)) invoice.archivedJobs = slice(archived, null, q, 'archivedJobs');

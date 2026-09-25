@@ -9,6 +9,7 @@ const { runContactMatchingPass } = require('./contactMatchingPass');
 const { classifyPipelineStatus } = require('../crm/pipelineSync');
 const { runRepScope } = require('./repImportScope');
 const { replayForMappedReps } = require('../utils/attributionReplay');
+const { isInvoicePaid } = require('../utils/invoicePaid');
 
 // ── THE IMPORT'S CLIENT SHAPE, ADAPTED FOR THE CLASSIFIER (Canvass-stage) ─────
 //
@@ -331,7 +332,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
                       invoices(first: 50) {
                         nodes {
                           id invoiceStatus createdAt
-                          amounts { total }
+                          amounts { total invoiceBalance }
                         }
                       }
                     }
@@ -367,7 +368,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
           invoices(first: 100, after: $after) {
             nodes {
               id invoiceStatus createdAt
-              amounts { total }
+              amounts { total invoiceBalance }
               client { id }
             }
             pageInfo { hasNextPage endCursor }
@@ -615,7 +616,9 @@ async function runFullJobberImport(contractorId, filterPreference) {
         ...client.jobs.flatMap(j => j.invoices?.nodes || []),
       ];
       const hasAnyPaidInvoice = allClientInvoices.some(
-        inv => (inv.invoiceStatus || '').toLowerCase() === 'paid'
+        // ⚠ THE ONE DEFINITION (4a) — was the status alone, which counted a $0 invoice and a
+        // paid-but-unsettled one as paying. The Step B fetch now selects invoiceBalance too.
+        isInvoicePaid
       );
 
       if (hasAnyPaidInvoice) {

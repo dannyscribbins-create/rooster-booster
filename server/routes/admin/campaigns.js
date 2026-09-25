@@ -25,6 +25,7 @@ const { escapeHtml } = require('../../utils/pendingReferral');
 // The SHARED scheme check — the same one the landing page uses for these very
 // columns. Escaping stops a breakout; it does not stop a scheme.
 const { safeLogoUrl, safeWebsiteUrl } = require('../../utils/safeUrl');
+const { isInvoicePaid } = require('../../utils/invoicePaid');
 
 const router = express.Router();
 
@@ -1612,7 +1613,7 @@ router.post('/api/admin/campaigns/:id/pull', requirePermission('campaigns.manage
             invoices(first: 1) {
               nodes {
                 invoiceStatus
-                amounts { total }
+                amounts { total invoiceBalance }
               }
             }
           }
@@ -1647,7 +1648,7 @@ router.post('/api/admin/campaigns/:id/pull', requirePermission('campaigns.manage
             invoices(first: 1) {
               nodes {
                 invoiceStatus
-                amounts { total }
+                amounts { total invoiceBalance }
               }
             }
           }
@@ -1726,7 +1727,9 @@ router.post('/api/admin/campaigns/:id/pull', requirePermission('campaigns.manage
     if (filters.paidOnly !== false) {
       filteredJobs = filteredJobs.filter(job => {
         const invoice = job.invoices?.nodes?.[0];
-        return invoice?.invoiceStatus === 'paid';
+        // ⚠ THE ONE DEFINITION (4a) — the audience must mean the same thing by 'paid' as every
+        // other surface, or a campaign targets clients the rest of the app does not call paying.
+        return isInvoicePaid(invoice);
       });
     }
 

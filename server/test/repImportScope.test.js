@@ -172,7 +172,7 @@ const campaignJob = (id, clientId, days) => ({
 // two years ago — Step G EXCLUDES it, so the campaign never tags it.
 const CAMPAIGN = {
   clients: [client('pc-old', 1100), client('new-1', 60), client('up-1', 730)],
-  invoices: [{ id: 'inv-pc', invoiceStatus: 'paid', createdAt: ago(1000), amounts: { total: 9000 }, client: { id: 'pc-old' } }],
+  invoices: [{ id: 'inv-pc', invoiceStatus: 'paid', createdAt: ago(1000), amounts: { total: 9000, invoiceBalance: 0 }, client: { id: 'pc-old' } }],
   jobs: [
     campaignJob('j-pc', 'pc-old', 1050),
     campaignJob('j-new1a', 'new-1', 25),

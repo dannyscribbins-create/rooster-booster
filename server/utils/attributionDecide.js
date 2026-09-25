@@ -24,44 +24,11 @@
 // attribution, and it looks exactly like nothing happening.
 
 const { classifyPipelineStatus } = require('../crm/pipelineSync');
+// ⚠ THE ONE DEFINITION OF PAID lives in its own module so pipelineSync can use it too without a
+// require cycle. Re-exported below for callers that already import it from here.
+const { isInvoicePaid } = require('./invoicePaid');
 
-/**
- * Is this invoice PAID, for the purposes of a decision? (Danny's ruling, 2026-09-25.)
- * Inputs: an object carrying invoiceStatus, invoiceBalance and total — numbers or the
- *         NUMERIC strings node-postgres returns.
- * Output: boolean.
- *
- * ⚠ ALL THREE CONDITIONS, AND EACH ONE EXCLUDES A REAL SHAPE THAT THE STATUS ALONE ADMITS:
- *   · invoiceStatus = 'paid'  — excludes `voided` and `bad_debt`. A written-off invoice has a
- *                               zero balance by definition, so balance alone would count a write
- *                               -off as revenue.
- *   · invoiceBalance = 0      — excludes a `paid` invoice still carrying a balance after a
- *                               credit or adjustment.
- *   · total > 0               — excludes a $0 invoice, which is zero-value work and must never
- *                               move a client to 'paid'.
- *
- * ⚠ THIS IS STRICTER THAN THE REST OF THE CODEBASE, ON PURPOSE AND TEMPORARILY. Seven sites still
- * test `invoiceStatus === 'paid'` alone (pipelineSync, fullJobberImport, referralRules,
- * admin/campaigns, the invoice-paid webhook, deriveJobberTags twice). They disagree with this
- * helper in exactly two shapes — status paid with a non-zero balance, and status paid with total
- * 0 — and moving them onto this helper is filed on PRE_LAUNCH_CHECKLIST.md as its own commit.
- * ⚠ ONE HELPER, NOT A COPIED PREDICATE. When those seven move, they move onto THIS function.
- */
-function isInvoicePaid(invoice) {
-  if (!invoice) return false;
-  if (invoice.invoiceStatus !== 'paid') return false;
 
-  // NUMERIC arrives as a string from node-postgres; Number() on null is 0, which would read as a
-  // settled balance, so a null is rejected before it can be parsed into a false positive.
-  if (invoice.invoiceBalance === null || invoice.invoiceBalance === undefined) return false;
-  if (invoice.total === null || invoice.total === undefined) return false;
-
-  const balance = Number(invoice.invoiceBalance);
-  const total = Number(invoice.total);
-  if (!Number.isFinite(balance) || !Number.isFinite(total)) return false;
-
-  return balance === 0 && total > 0;
-}
 
 /**
  * Derives the decision's currentStatus, and the client object the engine reads, from SAVED FACTS.
@@ -154,17 +121,15 @@ async function decideFromFacts(db, { contractorId, jobberClientId }) {
       invoiceBalance: r.invoice_balance,
       total: r.total,
     };
-    if (!isInvoicePaid(invoice)) continue;
     if (!paidByJob.has(r.jobber_job_id)) paidByJob.set(r.jobber_job_id, []);
-    // ⚠ THE LITERAL 'paid' IS DELIBERATE, AND IT IS WHAT MAKES isInvoicePaid THE ONLY DECIDER.
-    // classifyPipelineStatus tests `inv.invoiceStatus === 'paid'` itself. Passing the row's RAW
-    // status through meant the classifier re-filtered, so the helper's status condition was
-    // redundant — and the voided and bad_debt cases then PASSED with that condition deleted,
-    // because the classifier excluded them instead. My own tests could not tell the two apart.
-    // Every invoice reaching this line has already satisfied all three conditions, so marking it
-    // 'paid' states that conclusion rather than laundering a status: the ruling is applied in one
-    // place, and deleting any part of it now fails a test.
-    paidByJob.get(r.jobber_job_id).push({ id: invoice.id, invoiceStatus: 'paid' });
+    // ⚠ THE WHOLE INVOICE GOES THROUGH, AMOUNTS AND ALL, AND THAT IS THE 4a CHANGE.
+    // In Commit 4 this line pushed a node marked `invoiceStatus: 'paid'`, because
+    // classifyPipelineStatus tested that literal itself and would otherwise have re-filtered —
+    // making the helper's status condition redundant and the voided/bad_debt cases vacuous.
+    // 4a moved the classifier ONTO isInvoicePaid, so the filtering now happens in exactly one
+    // place and the marker is not only unnecessary but would HIDE the money from the only thing
+    // qualified to judge it. Passing the real amounts is what keeps one definition.
+    paidByJob.get(r.jobber_job_id).push(invoice);
   }
 
   const jobNodes = jobIds.map((id) => ({ id, invoices: { nodes: paidByJob.get(id) || [] } }));

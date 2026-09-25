@@ -245,7 +245,7 @@ async function runForContractor(contractorId) {
                   jobs(first: 50) {
                     nodes {
                       id jobStatus jobType completedAt createdAt
-                      invoices { nodes { id invoiceStatus createdAt amounts { total } } }
+                      invoices { nodes { id invoiceStatus createdAt amounts { total invoiceBalance } } }
                       customFields {
                         ... on CustomFieldText { label valueText }
                         ... on CustomFieldDropdown { label valueDropdown }

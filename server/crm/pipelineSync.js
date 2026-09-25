@@ -2,6 +2,7 @@ const axios = require('axios');
 const { pool } = require('../db');
 const { refreshTokenIfNeeded, fetchAttributionData } = require('./jobber');
 const { logError } = require('../middleware/errorLogger');
+const { isInvoicePaid } = require('../utils/invoicePaid');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry, resendShouldRetry } = require('../utils/retryHelpers');
 const { Resend } = require('resend');
@@ -110,9 +111,12 @@ function classifyPipelineStatus(client) {
 
   // Check for paid invoice — client reached 'paid' stage
   for (const job of jobs) {
-    const hasPaidInvoice = (job.invoices?.nodes || []).some(
-      inv => inv.invoiceStatus === 'paid'
-    );
+    // ⚠ THE ONE DEFINITION (4a). This read `inv.invoiceStatus === 'paid'` — the status alone —
+    // which marked a client as paying on a paid-but-unsettled invoice and on a $0 invoice.
+    // isInvoicePaid requires status AND a zero balance AND a total above zero. Every caller's
+    // query now selects all three, and server/test/oneDefinitionOfPaid.test.js fails if this
+    // comparison is written inline again anywhere.
+    const hasPaidInvoice = (job.invoices?.nodes || []).some(isInvoicePaid);
     if (hasPaidInvoice) return 'paid';
   }
 
@@ -643,7 +647,7 @@ async function runFullSync(contractorId) {
           jobs(first: 10) {
             nodes {
               id jobStatus
-              invoices(first: 5) { nodes { invoiceStatus } }
+              invoices(first: 5) { nodes { invoiceStatus amounts { total invoiceBalance } } }
             }
           }
         }
@@ -792,7 +796,7 @@ async function runIncrementalSync(contractorId) {
               jobs(first: 10) {
                 nodes {
                   id jobStatus
-                  invoices(first: 5) { nodes { invoiceStatus } }
+                  invoices(first: 5) { nodes { invoiceStatus amounts { total invoiceBalance } } }
                 }
               }
             }

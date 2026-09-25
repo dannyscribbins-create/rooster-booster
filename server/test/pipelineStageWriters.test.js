@@ -69,14 +69,14 @@ function relatedNode({ jobs = [], quotes = [], requests = [] } = {}) {
 const jobWithPaidInvoice = () => ({
   id: 'job-1', jobStatus: 'active', jobType: 'ONE_OFF',
   completedAt: null, createdAt: new Date().toISOString(),
-  invoices: { nodes: [{ id: 'inv-1', invoiceStatus: 'paid', createdAt: new Date().toISOString(), amounts: { total: 900 } }] },
+  invoices: { nodes: [{ id: 'inv-1', invoiceStatus: 'paid', createdAt: new Date().toISOString(), amounts: { total: 900, invoiceBalance: 0 } }] },
   customFields: [],
 });
 
 const jobWithUnpaidInvoice = () => ({
   id: 'job-2', jobStatus: 'active', jobType: 'ONE_OFF',
   completedAt: null, createdAt: new Date().toISOString(),
-  invoices: { nodes: [{ id: 'inv-2', invoiceStatus: 'draft', createdAt: new Date().toISOString(), amounts: { total: 400 } }] },
+  invoices: { nodes: [{ id: 'inv-2', invoiceStatus: 'draft', createdAt: new Date().toISOString(), amounts: { total: 400, invoiceBalance: 0 } }] },
   customFields: [],
 });
 

@@ -34,7 +34,7 @@ const PAID_INVOICE = {
   invoiceNumber: 'INV-001',
   issuedDate: '2026-06-10',
   waitingForFinancedPayment: false,
-  amounts: { total: 10000 },
+  amounts: { total: 10000, invoiceBalance: 0 },
   client: { id: 'jobber-c1', name: 'Test Client' },
   jobs: {
     nodes: [{ id: 'job-1', customFields: [{ label: 'Job Type', valueDropdown: 'Roof Replacement' }] }],
