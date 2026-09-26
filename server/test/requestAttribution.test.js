@@ -167,6 +167,11 @@ beforeEach(async () => {
   await pool.query('DELETE FROM notifications');
   await pool.query('DELETE FROM jobber_clients');
   await pool.query('DELETE FROM contact_tags');
+  // ⚠ 6c: THIS SUITE ASSERTS A COUNT ON pending_referrals AND NEVER CLEARED IT. The
+  // cross-tenant case reads `COUNT(*) FROM pending_referrals WHERE contractor_id = $1`, so a
+  // row left by an earlier case is counted as this case's own. stageWebhooks.test.js makes the
+  // same assertion and DOES clear it — the asymmetry is what testResetCoverage.test.js found.
+  await pool.query('DELETE FROM pending_referrals');
   await pool.query('DELETE FROM contractor_crm_settings');
   await pool.query('DELETE FROM tokens');
   await pool.query('DELETE FROM error_log');

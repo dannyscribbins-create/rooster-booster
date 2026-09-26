@@ -385,8 +385,39 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1932 server tests across 316 suites, and 1358 React tests across 82 files** (measured 2026-09-26 by the 6b sweep-hold commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1932 · suites 316 · pass 1932 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE 6b SWEEP-HOLD COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1938 server tests across 317 suites, and 1358 React tests across 82 files** (measured 2026-09-26 by the 6c reset-coverage commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1938 · suites 317 · pass 1938 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE 6c RESET-COVERAGE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1932 → 1938 is **+6**, one new file (`testResetCoverage.test.js`); suites 316 → 317 is
+  that file's single describe. React did not move — no `src/` file touched — and was re-measured.
+  **All four predicted before the run and matched.** Counted with an anchored `^\s*it\(`; every
+  `for` in the new file sits inside a helper body and wraps no case, so 6 is exact.
+  ⚠ **FOUR NEW TABLES IN ONE ARC WERE LEFT OUT OF A RESET LIST, AND EVERY ONE WAS FOUND BY A TEST
+  FAILING ODDLY RATHER THAN BY A CHECK.** A leaked row reads as a successful write by the case that
+  follows, which is the vacuity family wearing a fixture. The fence derives every table from
+  `db.js` and fails naming `file: table` when a suite touches a table its reset does not clear.
+  ⚠ **THE CONTEXT IS THE COMPLEMENT OF `before()`/`after()`, NOT THE INSIDE OF `it()`, AND THAT
+  IS THE ENTRY WORTH KEEPING.** The first draft scanned inside `it()` blocks — and **it would have
+  missed 6b's own defect**, because that read lives in a file-level helper (`failureCount`) that
+  tests CALL. A table seeded only in `before()` is the suite's baseline fixture and is deliberately
+  outside the per-test reset, so excluding those two hooks is what separates a real leak from a
+  legitimate fixture; it cut the findings from 148 to 29 without losing the defect.
+  ⚠ **AND CASCADES HAD TO BE RESOLVED OR THE FENCE LIES.** `dynamic_audience_members` cascades
+  from `dynamic_audiences`, so a suite clearing the parent HAS cleared the child — `db.js` carries
+  25 such FKs, and without the closure the fence reports confident false positives.
+  ⚠ **THREE BROADER RULES WERE MEASURED AND REJECTED, WHICH IS WHY THIS ONE IS NARROW.** "Tables
+  one production module writes together must be cleared together" gives **3165** findings across 97
+  of 104 suites, because `referrer.js` alone writes 23 tables and the group stops meaning one unit
+  of work; capping the group size still leaves 168 at a cap of 2. **A heuristic that reports
+  plausible findings is worse than none**, so the require-closure form was never shipped.
+  ⚠ **AND THE TOOL REPRODUCED THIS FILE'S OWN `\bFROM\b`-IN-A-COMMENT DEFECT.** The first draft
+  read `db.js` WITHOUT stripping comments, so the prose *"ALTER TABLE is required"* invented a table
+  named **`is`**, which then matched inside ordinary SQL. Comments are stripped from every input
+  now, and the fence asserts the junk words are absent as well as that real tables are present.
+  ⚠ **CONSOLIDATION TO ONE SHARED RESET WAS MEASURED AND REPORTED RATHER THAN DONE:** 104 of 136
+  suites carry a reset, in **70 distinct table sets** that are **divergent, not nested** (3741
+  divergent pairs against 1615 nested), and the union is 56 tables against a widest single reset of
+  21. One list would therefore clear tables many suites deliberately leave seeded in `before()`.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE 6b SWEEP-HOLD COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
   Server 1923 → 1932 is **+9 = 4 + 2 + 3**: four appended to the EXISTING sweep describe in
   `requestAttribution.test.js`, two appended to an existing describe in `clientLock.test.js`, and
   three in a NEW describe in `captureFetchContract.test.js`. Suites 315 → 316 is that one new
