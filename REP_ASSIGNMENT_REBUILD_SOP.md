@@ -28,6 +28,22 @@ changed nothing, because a locked assignment is never revisited.
 
 ## 2. Precondition — check this FIRST
 
+> 🚧 **GATE, AND IT COMES BEFORE THE MAPPING CHECK (Danny, 2026-09-26). DO NOT RUN THIS AGAINST
+> REAL DATA AT ALL** until the rebuild **preview (Commit 7c)** exists **and Danny has read its
+> output for the contractor you are about to run against.** Building the preview does not clear
+> the gate; reviewing that contractor's output does, and it is cleared **per run**.
+
+**Why, in one line:** 3d Phase 1a Commit 7 (R5k) stops the rebuild clearing an assignment it
+cannot recreate — **it does not promise that what comes back is what was there.** A client can
+return with a **different rep**, a **sticky flipped to a provisional**, its **dates reset to
+`NOW()`** (unconditional, every time), or **no assignment at all**. And the guard's own blind spot
+lives inside this gate: it proves the replay will VISIT a client, not that it will write the row
+back, so a client in `GATE_EXCLUSIONS` with no in-grace match, or one whose assessments are all
+truncated, is cleared and **not** recreated. Only a preview shows that before the fact.
+Full entry, and what records the clearance: `PRE_LAUNCH_CHECKLIST.md`.
+
+**The rest of this section still applies once the gate is cleared.**
+
 > **Every ATTRIBUTABLE, ACTIVE team member must be mapped to a Jobber user before you run it.**
 
 If they are not, the rebuild refuses and changes nothing — deliberately: mapping people one at

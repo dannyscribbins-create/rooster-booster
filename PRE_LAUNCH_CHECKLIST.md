@@ -5375,6 +5375,29 @@ sale-boundary / payout phase FILED and not built.*
       resting on another file's current behaviour is a coincidence with a comment beside it** —
       which is why it is filed rather than concluded. The fix is the same `CASE`, in one place.
 
+- [ ] 🚧 **GATE — NO `REP_ASSIGNMENT_REBUILD` RUN AGAINST REAL DATA UNTIL THE PREVIEW EXISTS AND
+      DANNY HAS REVIEWED ITS OUTPUT** (ruled by Danny 2026-09-26, after 3d Phase 1a Commit 7).
+      **The gate:** the rebuild must not be pointed at a live contractor until **Commit 7c** — the
+      preview in the entry directly below — is built **and its output for that contractor has been
+      read and approved by Danny**. Building the preview does not clear this gate; **reviewing its
+      output for the specific contractor does**, and it is cleared per run, not once.
+      ⚠ **THE REASON IS THAT THE RUN IS A MUTATION WITH NO REHEARSAL.** A rebuild can, for any
+      client: give it a **different rep**, flip a **sticky into a provisional** (or the reverse),
+      **reset its assignment dates to `NOW()`** — which is unconditional, not a risk — or leave it
+      **unassigned entirely**. R5k stops the rebuild clearing what it cannot recreate; **it does not
+      promise that what comes back is what was there**, and those are different guarantees.
+      ⚠ **AND THE GUARD'S KNOWN BLIND SPOT IS INSIDE THIS GATE, NOT BESIDE IT.**
+      `recreatableClientsSql` proves the replay will VISIT a client, never that it will write the
+      same row back — so a client in `GATE_EXCLUSIONS` with no in-grace match, or one whose
+      assessments are all truncated (7a-2), is **cleared and not recreated**. That is the exact loss
+      R5k exists to prevent, in the one shape the guard cannot observe, and only a preview can
+      surface it before the fact.
+      ⚠ **THIS GATE IS WHY THE TOOL STAYS AN ENV VAR AND NEVER BECOMES A BUTTON.** A surface would
+      make it runnable by someone who has not read this, which is the failure the gate is for.
+      **What clears it:** Commit 7c shipped · its preview run for the target contractor · Danny's
+      review of the CHANGED rows in that output. Record the date and the contractor here when it is
+      cleared — a gate with no closure half becomes a line that was once true.
+
 - [ ] ⚠ **THE REBUILD HAS NO DRY-RUN, AND R5k's GUARD CANNOT SEE WHAT IT MOST NEEDS TO**
       (filed 2026-09-26 by 3d Phase 1a Commit 7; answers Danny's question 2).
       `runAssignmentRebuild` only mutates. An operator sets an env var, restarts, and reads what

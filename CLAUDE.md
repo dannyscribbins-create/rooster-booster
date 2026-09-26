@@ -358,6 +358,13 @@ irreversible, and **leaving the variable set re-runs it on every restart.** The 
 precondition, steps, what survives, how to verify, and the backup that must be taken first —
 is `REP_ASSIGNMENT_REBUILD_SOP.md` in the repo root. **Read it before setting the variable, and
 never set it to "see what happens".**
+⚠ **AND IT IS GATED SHUT RIGHT NOW (Danny, 2026-09-26): NO RUN AGAINST REAL DATA UNTIL THE
+PREVIEW (Commit 7c) EXISTS AND DANNY HAS REVIEWED ITS OUTPUT FOR THAT CONTRACTOR.** R5k stops the
+rebuild clearing what it cannot recreate; **it does not promise that what comes back is what was
+there** — a client can return with a different rep, a sticky flipped to provisional, dates reset
+to `NOW()`, or no assignment at all. The gate, what clears it, and the guard's blind spot are on
+`PRE_LAUNCH_CHECKLIST.md`. ⚠ **This line is resident because the gate binds at the moment someone
+sets an env var — before any document is open, which is the one moment a checklist cannot reach.**
 
 ⚠ **THE ATTRIBUTION RULINGS AND THE REASONING BEHIND THEM ARE IN
 `RoofMiles_Decisions_Record_Canvass_Attribution.md`** (repo root). It holds what the code cannot:
