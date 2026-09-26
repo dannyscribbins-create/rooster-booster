@@ -92,6 +92,16 @@ const job = (over = {}) => ({
   invoices: { nodes: [] }, customFields: [], ...over,
 });
 
+// A request node in the shape BASE_QUERY selects as of 7a. TWO people on the assessment, because
+// one is the Mode A "single match" case and two is the co-assignment case — and the pair is what
+// proves assigned_jobber_user_ids is stored atomically rather than collapsed to a first winner.
+const requestNode = (over = {}) => ({
+  id: 'req-node-1', requestStatus: 'assessment_completed', createdAt: '2026-09-04T00:00:00.000Z',
+  client: OWNER, salesperson: { id: REP_USER },
+  assessment: { id: 'assess-1', assignedUsers: { nodes: [{ id: REP_USER }, { id: 'ju-second' }] } },
+  ...over,
+});
+
 const relatedClient = ({ quotes = [], jobs = [], invoices = [], requests = [] } = {}) => ({
   isCompany: false, isLead: false, tags: { nodes: [] }, customFields: [],
   jobs: { nodes: jobs }, quotes: { nodes: quotes },
@@ -468,6 +478,10 @@ describe('Commit 5 — parity, and paging under the smaller page size', () => {
         quotes: { nodes: [approvedQuote()] },
         jobs: { nodes: [job()] },
         invoices: { nodes: [] },
+        // ⚠ THE FIXTURE MIRRORS WHAT BASE_QUERY SELECTS AS OF 7a. Before 7a it selected no
+        // `requests` connection, so this key was absent here too — and its absence was the defect,
+        // not the fixture's shape.
+        requests: { nodes: [requestNode()] },
       }),
       fetchAttributionData: async () => ({ requests: [], assessments: [] }),
       token: 'tok',
@@ -477,6 +491,62 @@ describe('Commit 5 — parity, and paging under the smaller page size', () => {
     assert.equal(await countFacts('crm_job_facts'), 1, 'the request door captured job facts');
     assert.equal(await countFacts('crm_quote_facts'), 1, 'and quote facts');
     assert.equal(await stageOf(), 'sold', 'and decided from them');
+  });
+
+  it('7a — the request door writes crm_request_facts, with the assessment and its people', async () => {
+    // ⚠ THIS IS THE CASE 7a EXISTS FOR. Before it, fetchFullClient selected no `requests`
+    // connection, captureClientFacts read client.requests?.nodes as undefined, and
+    // writeRequestFacts wrote ZERO rows while reporting success — on the ONE door whose subject is
+    // a request. Every request webhook and every repRequestSweep pass lost its facts silently.
+    // ⚠ IT ASSERTS THE STORED COLUMNS, NOT A COUNT. A row count would pass against a row whose
+    // assessment and assigned people were dropped, and those two are exactly what the engine's
+    // Mode A reads — so the count alone would be the weaker half of the property.
+    const outcome = await attributeFromRequest(pool, {
+      contractorId: TENANT,
+      request: { id: 'req-ctd-3', createdAt: '2026-09-05T00:00:00.000Z', client: { id: CLIENT } },
+      fetchFullClient: async () => ({
+        id: CLIENT, createdAt: '2026-09-01T00:00:00.000Z', customFields: [],
+        quotes: { nodes: [] }, jobs: { nodes: [job()] }, invoices: { nodes: [] },
+        requests: { nodes: [requestNode()] },
+      }),
+      fetchAttributionData: async () => ({ requests: [], assessments: [] }),
+      token: 'tok',
+    });
+    assert.equal(outcome, 'attributed');
+
+    const { rows } = await pool.query(
+      `SELECT jobber_request_id, jobber_client_id, salesperson_jobber_user_id,
+              assessment_id, assigned_jobber_user_ids
+         FROM crm_request_facts WHERE contractor_id = $1`,
+      [TENANT]
+    );
+    assert.equal(rows.length, 1, 'exactly one request fact');
+    assert.equal(rows[0].jobber_request_id, 'req-node-1');
+    assert.equal(rows[0].jobber_client_id, CLIENT, 'keyed to the right client');
+    assert.equal(rows[0].salesperson_jobber_user_id, REP_USER);
+    assert.equal(rows[0].assessment_id, 'assess-1', 'the assessment id is stored');
+    assert.deepEqual(rows[0].assigned_jobber_user_ids, [REP_USER, 'ju-second'],
+      'and the people on it, atomically — this is what Mode A reads to tell one rep from two');
+  });
+
+  it('7a — a request node missing client.id is DROPPED, not stored half-formed', async () => {
+    // The paired negative. writeRequestFacts filters on id + createdAt + client.id, so a node
+    // missing any of the three writes nothing — and `client { id }` is precisely the field the
+    // quote and request selections were BOTH missing before Commit 5/7a. Without this case, the
+    // positive above would pass against a writer that stored rows with a null client.
+    await attributeFromRequest(pool, {
+      contractorId: TENANT,
+      request: { id: 'req-ctd-4', createdAt: '2026-09-05T00:00:00.000Z', client: { id: CLIENT } },
+      fetchFullClient: async () => ({
+        id: CLIENT, createdAt: '2026-09-01T00:00:00.000Z', customFields: [],
+        quotes: { nodes: [] }, jobs: { nodes: [job()] }, invoices: { nodes: [] },
+        requests: { nodes: [{ ...requestNode(), client: undefined }] },
+      }),
+      fetchAttributionData: async () => ({ requests: [], assessments: [] }),
+      token: 'tok',
+    });
+    assert.equal(await countFacts('crm_request_facts'), 0,
+      'a node with no client id cannot be keyed, so it is dropped rather than stored wrong');
   });
 
   it('the request door returns capture_failed and decides nothing when capture throws', async () => {

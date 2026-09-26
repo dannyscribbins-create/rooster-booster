@@ -246,6 +246,16 @@ describe('capture fetch — (ii) THE BOUNDARY FENCE: what consumers read must be
       'fetchFullClient QUOTE_FIELDS': fetchModule.QUOTE_FIELDS,
       'fetchClientRelatedData RELATED_QUOTE_FIELDS': jobberRouter._captureFields.RELATED_QUOTE_FIELDS,
     }],
+    // ⚠ THE FOURTH AND LAST WRITER, ADDED IN 7a — AND ITS ABSENCE IS WHY 7a EXISTS.
+    // fetchFullClient selected no `requests` connection at all, so writeRequestFacts was handed
+    // undefined and wrote zero rows on every request webhook and every sweep pass. A fence that
+    // covered three writers of four could not see it: its green was evidence about the three.
+    // With this entry the list is complete, so the NEXT missing request field fails here instead
+    // of shipping as silent data loss.
+    ['writeRequestFacts', {
+      'fetchFullClient REQUEST_FIELDS': fetchModule.REQUEST_FIELDS,
+      'repImportScope REP_REQUESTS_QUERY': repImport.REP_REQUESTS_QUERY,
+    }],
   ];
 
   for (const [writer, selections] of WRITER_SELECTIONS) {
@@ -431,6 +441,92 @@ describe('capture fetch — (ii) THE BOUNDARY FENCE: what consumers read must be
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
+describe('capture fetch — (ii-b) 7a: the REQUESTS connection is selected, wired and paged', () => {
+// ═════════════════════════════════════════════════════════════════════════════════
+
+  // ⚠ THESE ARE STRUCTURAL ON PURPOSE, AND THE REASON IS A LIMITATION OF THE HARNESS ABOVE.
+  // installJobber returns whatever its handler says REGARDLESS of the query, so it does NOT
+  // project the fixture onto the selection set. A fixture-driven end-to-end case therefore
+  // CANNOT see a field the query fails to select — which is exactly how 7a's first two
+  // guard-proofs came back GREEN against a BASE_QUERY with the whole `requests` connection
+  // deleted. The same limitation was found and fixed for the IMPORT harness in 3a-2/3b; here the
+  // reads are fenced structurally instead.
+  // ⚠ SO A TEST THAT INJECTS THE VALUE ITSELF CANNOT DISCOVER THAT NOTHING UPSTREAM SUPPLIES IT.
+  // That sentence is already in CLAUDE.md, and 7a reproduced the defect it describes.
+
+  it('BASE_QUERY selects a requests connection, wired to REQUEST_FIELDS', () => {
+    // Catches the pre-7a state exactly: REQUEST_FIELDS can exist and be perfectly correct while
+    // BASE_QUERY never uses it, which is a constant nothing asks for.
+    assert.match(fetchModule.BASE_QUERY, /requests\(first: \d+\) \{/,
+      'BASE_QUERY must ask for requests — without it captureClientFacts writes zero request facts');
+    const reqBlock = fetchModule.BASE_QUERY.match(/requests\(first: \d+\) \{[\s\S]*?pageInfo/);
+    assert.ok(reqBlock, 'the requests connection must have a body');
+    for (const f of ['id', 'createdAt', 'client', 'salesperson', 'assessment']) {
+      assert.ok(reqBlock[0].includes(f), `the requests selection must carry ${f}`);
+    }
+  });
+
+  it('REQUEST_FIELDS selects the assessment AND the people on it', () => {
+    // ⚠ THE DOUBLY-NESTED READ THE MECHANICAL FENCE DOES NOT REACH. writeRequestFacts reads
+    // n.assessment?.assignedUsers?.nodes[].id, and the reads-vs-selects derivation extracts
+    // top-level and single-nested fields only — so dropping assignedUsers left it GREEN. Mode A
+    // reads this list to tell one rep from two, so losing it turns a co-assignment into a single
+    // match, silently.
+    assert.match(fetchModule.REQUEST_FIELDS, /assessment \{ id assignedUsers\(first: \d+\) \{ nodes \{ id \} \} \}/,
+      'the assessment must carry its assignedUsers ids');
+  });
+
+  it('a requests page query exists and fetchFullClient pages the connection', () => {
+    // Adding a connection with a fixed `first:` and no follow-up query would swap one silent
+    // truncation for another (N3).
+    assert.ok(fetchModule.REQUESTS_PAGE_QUERY, 'there must be a requests page query');
+    assert.match(fetchModule.REQUESTS_PAGE_QUERY, /GetClientRequestsPage/);
+    const src = readFileSync(join(__dirname, '..', 'utils', 'jobberClientFetch.js'), 'utf8');
+    assert.match(src, /pageClientConnection\(\{ query: REQUESTS_PAGE_QUERY[^}]*field: 'requests'/,
+      'fetchFullClient must page requests to exhaustion like its three siblings');
+  });
+
+  it('END TO END — requests spanning two pages all arrive, and all become facts', async () => {
+    // What the structural cases cannot prove: that the plumbing works. Real fetchFullClient, a
+    // stub that answers the base query and then one follow-up page, and the assembled result fed
+    // to the real captureClientFacts.
+    const reqNode = (id) => ({
+      id, requestStatus: 'assessment_completed', createdAt: '2026-01-01T00:00:00Z',
+      client: { id: CLIENT }, salesperson: { id: 'ju-a' },
+      assessment: { id: `as-${id}`, assignedUsers: { nodes: [{ id: 'ju-a' }, { id: 'ju-b' }] } },
+    });
+
+    installJobber(({ query }) => {
+      const which = connectionOf(query);
+      if (which === 'base') {
+        return { data: { client: { id: CLIENT,
+          quotes: page([]), jobs: page([]), invoices: page([]),
+          requests: page([reqNode('r1')], true, 'CUR') } } };
+      }
+      if (which === 'requests') {
+        return { data: { client: { requests: page([reqNode('r2')]) } } };
+      }
+      throw new Error(`unexpected page: ${which}`);
+    });
+
+    const client = await fetchFullClient(CLIENT, TOKEN);
+    assert.deepEqual(client.requests.nodes.map((r) => r.id), ['r1', 'r2'],
+      'both pages arrive — stopping after the first would lose r2 with nothing to say so');
+    // ⚠ THE SHAPE MATTERS AS MUCH AS THE COUNT. captureClientFacts reads client.requests?.nodes,
+    // so a bare array here would read as ABSENT and capture nothing — the undefined-vs-empty
+    // distinction that made 7a necessary in the first place.
+    assert.ok(client.requests && Array.isArray(client.requests.nodes),
+      'the connection shape, matching its three siblings');
+    assert.equal(client.requests.nodes[0].assessment.id, 'as-r1');
+    assert.deepEqual(client.requests.nodes[0].assessment.assignedUsers.nodes.map((u) => u.id),
+      ['ju-a', 'ju-b'], 'the people survive the assembly');
+    // ⚠ THE DATABASE HALF IS NOT HERE, DELIBERATELY. This file has no pool and adding one would
+    // mean a second lifecycle in a suite built around an axios stub. The write is asserted in
+    // server/test/captureThenDecide.test.js, which already drives the real door against a pool.
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════
 describe('capture fetch — (iii) paging to EXHAUSTION, no cap that drops records', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 

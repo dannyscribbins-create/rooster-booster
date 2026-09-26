@@ -78,6 +78,15 @@ const PAGE_SIZE = 20;
 // reason. Lowering it requires paging it first, which is its own commit.
 const INVOICE_JOBS_PAGE_SIZE = 50;
 
+// People on ONE assessment. ⚠ A HARD CAP THAT TRUNCATES SILENTLY, AND 7a DOES NOT FIX IT — it is
+// named here so the number has one home and the limit is visible. The engine's Mode A reads this
+// list to decide whether an assessment names one rep (a match) or two (a co-assignment flag), so a
+// sixth person is simply absent from that decision. `assignedUsers` is a connection and Jobber
+// would report `pageInfo.hasNextPage`, but nothing selects it and nothing pages it, so the
+// truncation is NOT detectable after the fact: five ids look exactly like all of them. Matches the
+// import's REP_REQUESTS_QUERY, which carries the same cap. Filed, not fixed.
+const ASSIGNED_USERS_PAGE_SIZE = 5;
+
 // A runaway guard, not a record cap. Reaching it means the connection is larger than any real
 // client and something is wrong with the cursor — so it THROWS rather than returning a short
 // answer, which is the whole point of N3.
@@ -118,6 +127,30 @@ const CLIENT_SCALARS = `
 // branding loader never selected: a consumer reading a field no query asks for takes the default.
 const QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id } client { id }`;
 
+// ── REQUESTS (3d Phase 1a Commit 7a) ─────────────────────────────────────────
+//
+// ⚠ THIS CONNECTION WAS ABSENT UNTIL 7a, AND ITS ABSENCE WAS SILENT DATA LOSS ON THE ONE DOOR
+// WHOSE SUBJECT IS A REQUEST. attributeFromRequest fetches through fetchFullClient, and
+// captureClientFacts reads client.requests?.nodes — so it received `undefined`, normalised it to
+// [], and writeRequestFacts wrote ZERO rows while reporting success. Every request webhook and
+// every repRequestSweep pass has been capturing no request facts at all.
+//
+// ⚠ THE FIELDS ARE EXACTLY WHAT writeRequestFacts READS, plus requestStatus.
+// The writer keys on `id`, `createdAt` and `client.id` (it FILTERS OUT any node missing one of
+// the three), and stores `salesperson.id`, `assessment.id` and the assessment's assignedUsers ids.
+// ⚠ requestStatus IS SELECTED AND NOTHING ON THIS PATH READS IT TODAY. It is here because Danny
+// specified it: deriveAndSaveTags builds the `request:*` tags from it on the OTHER fetch
+// (fetchClientRelatedData), and having the two selections agree is worth one scalar. Recorded
+// rather than quietly dropped, so nobody later "discovers" it as dead weight and removes it.
+// ⚠ AND IT DIVERGES BY THAT ONE FIELD FROM THE IMPORT'S REP_REQUESTS_QUERY
+// (server/jobs/repImportScope.js), which selects the same shape WITHOUT requestStatus. Stated
+// because a difference between two selections that feed one writer is exactly what the mechanical
+// fence exists to catch, and this one is deliberate.
+const REQUEST_FIELDS = `id requestStatus createdAt
+                client { id }
+                salesperson { id }
+                assessment { id assignedUsers(first: ${ASSIGNED_USERS_PAGE_SIZE}) { nodes { id } } }`;
+
 // ⚠ EVERY FIELD BELOW IS READ BY A FACT WRITER IN server/utils/factCapture.js, AND THAT IS NOT
 // A COINCIDENCE — it is enforced. The mechanical fence in
 // server/test/captureFetchContract.test.js derives the writers' reads from their source and the
@@ -156,6 +189,10 @@ const BASE_QUERY = `query GetClient($id: EncodedId!) {
               nodes { ${JOB_FIELDS} }
               pageInfo { hasNextPage endCursor }
             }
+            requests(first: ${PAGE_SIZE}) {
+              nodes { ${REQUEST_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
             invoices(first: ${PAGE_SIZE}) {
               nodes { ${INVOICE_FIELDS} }
               pageInfo { hasNextPage endCursor }
@@ -176,6 +213,19 @@ const JOBS_PAGE_QUERY = `query GetClientJobsPage($id: EncodedId!, $after: String
           client(id: $id) {
             jobs(first: ${PAGE_SIZE}, after: $after) {
               nodes { ${JOB_FIELDS} }
+              pageInfo { hasNextPage endCursor }
+            }
+          }
+        }`;
+
+// ⚠ PAGED TO EXHAUSTION LIKE ITS THREE SIBLINGS (N3). Adding a connection with `first: 20` and
+// no follow-up query would have swapped one silent truncation for another: a client with 21
+// requests would lose the 21st with nothing to say so, which is the defect this module's header
+// says it exists to prevent.
+const REQUESTS_PAGE_QUERY = `query GetClientRequestsPage($id: EncodedId!, $after: String) {
+          client(id: $id) {
+            requests(first: ${PAGE_SIZE}, after: $after) {
+              nodes { ${REQUEST_FIELDS} }
               pageInfo { hasNextPage endCursor }
             }
           }
@@ -368,10 +418,11 @@ async function fetchFullClient(clientId, token, costMeta = {}) {
     throw new Error(`fetchFullClient: no client returned for id ${clientId}`);
   }
 
-  const [quoteNodes, jobNodes, invoiceNodes] = await Promise.all([
+  const [quoteNodes, jobNodes, invoiceNodes, requestNodes] = await Promise.all([
     pageClientConnection({ query: QUOTES_PAGE_QUERY, clientId, token, field: 'quotes', firstPage: client.quotes, label, meta }),
     pageClientConnection({ query: JOBS_PAGE_QUERY, clientId, token, field: 'jobs', firstPage: client.jobs, label, meta }),
     pageClientConnection({ query: INVOICES_PAGE_QUERY, clientId, token, field: 'invoices', firstPage: client.invoices, label, meta }),
+    pageClientConnection({ query: REQUESTS_PAGE_QUERY, clientId, token, field: 'requests', firstPage: client.requests, label, meta }),
   ]);
 
   assertInvoiceJobsComplete(invoiceNodes, label);
@@ -381,6 +432,10 @@ async function fetchFullClient(clientId, token, costMeta = {}) {
     quotes: { nodes: quoteNodes },
     jobs: { nodes: attachInvoicesToJobs(jobNodes, invoiceNodes) },
     invoices: { nodes: invoiceNodes },
+    // ⚠ THE CONNECTION SHAPE, matching its siblings, because captureClientFacts reads
+    // client.requests?.nodes. A bare array here would read as absent and capture nothing — the
+    // same undefined-vs-empty distinction that made this whole commit necessary.
+    requests: { nodes: requestNodes },
   };
 }
 
@@ -428,4 +483,7 @@ module.exports = {
   JOB_FIELDS,
   INVOICE_FIELDS,
   QUOTE_FIELDS,
+  REQUEST_FIELDS,
+  REQUESTS_PAGE_QUERY,
+  ASSIGNED_USERS_PAGE_SIZE,
 };

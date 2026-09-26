@@ -385,8 +385,34 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1903 server tests across 312 suites, and 1358 React tests across 82 files** (measured 2026-09-25 by the lock-timeout commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1903 · suites 312 · pass 1903 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE LOCK-TIMEOUT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1911 server tests across 313 suites, and 1358 React tests across 82 files** (measured 2026-09-26 by the request-capture commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1911 · suites 313 · pass 1911 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE REQUEST-CAPTURE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1903 → 1911 is **+8 = 4 + 2 + 2**: four in a NEW describe in `captureFetchContract.test.js`
+  (three structural fences and one end-to-end), two appended to an existing describe in
+  `captureThenDecide.test.js`, and two from the mechanical reads-vs-selects fence gaining its
+  FOURTH writer over two selections. Suites 312 → 313 is that one new describe. React did not move
+  and was re-measured. **All four predicted before the run and matched.**
+  ⚠ **AND THE DEFECT IT CLOSES IS THE ONE THIS FILE KEEPS RECORDING: a writer reading a field no
+  query selects.** `fetchFullClient`'s BASE_QUERY had no `requests` connection, so
+  `captureClientFacts` read `undefined`, normalised it to `[]`, and `writeRequestFacts` wrote ZERO
+  rows while reporting success — on the ONE door whose subject is a request. Live since Commit 5.
+  ⚠ **MY FIRST TWO GUARD-PROOFS FOR IT CAME BACK GREEN, AND THE REASON IS ALREADY WRITTEN DOWN
+  HERE.** Deleting the whole `requests` connection from BASE_QUERY changed nothing, because the
+  behavioural test STUBS `fetchFullClient` — *"a test that injects the value itself cannot
+  discover that nothing upstream supplies it"*, reproduced by the commit closing an instance of
+  it. `captureFetchContract`'s harness returns its fixture regardless of the query (it does not
+  project onto the selection, unlike the import harness fixed in 3a-2/3b), so the reads are fenced
+  STRUCTURALLY instead: BASE_QUERY must contain the connection, and REQUEST_FIELDS must carry the
+  assessment's `assignedUsers`.
+  ⚠ **THE MECHANICAL FENCE DID NOT SEE THE assignedUsers CASE EITHER, AND THE REASON IS ITS DEPTH.**
+  `writeRequestFacts` reads `n.assessment?.assignedUsers?.nodes[].id` — doubly nested — and the
+  reads-vs-selects derivation extracts top-level and single-nested fields only. It caught the
+  `client { id }` case and not this one, so the depth limit is now fenced explicitly rather than
+  assumed away.
+  ⚠ **AND A GUARD-PROOF INJECTOR THAT REPLACED WITH AN EMPTY STRING COULD NOT UNDO ITSELF.**
+  `s.count('')` is 25,981, so the revert's assert fired and the file was LEFT INJECTED — caught
+  only by the sha256 check afterwards. **Never revert by replacing with ''; use a marker.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE LOCK-TIMEOUT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
   Server 1901 → 1903 is **+2**, both appended to an EXISTING describe in `clientLock.test.js`, so
   **suites hold at 312** — the expected shape when a file grows rather than a file arriving. React
   did not move and was re-measured. **All four predicted before the run and matched.**
