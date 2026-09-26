@@ -127,7 +127,25 @@ async function writeProvisional(pool, contractorId, jobberClientId, repId, sourc
        provisional_source = EXCLUDED.provisional_source,
        provisional_set_at = EXCLUDED.provisional_set_at,
        updated_at         = EXCLUDED.updated_at,
-       written_by         = EXCLUDED.written_by`,
+       -- ⚠ A REPLAY MAY NOT DOWNGRADE A LIVE OR MANUAL MARKER (3d Phase 1a Commit 7, R5k).
+       -- This was an unconditional rewrite to the incoming value, and the consequence
+       -- was specific: a replay pass over a client flipped a LIVE-written provisional to
+       -- 'replay', after which the operator rebuild — which discards by marker — treated
+       -- somebody's webhook write as its own and discarded it. The row's marker is the only
+       -- record of who wrote it, so overwriting it destroys the evidence the rebuild reads.
+       -- ⚠ THE RECREATABLE GUARD IN repAssignmentRebuild.js ALSO COVERS TODAY'S INSTANCES OF
+       -- THIS, AND THAT IS NOT A REASON TO SKIP THE FIX. A guard that happens to cover a bug
+       -- is not a fix for it: loosen the guard and the bug returns silently, with no second
+       -- mechanism left. Keep both.
+       -- ⚠ A NULL STORED MARKER IS NOT PROTECTED HERE, DELIBERATELY. NULL means "written
+       -- before the column existed", which is a claim about age, not about authorship —
+       -- a NULL stored marker satisfies neither value in the IN test below, so the ELSE arm
+       -- takes it and the row is honestly relabelled to whoever just wrote it. What keeps a
+       -- legacy NULL row safe is the rebuild's recreatable guard, not this CASE.
+       written_by         = CASE WHEN client_rep_assignments.written_by IN ('live', 'manual')
+                                   AND EXCLUDED.written_by = 'replay'
+                                 THEN client_rep_assignments.written_by
+                                 ELSE EXCLUDED.written_by END`,
     [contractorId, jobberClientId, repId, source, writtenBy]
   );
 }
@@ -143,6 +161,14 @@ async function writeSticky(pool, contractorId, jobberClientId, repId, source, wr
        sticky_source = EXCLUDED.sticky_source,
        sticky_set_at = EXCLUDED.sticky_set_at,
        updated_at    = EXCLUDED.updated_at,
+       -- ⚠ THIS ONE IS STILL UNCONDITIONAL, AND THE ASYMMETRY WITH writeProvisional IS
+       -- NAMED RATHER THAN LEFT TO BE NOTICED. A replay adding a STICKY to a row whose
+       -- provisional half a webhook wrote does relabel the row 'replay'. It is the same
+       -- shape as the defect fixed above and it is NOT fixed here, because reaching this
+       -- line at all requires the client to have request facts (the replay's only entry
+       -- point), which makes the row recreatable and therefore safe under the rebuild's
+       -- guard. That is an argument resting on another file's current behaviour, so it is
+       -- written down: filed on PRE_LAUNCH_CHECKLIST.md, not forgotten.
        written_by    = EXCLUDED.written_by
      WHERE client_rep_assignments.sticky_rep_id IS NULL`,
     [contractorId, jobberClientId, repId, source, writtenBy]

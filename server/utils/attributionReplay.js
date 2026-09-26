@@ -138,20 +138,80 @@ async function replayClientAttribution(db, { contractorId, jobberClientId, logEr
   return allRequests.length;
 }
 
+// ── THE CANDIDATE PREDICATE, WRITTEN ONCE (3d Phase 1a Commit 7) ──────────────
+// ⚠ TWO CALLERS NEED THE SAME ANSWER AND MUST NOT EACH SPELL IT OUT. This is the set the
+// replay VISITS; the rebuild's `recreatable` guard (server/jobs/repAssignmentRebuild.js)
+// asks the same question in order to decide whether clearing a row is reversible. A second
+// copy of this UNION in the rebuild would be a guard that looks right and proves the wrong
+// thing the first time either side is edited — so the rebuild composes this fragment
+// instead, and cannot drift from it.
+// ⚠ BOTH ARMS CARRY contractor_id EXPLICITLY. A UNION is exactly the shape where a third
+// arm added without the predicate reads as covered; write it on every arm.
+function namesUsersSql(contractorParam, usersParam) {
+  return `SELECT jobber_client_id FROM crm_request_facts
+      WHERE contractor_id = ${contractorParam}
+        AND (salesperson_jobber_user_id = ANY(${usersParam}::text[]) OR assigned_jobber_user_ids ?| ${usersParam}::text[])
+     UNION
+     SELECT jobber_client_id FROM crm_quote_facts
+      WHERE contractor_id = ${contractorParam} AND salesperson_jobber_user_id = ANY(${usersParam}::text[])`;
+}
+
 /** Clients whose stored history names any of these Jobber user ids. */
 async function clientsNamingUsers(db, contractorId, jobberUserIds) {
   if (!jobberUserIds || jobberUserIds.length === 0) return [];
   const { rows } = await db.query(
-    `SELECT jobber_client_id FROM crm_request_facts
-      WHERE contractor_id = $1
-        AND (salesperson_jobber_user_id = ANY($2::text[]) OR assigned_jobber_user_ids ?| $2::text[])
-     UNION
-     SELECT jobber_client_id FROM crm_quote_facts
-      WHERE contractor_id = $1 AND salesperson_jobber_user_id = ANY($2::text[])
-     ORDER BY 1`,
+    `${namesUsersSql('$1', '$2')} ORDER BY 1`,
     [contractorId, jobberUserIds]
   );
   return rows.map((r) => r.jobber_client_id);
+}
+
+/**
+ * The Jobber user ids a replay-for-everyone would run against: every attributable team
+ * member who is mapped.
+ *
+ * ⚠ DELIBERATELY NOT FILTERED ON `active`, and that differs from the rebuild's refusal
+ * check (`unmappedAttributableReps`), which IS active-only. The two ask different
+ * questions: "must the operator map somebody before running" is about people who can still
+ * be mapped, while this is about whose history the replay will actually walk — a departed
+ * rep's mapped clients are still replayed and still theirs. Extracted here so the rebuild's
+ * recreatable guard and the replay itself cannot use different sets.
+ */
+async function mappedAttributableUserIds(db, contractorId) {
+  const { rows } = await db.query(
+    `SELECT jobber_user_id FROM team_members
+      WHERE contractor_id = $1 AND is_attributable = true AND jobber_user_id IS NOT NULL`,
+    [contractorId]
+  );
+  return rows.map((r) => r.jobber_user_id);
+}
+
+/**
+ * SQL selecting the clients whose assignment a replay could RECREATE from stored facts.
+ * Takes the placeholder names so a caller can slot it into a statement of its own;
+ * `contractorParam` binds the contractor id, `usersParam` a text[] of mapped Jobber user ids.
+ *
+ * ⚠ REQUEST FACTS SPECIFICALLY, ON TOP OF BEING A CANDIDATE — AND THE `AND` IS THE WHOLE
+ * POINT. `replayClientAttribution` returns at `reqRows.length === 0` before the engine is
+ * ever called, so a client with QUOTE facts only is returned by the UNION above, is visited,
+ * and replays to nothing. A guard keyed on "has a row in any fact table" would therefore
+ * spare nothing while looking like it spared everything — the plausible-looking guard that
+ * still loses rows.
+ *
+ * ⚠ AND WHAT IT CANNOT SEE, STATED RATHER THAN ASSUMED: this answers "the replay will VISIT
+ * this client and has requests to walk", never "the replay will write the same row". Two
+ * known cases satisfy it and still write nothing — a client whose derived `currentStatus` is
+ * in the engine's GATE_EXCLUSIONS with no in-grace Mode A/B match, and (7a-2) one whose
+ * candidate assessments are all truncated, which flags instead of assigning. Those rows are
+ * cleared and not recreated. Narrowing the guard to "the replay will write" means running
+ * the engine to find out, which is the rebuild itself; a preview mode is the honest fix and
+ * is filed on PRE_LAUNCH_CHECKLIST.md rather than guessed at here.
+ */
+function recreatableClientsSql(contractorParam, usersParam) {
+  return `SELECT n.jobber_client_id FROM (${namesUsersSql(contractorParam, usersParam)}) n
+             WHERE EXISTS (SELECT 1 FROM crm_request_facts rf
+                            WHERE rf.contractor_id = ${contractorParam}
+                              AND rf.jobber_client_id = n.jobber_client_id)`;
 }
 
 /**
@@ -238,12 +298,7 @@ function replayForTeamMember(db, { contractorId, teamMemberId, logError = realLo
 function replayForMappedReps(db, { contractorId, logError = realLogError }) {
   return enqueue(contractorId, async () => {
     try {
-      const { rows } = await db.query(
-        `SELECT jobber_user_id FROM team_members
-          WHERE contractor_id = $1 AND is_attributable = true AND jobber_user_id IS NOT NULL`,
-        [contractorId]
-      );
-      const ids = await clientsNamingUsers(db, contractorId, rows.map((r) => r.jobber_user_id));
+      const ids = await clientsNamingUsers(db, contractorId, await mappedAttributableUserIds(db, contractorId));
       return await replayClients(db, { contractorId, jobberClientIds: ids, trigger: 'import', logError });
     } catch (err) {
       replayStatus.set(contractorId, { state: 'error', trigger: 'import', finishedAt: new Date().toISOString() });
@@ -258,5 +313,7 @@ module.exports = {
   replayForTeamMember,
   replayForMappedReps,
   clientsNamingUsers,
+  mappedAttributableUserIds,
+  recreatableClientsSql,
   getReplayStatus,
 };

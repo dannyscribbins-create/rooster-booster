@@ -385,8 +385,45 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1938 server tests across 317 suites, and 1358 React tests across 82 files** (measured 2026-09-26 by the 6c reset-coverage commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1938 · suites 317 · pass 1938 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE 6c RESET-COVERAGE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1951 server tests across 319 suites, and 1358 React tests across 82 files** (measured 2026-09-26 by the 3d Phase 1a Commit 7 rebuild-safety commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1951 · suites 319 · pass 1951 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE COMMIT 7 REBUILD-SAFETY COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1938 → 1951 is **+13**, all in the EXISTING `repAssignmentRebuild.test.js`, which went
+  10 cases → 23; suites 317 → 319 is its **two NEW top-level describes** (the R5k guard, and the
+  writer marker) — the pre-existing describe grew without adding a suite. React did not move —
+  no `src/` file touched — and was re-measured. **All four predicted before the run and matched.**
+  Counted with an anchored `^\s*it\(`; all four `for` loops sit in `beforeEach` or inside an
+  `it()` body and wrap no case.
+  ⚠ **THE GATE WAS RUN TWICE AND THE SECOND RUN IS THE ONE CITED, BECAUSE TWO COMMENT-ONLY EDITS
+  LANDED WHILE THE FIRST WAS RUNNING.** A comment cannot change a count — and *"it cannot have
+  changed"* is a prediction, not a measurement, which is the whole subject of this block. Both
+  runs read `EXIT=0` and the same seven numbers.
+  ⚠ **A BACKTICK INSIDE A COMMENT INSIDE A TEMPLATE LITERAL CLOSED THE STRING, COMMITTED BY THE
+  SESSION THAT HAD READ THE RULE FORBIDDING IT** — the second recorded instance, after the
+  correction-path commit. It surfaced as `SyntaxError: missing ) after argument list` with
+  `tests 1 · suites 0`, which is the LOUD variant and the module-load signature this file names.
+  Reworded, not escaped. **Knowing the rule is not the mechanism; the `suites 0` reading is.**
+  ⚠ **AND A GUARD-PROOF FOUND A VACUOUS CASE IN THIS COMMIT'S OWN NEW TESTS, WHICH IS WHY THE
+  COUNT MOVED 22 → 23 MID-BUILD.** Injection (a) — restoring the pre-Commit-7 predicates — took
+  the >50 kept-rows case red and left its under-50 sibling GREEN. Cause: the kept LIST is built
+  by its own predicate, so it went on reporting three spared rows **correctly** while all three
+  were being cleared underneath it. **A report about rows that no longer exist reads exactly like
+  a report about rows that were spared**, and only the sibling's survival assertion could tell
+  them apart. Repaired by asserting survival; (a) now reds 8 rather than 7.
+  ⚠ **FIVE INJECTIONS, AND THE TWO THAT PROVE THE GUARD IS THE RIGHT GUARD ARE THE NARROW ONES.**
+  (a) the pre-Commit-7 predicates → **8** red; (b) the unconditional `written_by` rewrite → **2**;
+  (c) `recreatable` widened to "any fact table" → **exactly 1**, the quote-facts-only client;
+  (f) `recreatable` with the mapped-user half dropped → **exactly 1**, the unmapped-user client;
+  (e′) `recreatable` always false → **6**, including both paired positives. **A one-case red from
+  a one-line change is the result; an eight-case red is only a result when the injection is meant
+  to be that wide.** Every injection binds `$2` deliberately — deleting the clause instead would
+  leave the parameter unused and Postgres would refuse the statement, which breaks the SQL rather
+  than reintroducing the defect, and this file already records that shape twice.
+  ⚠ **AND THE HARNESS LEFT A FILE INJECTED ONCE, FOR A REASON THAT HAD NOTHING TO DO WITH THE
+  INJECTION.** A test name containing `✖` crashed the Python printer on a cp1252 console
+  **before** the revert ran. The revert is in a `finally` now and output is ASCII-folded. **An
+  injection harness must revert on the failure path, or its own crash is a source edit**; every
+  revert here was an inverse patch proven byte-identical by sha256, never a `git checkout`.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE 6c RESET-COVERAGE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
   Server 1932 → 1938 is **+6**, one new file (`testResetCoverage.test.js`); suites 316 → 317 is
   that file's single describe. React did not move — no `src/` file touched — and was re-measured.
   **All four predicted before the run and matched.** Counted with an anchored `^\s*it\(`; every

@@ -31,16 +31,35 @@
 //   · sticky_source = 'manual'        — A36.3 makes an admin's assignment the override.
 //   · provisional_source = 'qr_link'  — the engine already treats it as precedence.
 //   · written_by = 'live'             — anything a webhook wrote since the import.
-// ⚠ AND THE ASSUMPTION IT STATES RATHER THAN MAKES: rows with written_by NULL predate the
-// marker column, and this treats them as REPLAY-WRITTEN. That is true for the account this
-// was built for (one import, one replay, no live rep traffic yet) and FALSE for a
-// contractor with months of live activity after their import. The count of NULL rows it is
-// about to discard is logged before it acts, and `treatNullAsReplay: false` is how an
-// operator declines that assumption.
+//   · anything the replay could not recreate — R5k, below, and it outranks all three.
+//
+// ── R5k, AND IT CHANGED WHAT THE THREE LINES ABOVE ARE FOR (Danny, 2026-09-24) ──
+// ⚠ THE RULE IS NOW: THE REBUILD NEVER CLEARS AN ASSIGNMENT IT CANNOT RECREATE FROM SAVED
+// FACTS. Before this, the marker and the source were the whole test, and they answer *who
+// wrote this row* — never *can it come back*. A live webhook write from before the doors
+// captured facts (Commit 5) leaves no fact behind, so the replay that follows the discard
+// has nothing to read and the row is simply gone, under a summary reporting success.
+// ⚠ AND IT IS WHY A LEGACY `written_by` NULL ROW IS NOW SAFE BY DEFAULT. This block used to
+// say the NULL assumption was "true for the account this was built for and FALSE for a
+// contractor with months of live activity", with `treatNullAsReplay: false` as the operator's
+// only way out. That is superseded, not merely softened: the assumption still decides which
+// rows are CANDIDATES for clearing, but a NULL row with no recreatable history is now spared
+// by the guard whatever the flag says. The count of NULL candidate rows is still logged
+// before it acts, and the flag still works, because narrowing the candidate set is a
+// different and still-useful lever.
+// ⚠ WHAT THE GUARD CANNOT SEE — see recreatableClientsSql in attributionReplay.js. It proves
+// the replay will VISIT a client, not that it will write the same row back. A preview mode
+// is the honest fix for that and is filed, not built.
 
 const { pool } = require('../db');
-const { replayForMappedReps } = require('../utils/attributionReplay');
+const { replayForMappedReps, mappedAttributableUserIds, recreatableClientsSql } = require('../utils/attributionReplay');
 const { logError: realLogError } = require('../middleware/errorLogger');
+
+// The first N kept client ids that go in the log, per Q8 (Danny, 2026-09-24).
+// ⚠ THE TOTAL IS PRINTED BESIDE THE LIST AND IS NOT DECORATION: a truncated list with no
+// total reads exactly like a complete one, which is the failure this bound would otherwise
+// introduce. A list that can only be trusted when it is short is not a report.
+const KEPT_LOG_LIMIT = 50;
 
 // The sources the ENGINE writes. 'manual' and 'qr_link' are deliberately absent.
 const ENGINE_STICKY_SOURCES = ['quote_salesperson', 'promoted_provisional', 'mode_a_at_close', 'mode_b_at_close'];
@@ -66,8 +85,14 @@ async function unmappedAttributableReps(db, contractorId) {
 }
 
 /**
- * Discard the engine-written halves of this contractor's assignments.
- * Returns { stickiesCleared, provisionalsCleared, rowsDeleted, nullMarkerRows }.
+ * Discard the engine-written halves of this contractor's assignments — but only where the
+ * replay could put them back (R5k).
+ * Returns { stickiesCleared, provisionalsCleared, rowsDeleted, nullMarkerRows,
+ *           keptUnrecreatableTotal, keptUnrecreatable }.
+ *
+ * ⚠ A CONTRACTOR WITH NO MAPPED ATTRIBUTABLE REPS CLEARS NOTHING, AND THAT IS CORRECT RATHER
+ * THAN A DEGENERATE CASE: the recreatable set is empty because the replay would visit nobody,
+ * so every candidate row is spared and listed. The run is a no-op that says so.
  *
  * ⚠ IT CLEARS HALVES, NOT ROWS. One row can carry a manual sticky AND an engine-written
  * provisional; deleting it would throw away the admin's decision. Rows left with neither
@@ -89,6 +114,28 @@ async function discardEngineAssignments(db, { contractorId, treatNullAsReplay })
     ? `(written_by = 'replay' OR written_by IS NULL)`
     : `(written_by = 'replay')`;
 
+  // ── R5k: NEVER CLEAR WHAT CANNOT BE RECREATED (Danny, 2026-09-24) ───────────────────
+  //
+  // ⚠ THE THREE PREDICATES BELOW USED TO ASK ONLY *WHO WROTE THIS ROW*, NEVER *CAN IT COME
+  // BACK*. Those are different questions and the gap between them is where rows died: a
+  // pre-Commit-5 live webhook write left no fact behind, so the replay that follows the
+  // discard has nothing to read, and the row is simply gone — silently, with the summary
+  // reporting a successful rebuild. The marker cannot see this, because the marker is about
+  // authorship and the loss is about evidence.
+  //
+  // ⚠ THE PREDICATE IS COMPOSED FROM THE REPLAY'S OWN SQL, NOT RE-WRITTEN HERE. See
+  // recreatableClientsSql — the set this clears must be exactly the set the replay walks,
+  // and two hand-written copies of one UNION is how a guard ends up proving the wrong thing.
+  const mappedUserIds = await mappedAttributableUserIds(db, contractorId);
+  // ⚠ `NOT IN (subquery)` IS SAFE HERE AND IT IS WORTH SAYING WHY, BECAUSE IT USUALLY IS NOT:
+  // a single NULL anywhere in the subquery makes NOT IN return NULL for every row, which reads
+  // as "nothing is unrecreatable" and would silently switch the guard off. It cannot happen
+  // here — both arms select `jobber_client_id`, declared NOT NULL on crm_request_facts and on
+  // crm_quote_facts (server/db.js). If either column ever becomes nullable, this must become
+  // NOT EXISTS.
+  const recreatable = `jobber_client_id IN (${recreatableClientsSql('$1', '$2')})`;
+  const notRecreatable = `jobber_client_id NOT IN (${recreatableClientsSql('$1', '$2')})`;
+
   const { rows: nullRows } = await db.query(
     `SELECT COUNT(*)::int AS n FROM client_rep_assignments
       WHERE contractor_id = $1 AND written_by IS NULL
@@ -96,22 +143,45 @@ async function discardEngineAssignments(db, { contractorId, treatNullAsReplay })
     [contractorId, ENGINE_STICKY_SOURCES, ENGINE_PROVISIONAL_SOURCES]
   );
 
+  // ⚠ READ BEFORE ACTING. These are the rows the marker and the source WOULD have cleared
+  // and the guard is sparing — so they can only be identified while they still exist. A
+  // count alone sends the operator to SQL to find out which clients; the ids are what say
+  // the rebuild deliberately left work behind (Q8).
+  const { rows: keptRows } = await db.query(
+    `SELECT jobber_client_id, sticky_source, provisional_source, written_by
+       FROM client_rep_assignments
+      WHERE contractor_id = $1
+        AND (sticky_source = ANY($3::text[]) OR provisional_source = ANY($4::text[]))
+        AND ${markerClause}
+        AND ${notRecreatable}
+      ORDER BY jobber_client_id`,
+    [contractorId, mappedUserIds, ENGINE_STICKY_SOURCES, ENGINE_PROVISIONAL_SOURCES]
+  );
+
   const sticky = await db.query(
     `UPDATE client_rep_assignments
         SET sticky_rep_id = NULL, sticky_source = NULL, sticky_set_at = NULL, updated_at = NOW()
-      WHERE contractor_id = $1 AND sticky_source = ANY($2::text[]) AND ${markerClause}`,
-    [contractorId, ENGINE_STICKY_SOURCES]
+      WHERE contractor_id = $1 AND sticky_source = ANY($3::text[]) AND ${markerClause}
+        AND ${recreatable}`,
+    [contractorId, mappedUserIds, ENGINE_STICKY_SOURCES]
   );
   const provisional = await db.query(
     `UPDATE client_rep_assignments
         SET provisional_rep_id = NULL, provisional_source = NULL, provisional_set_at = NULL, updated_at = NOW()
-      WHERE contractor_id = $1 AND provisional_source = ANY($2::text[]) AND ${markerClause}`,
-    [contractorId, ENGINE_PROVISIONAL_SOURCES]
+      WHERE contractor_id = $1 AND provisional_source = ANY($3::text[]) AND ${markerClause}
+        AND ${recreatable}`,
+    [contractorId, mappedUserIds, ENGINE_PROVISIONAL_SOURCES]
   );
+  // ⚠ GUARDED TOO, AND THE REASON IS THAT IT IS THE ONLY UNGATED STATEMENT HERE. It carries
+  // neither a source nor a marker predicate, so without the guard it is the one statement
+  // that could still reach a row the two above just spared. Its cost is that a row left
+  // all-null by something else survives the run; an all-null row carries no assignment, so
+  // that is the cheap side of the trade.
   const deleted = await db.query(
     `DELETE FROM client_rep_assignments
-      WHERE contractor_id = $1 AND sticky_rep_id IS NULL AND provisional_rep_id IS NULL`,
-    [contractorId]
+      WHERE contractor_id = $1 AND sticky_rep_id IS NULL AND provisional_rep_id IS NULL
+        AND ${recreatable}`,
+    [contractorId, mappedUserIds]
   );
 
   return {
@@ -119,6 +189,13 @@ async function discardEngineAssignments(db, { contractorId, treatNullAsReplay })
     provisionalsCleared: provisional.rowCount,
     rowsDeleted: deleted.rowCount,
     nullMarkerRows: nullRows[0].n,
+    keptUnrecreatableTotal: keptRows.length,
+    keptUnrecreatable: keptRows.slice(0, KEPT_LOG_LIMIT).map((r) => ({
+      jobberClientId: r.jobber_client_id,
+      stickySource: r.sticky_source,
+      provisionalSource: r.provisional_source,
+      writtenBy: r.written_by,
+    })),
   };
 }
 
@@ -201,6 +278,19 @@ async function startAssignmentRebuildIfRequested(db = pool, { env = process.env,
     + `${result.nullMarkerRows} carried NO written_by marker and were treated as replay-written `
     + `(treatNullAsReplay=${result.treatNullAsReplay}); ${result.flagsClosed} open co-assignment flags closed; `
     + `${result.clientsReplayed} clients replayed, ${result.replayFailed} failed`);
+
+  // ⚠ R5k's closure half: the rows the rebuild DECLINED to touch, by client id. The total is
+  // printed whether or not the list is truncated — a list alone cannot tell the operator
+  // whether it is all of them, and at KEPT_LOG_LIMIT it would not be.
+  if (result.keptUnrecreatableTotal > 0) {
+    // diagnostic log — intentional
+    console.log(`[repAssignmentRebuild] ${contractorId} — KEPT ${result.keptUnrecreatableTotal} assignment(s) `
+      + `the replay could not recreate from stored facts (showing ${result.keptUnrecreatable.length}): `
+      + result.keptUnrecreatable
+        .map((r) => `${r.jobberClientId} [sticky=${r.stickySource || '-'} provisional=${r.provisionalSource || '-'} `
+          + `written_by=${r.writtenBy || 'NULL'}]`)
+        .join(', '));
+  }
   return result;
 }
 

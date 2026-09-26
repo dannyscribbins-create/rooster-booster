@@ -5338,6 +5338,63 @@ sale-boundary / payout phase FILED and not built.*
       not alternatives. **This is what Commit 5's page-size reduction is for** — the fix is the
       requested estimate, not the actual charge.
 
+- [ ] 👁 **WATCH, NOT A FIX — THE CAPTURE QUERIES RESERVE ~3.4k OF A 10,000-POINT BUCKET AND USE
+      ~64** (filed 2026-09-26 by 3d Phase 1a Commit 7 on Danny's ruling).
+      Measured live: `requestedQueryCost` **3408 / 3515** against an `actualQueryCost` of **64–306**.
+      Jobber reserves the REQUESTED figure before running the query and refunds the difference
+      after, so the reservation is what binds — **about two or three captures can be in flight at
+      once per contractor account**, not the thirty the real cost would allow.
+      ⚠ **FINE AT ACCENT'S VOLUME, AND THE TRIGGER TO REVISIT IS A LOG LINE, NOT A HUNCH.** Watch
+      the `[capture-cost]` lines: **revisit when `available` starts landing near `requested`**, which
+      is the point at which a capture begins waiting on the bucket rather than on Jobber. Until then
+      there is nothing to do, and reducing the estimate costs page size on every door.
+      ⚠ **THIS IS THE SAME SUBJECT AS THE ~8000-REQUESTED ENTRY ABOVE, AT A LATER MEASUREMENT.**
+      Commit 5's page-size reduction is what moved it from ~8000 to ~3.4k. Recorded as its own
+      line rather than an edit to that one, because both figures are dated observations and
+      overwriting the earlier one would destroy the evidence that the reduction worked.
+
+- [ ] ⚠ **`repRequestSweep`'s SUMMARY SHOULD NAME THE REQUEST IDS IT ATTRIBUTED** (minor; filed
+      2026-09-26 by 3d Phase 1a Commit 7 on Danny's ruling).
+      The sweep logs counts. `WATERMARK_OVERLAP_MS` deliberately re-covers the window a webhook may
+      already have handled, so the same request can be decided twice — which is safe and intended,
+      and today is **inferred from two counts rather than confirmed**. Listing the ids it attributed
+      makes a webhook-then-sweep double decision something an operator can see instead of deduce.
+      ⚠ **BOUND IT THE WAY Q8 BOUNDS THE REBUILD'S LIST** — first N ids **plus a total** — or it
+      becomes an unbounded log line on a catch-up sweep, and a truncated list with no total reads
+      exactly like a complete one.
+
+- [ ] ⚠ **`writeSticky` STILL REWRITES `written_by` UNCONDITIONALLY, AND ONLY ANOTHER FILE'S
+      BEHAVIOUR MAKES THAT SAFE** (filed 2026-09-26 by 3d Phase 1a Commit 7).
+      Commit 7 fixed the same defect in `writeProvisional` — a replay must not relabel a `'live'`
+      or `'manual'` write as its own — and **did not change `writeSticky`**, which was outside the
+      ruling's scope. A replay adding a sticky to a row whose provisional half a webhook wrote does
+      still relabel the row `'replay'`.
+      ⚠ **THE ARGUMENT THAT IT IS HARMLESS RESTS ON `repAssignmentRebuild.js`, NOT ON THIS
+      FUNCTION**: reaching that line requires the client to have request facts, which is exactly
+      what makes the row recreatable and therefore safe under R5k's guard. **A safety argument
+      resting on another file's current behaviour is a coincidence with a comment beside it** —
+      which is why it is filed rather than concluded. The fix is the same `CASE`, in one place.
+
+- [ ] ⚠ **THE REBUILD HAS NO DRY-RUN, AND R5k's GUARD CANNOT SEE WHAT IT MOST NEEDS TO**
+      (filed 2026-09-26 by 3d Phase 1a Commit 7; answers Danny's question 2).
+      `runAssignmentRebuild` only mutates. An operator sets an env var, restarts, and reads what
+      already happened.
+      ⚠ **AND THE GUARD IS NARROWER THAN ITS NAME.** `recreatableClientsSql` proves *the replay will
+      VISIT this client and has requests to walk*, never *it will write the same row back*. Two
+      known cases satisfy it and still write nothing — a client whose derived `currentStatus` is in
+      the engine's `GATE_EXCLUSIONS` with no in-grace Mode A/B match, and (7a-2) one whose candidate
+      assessments are all truncated, which flags instead of assigning. **Those rows are cleared and
+      not recreated**, which is the very loss R5k exists to prevent, in the shape the guard cannot
+      observe. A preview is the only honest closure: deciding without writing is running the engine,
+      which is the rebuild itself.
+      **What a preview would report:** rows KEPT (not recreatable) · rows RECREATED IDENTICALLY ·
+      rows that would CHANGE, with before and after, first 50 plus a total, on Q8's format.
+      **Estimated work:** a day. It is not a flag on the existing function — `runAttributionEngine`
+      writes as it decides, so a preview needs the whole discard-and-replay run inside a
+      transaction that is **rolled back**, with the assignment table diffed before and after. That
+      brings the concurrency question with it (a rollback-scoped rebuild holds a long transaction),
+      so it is a commit of its own, not a parameter.
+
 - [ ] ⚠ **SET `connectionTimeoutMillis` ON THE POOL — A SMALL STANDALONE COMMIT, TO DO RIGHT AFTER
       PHASE 1a** (filed 2026-09-26 by Commit 6b on Danny's ruling; **deliberately NOT changed in
       1a**).
