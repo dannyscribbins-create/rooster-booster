@@ -5338,6 +5338,27 @@ sale-boundary / payout phase FILED and not built.*
       not alternatives. **This is what Commit 5's page-size reduction is for** — the fix is the
       requested estimate, not the actual charge.
 
+- [ ] ⚠ **SET `connectionTimeoutMillis` ON THE POOL — A SMALL STANDALONE COMMIT, TO DO RIGHT AFTER
+      PHASE 1a** (filed 2026-09-26 by Commit 6b on Danny's ruling; **deliberately NOT changed in
+      1a**).
+      `server/db.js` constructs the app's single pool with `connectionString` and `ssl` only, so
+      `max` is pg's default **10** and `connectionTimeoutMillis` is **unset — meaning a caller
+      waiting for a pool slot waits FOREVER.**
+      ⚠ **WHY IT MATTERS AND WHY IT IS STILL NOT URGENT.** Commit 6's `lock_timeout` bounds waiting
+      for the per-client LOCK, and 6b bounds nothing about waiting for a CONNECTION. So the one
+      unbounded wait left on the capture path is the pool itself: if all ten slots are busy, an
+      eleventh webhook blocks with no timeout and no error. It is not urgent because nothing on the
+      capture path now holds a connection across a network call — 6b was the commit that removed
+      the last one — so slots turn over in tens of milliseconds.
+      ⚠ **WHY IT IS NOT IN 1a: IT AFFECTS EVERY QUERY IN THE APP, NOT THE CAPTURE PATH.** A pool
+      option is global. Setting it inside a commit about attribution would put an app-wide behaviour
+      change under a message about something else, and a timeout that is too low turns a slow moment
+      into a wave of failed requests on paths nobody was thinking about.
+      **What to do:** set `connectionTimeoutMillis` to about **10s** — and **re-derive it** rather
+      than taking that number: it must exceed the realistic worst-case time to get a slot under
+      load, which is a function of `max` and the longest-held query, neither of which is measured
+      yet. **The value and `max` should be decided together.**
+
 ### Canvass-stage backfill — the rep scope, the fact tables and the replay (BUILT 2026-09-21)
 
 *Rulings 1–10 by Danny, 2026-09-21. Built in one commit after a killed session; the recovery

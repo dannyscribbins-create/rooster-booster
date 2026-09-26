@@ -75,11 +75,19 @@ const { logError } = require('../middleware/errorLogger');
  * that write on a DIFFERENT connection, outside the transaction and outside the lock — it would
  * look serialised and not be. Every db argument inside fn is `tx`.
  */
-async function withClientLock(pool, { contractorId, jobberClientId }, fn) {
+async function withClientLock(pool, { contractorId, jobberClientId, door = 'unknown' }, fn) {
   if (!contractorId) throw new Error('withClientLock: contractorId is required');
   if (!jobberClientId) throw new Error('withClientLock: jobberClientId is required');
 
   const tx = await pool.connect();
+  // ⚠ STARTED AFTER connect() AND BEFORE BEGIN, SO IT MEASURES THE HOLD AND NOT THE WAIT FOR A
+  // POOL SLOT. Those are different problems with different fixes — a long hold means the locked
+  // section is doing too much, a long wait means the pool is too small — and one number covering
+  // both would hide whichever is not the cause.
+  const heldFrom = Date.now();
+  // Deferred to the finally: the line must be emitted on the failure path too, or the only
+  // measurements ever logged are the ones that went well.
+  let lockError = null;
   try {
     await tx.query('BEGIN');
     // ── LOCK TIMEOUT (follow-up to Commit 6) ────────────────────────────────
@@ -116,6 +124,7 @@ async function withClientLock(pool, { contractorId, jobberClientId }, fn) {
     await tx.query('COMMIT');
     return result;
   } catch (err) {
+    lockError = err;
     // ⚠ A LOCK TIMEOUT IS TAGGED SO A CALLER CAN TELL CONTENTION FROM A BAD CAPTURE.
     // Postgres raises SQLSTATE 55P03 (lock_not_available) when lock_timeout expires. Without this
     // tag every door would log "capture failed" for what is really "another event for this client
@@ -128,22 +137,50 @@ async function withClientLock(pool, { contractorId, jobberClientId }, fn) {
         + `${jobberClientId} (contractor ${contractorId}) — another event for the SAME client held `
         + `it; this is contention, not a capture failure: ${err.message}`;
     }
+    // ⚠ THE ROLLBACK FAILURE IS CAPTURED HERE AND LOGGED AFTER THE CONNECTION IS RELEASED.
+    // It used to `await logError(...)` right here, while `tx.release()` was still pending in the
+    // finally — and logError can send a Resend alert with two retries. That held a POOLED
+    // CONNECTION across an outbound HTTP call, which is the exact shape ruling 5 of Commit 6
+    // forbids. It was safe only because this call passed `alert: false` and errorLogger gates
+    // the send on `alert !== false`. **Pool safety must not depend on a flag one edit could
+    // change**, so the log is deferred instead of relying on it.
+    let rollbackFailure = null;
     try {
       await tx.query('ROLLBACK');
     } catch (rollbackErr) {
-      // A failed ROLLBACK means the connection is already unusable; the real error is the one
-      // being thrown, and masking it with this one would hide the cause.
+      rollbackFailure = rollbackErr;
+    }
+    // Stash for the finally, which releases first and logs second.
+    err.__rollbackFailure = rollbackFailure;
+    throw err;
+  } finally {
+    const heldMs = Date.now() - heldFrom;
+    // ⚠ RELEASE FIRST. Everything below this line may do I/O, and none of it may do so while
+    // holding a pool slot.
+    tx.release();
+
+    // ── HOLD-TIME LINE (6b, ruling 3) ───────────────────────────────────────
+    // ⚠ EMITTED FOR EVERY LOCKED SECTION, SUCCESS OR FAILURE, because the 3000ms lock_timeout
+    // was derived from a LOCAL measurement and needs re-deriving from Railway numbers — and a
+    // line that only appears on success would measure the fast path and miss the slow one.
+    // No client data beyond the id.
+    // diagnostic log — intentional
+    console.log(
+      `[lock-hold] door=${door} contractor=${contractorId} client=${jobberClientId} `
+      + `held_ms=${heldMs}${lockError ? ` outcome=${lockError.lockTimeout ? 'lock_timeout' : 'error'}` : ' outcome=ok'}`
+    );
+
+    const rollbackFailure = lockError && lockError.__rollbackFailure;
+    if (rollbackFailure) {
+      // Now safe: the connection is back in the pool, so this may take as long as it likes.
       await logError({
         req: null,
         contractorId,
-        error: new Error(`withClientLock: ROLLBACK failed for client ${jobberClientId}: ${rollbackErr.message}`),
+        error: new Error(`withClientLock: ROLLBACK failed for client ${jobberClientId}: ${rollbackFailure.message}`),
         source: 'withClientLock — rollback',
         alert: false,
-      }).catch(() => { /* never let logging mask the throw below */ });
+      }).catch(() => { /* never let logging mask the error already thrown */ });
     }
-    throw err;
-  } finally {
-    tx.release();
   }
 }
 

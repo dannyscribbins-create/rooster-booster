@@ -341,6 +341,56 @@ describe('Commit 6 — the lock is never held across a Jobber fetch', () => {
     assert.match(src, /55P03/, 'and a timeout must be distinguishable from a capture failure');
   });
 
+  it('6b — the connection is RELEASED BEFORE logError on the rollback path', () => {
+    // ⚠ WHAT THIS PROVES, AND WHAT IT DOES NOT. It compares POSITIONS in the finally block:
+    // tx.release() must precede the logError call. That is the property, stated exactly.
+    // ⚠ IT DOES NOT OBSERVE CONCURRENCY, and pretending otherwise would be the dishonest part.
+    // "a connection is held during the log call" has no clean observable from here: logError
+    // destructures its import at module load, so it cannot be stubbed after the fact, and it runs
+    // its own query on the SHARED module pool rather than on anything a test can hand in. Proving
+    // it behaviourally would mean exhausting the pool to make the log BLOCK — a 10-slot race that
+    // would be flaky in exactly the direction that reads as a pass.
+    // ⚠ WHY IT MATTERS ANYWAY: before 6b this awaited logError while tx.release() was still pending
+    // in the finally, and logError can send a Resend alert with two retries. That held a POOLED
+    // connection across an outbound HTTP call. It was safe ONLY because the call passed
+    // `alert: false` and errorLogger gates the send on `alert !== false` — pool safety resting on a
+    // flag one edit could change.
+    const src = require('node:fs').readFileSync(
+      require('node:path').join(__dirname, '..', 'utils', 'clientLock.js'), 'utf8');
+
+    const fin = src.slice(src.lastIndexOf('} finally {'));
+    const releaseAt = fin.indexOf('tx.release()');
+    const logAt = fin.indexOf('await logError(');
+    assert.ok(releaseAt > -1, 'the finally must release the connection');
+    assert.ok(logAt > -1, 'and must still log a rollback failure — silence is not the fix');
+    assert.ok(releaseAt < logAt,
+      'tx.release() must come BEFORE logError, so pool safety does not depend on alert:false');
+  });
+
+  it('6b — a rollback failure is still logged, and leaks no connection', async () => {
+    // The behavioural half: deferring the log must not lose it, and must not strand a connection.
+    // A fake pool whose ROLLBACK throws drives the exact path.
+    let released = 0;
+    const fakePool = {
+      connect: async () => ({
+        query: async (sql) => {
+          if (/ROLLBACK/.test(sql)) throw new Error('connection already unusable');
+          if (/BEGIN|SET LOCAL|pg_advisory/.test(sql)) return { rows: [] };
+          return { rows: [] };
+        },
+        release: () => { released += 1; },
+      }),
+    };
+
+    await assert.rejects(
+      withClientLock(fakePool, { contractorId: A, jobberClientId: C1, door: 'test' },
+        async () => { throw new Error('work failed'); }),
+      /work failed/,
+      'the original error propagates — the rollback failure must not mask it'
+    );
+    assert.equal(released, 1, 'the connection is released exactly once, on the failure path too');
+  });
+
   it('NO PRODUCTION LOCKED SECTION CONTAINS A JOBBER FETCH', () => {
     // ⚠ THE BEHAVIOURAL PROBE ABOVE TESTS A DOOR THIS FILE SIMULATES. It cannot see where the
     // REAL doors put their fetches, so on its own it would let a fetch move inside a locked
@@ -349,6 +399,22 @@ describe('Commit 6 — the lock is never held across a Jobber fetch', () => {
     // ⚠ runAttributionEngine COUNTS AS A FETCH, and that is the non-obvious half: it calls
     // fetchAttributionData internally, so wrapping it in the lock would hold a pooled connection
     // across a Jobber round trip by a longer route.
+    //
+    // ⚠ AND THIS FENCE IS NAME-ONLY. IT DOES NOT FOLLOW THE CALL GRAPH. Recorded here rather than
+    // left for someone to assume otherwise, because the assumption is the dangerous one: it does a
+    // plain substring match for the five names below inside each callback's parenthesised extent,
+    // so a Jobber call added INSIDE a helper the callback invokes is invisible to it. Today the
+    // three helpers called inside a locked section — captureClientFacts, decideFromFacts and the
+    // stage write — have a clean call closure (verified: neither factCapture.js nor
+    // attributionDecide.js contains axios or calls logError, and classifyPipelineStatus has no
+    // await in its body). The REQUIRE closure does reach network-capable modules via
+    // attributionDecide's import of classifyPipelineStatus from crm/pipelineSync, but importing is
+    // not calling.
+    // ⚠ THE NEAR-MISS WORTH KNOWING: withClientLock's own rollback path used to await logError
+    // while the pooled connection was still held, and logError can send via Resend. It was safe
+    // only because the call passed `alert: false`. Commit 6b moved the log AFTER tx.release() so
+    // that safety no longer rests on a flag — and this fence could not have seen it either way,
+    // because Resend is not one of the five Jobber names.
     const fs = require('node:fs');
     const path = require('node:path');
     const DOORS = [

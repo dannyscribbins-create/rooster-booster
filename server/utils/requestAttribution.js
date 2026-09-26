@@ -132,7 +132,7 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
   // so the engine stays OUTSIDE the lock for the same reason.
   let currentStatus, factClient;
   try {
-    ({ currentStatus, factClient } = await withClientLock(pool, { contractorId, jobberClientId }, async (tx) => {
+    ({ currentStatus, factClient } = await withClientLock(pool, { contractorId, jobberClientId, door: 'request-attribution' }, async (tx) => {
       await captureClientFacts(tx, { contractorId, client: fullClient });
       // ⚠ `tx`, NOT `pool`. Passing the pool here would run the read on a DIFFERENT connection,
       // outside the transaction and outside the lock — it would look serialised and not be.

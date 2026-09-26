@@ -2486,6 +2486,31 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE crm_request_facts
     ADD COLUMN IF NOT EXISTS assigned_users_truncated BOOLEAN NOT NULL DEFAULT FALSE`);
 
+  // ── THE SWEEP'S POISON-PILL COUNTER (3d Phase 1a Commit 6b) ─────────────────
+  // ⚠ DURABLE, NOT IN MEMORY, AND THAT IS THE WHOLE REQUIREMENT. The sweep runs hourly in a
+  // process that restarts on every deploy, so an in-memory counter would reset before it ever
+  // reached three and the poison pill would never fire — a cap that cannot be reached is a
+  // mechanism reporting health it never observed.
+  //
+  // ⚠ WHAT IT IS FOR: Commit 6b holds the watermark when a request fails with a lock timeout or
+  // a capture failure, so the next hourly run retries it. Without a cap, ONE permanently broken
+  // request stops the sweep advancing FOREVER and every later request in the window goes
+  // unattributed behind it. Three consecutive failures is the point at which "retry it" stops
+  // being the right answer and "tell a human" starts.
+  //
+  // ⚠ CONSECUTIVE MEANS CONSECUTIVE: the row is DELETED on any non-failing outcome, so a request
+  // that fails twice and then succeeds starts again from zero. Counting total failures instead
+  // would eventually trip the pill on a merely flaky request.
+  await pool.query(`CREATE TABLE IF NOT EXISTS rep_request_sweep_failures (
+    contractor_id        TEXT NOT NULL,
+    jobber_request_id    TEXT NOT NULL,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    last_outcome         TEXT,
+    first_failed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_failed_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (contractor_id, jobber_request_id)
+  )`);
+
   // ── REP BOOK WINDOW + REP-SCOPE MIRROR ROWS (Canvass-stage follow-ups, 2026-09-22) ──
   //
   // rep_window_start — WHERE A REP'S BOOK STARTS. Danny ruled that a rep's conversions

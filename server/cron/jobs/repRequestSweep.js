@@ -54,6 +54,17 @@ const MAX_PAGES = 20;
 // two runs.
 const WATERMARK_OVERLAP_MS = 10 * 60 * 1000;
 
+// ── THE POISON-PILL CAP (3d Phase 1a Commit 6b) ──────────────────────────────
+// ⚠ THE WATERMARK NOW HOLDS ON A CAPTURE FAILURE, AND THAT NEEDS AN ESCAPE HATCH.
+// Danny's ruling: a lock timeout or a capture failure must not let the watermark advance past
+// that request, so the next hourly run retries it. Taken alone that is a trap — ONE permanently
+// broken request would stop the watermark forever and silently starve every later request in the
+// window. After this many CONSECUTIVE failures the request is logged with alert ENABLED (it is a
+// real stuck item, not noise) and the sweep is allowed past it.
+// ⚠ THREE RUNS IS THREE HOURS, which is the point: a transient lock timeout or a Jobber blip
+// clears on the next run, so anything still failing on the third attempt is not transient.
+const POISON_PILL_RUNS = 3;
+
 // ── TEST SEAM ────────────────────────────────────────────────────────────────
 // inert in production, never called outside server/test/
 let _fetchRequestsUpdatedSince = fetchRequestsUpdatedSince;
@@ -88,6 +99,42 @@ function _resetTestOverrides() {
 // A watermark advanced on failure loses every request in the skipped window, silently and
 // permanently, which is the failure mode this whole job exists to prevent. Re-covering a
 // window costs duplicated idempotent work and nothing else.
+/**
+ * Records one failed attempt at a request and returns its new consecutive-failure count.
+ * Inputs: a pool, the contractor, the Jobber request id, the outcome string.
+ * Output: the count AFTER this failure (1 on the first).
+ * ⚠ DURABLE BY REQUIREMENT. The sweep's process restarts on every deploy, so an in-memory
+ * counter would reset before it ever reached the cap and the poison pill would never fire.
+ */
+async function recordSweepFailure(pool, contractorId, jobberRequestId, outcome) {
+  const { rows } = await pool.query(
+    `INSERT INTO rep_request_sweep_failures
+       (contractor_id, jobber_request_id, consecutive_failures, last_outcome)
+     VALUES ($1, $2, 1, $3)
+     ON CONFLICT (contractor_id, jobber_request_id) DO UPDATE SET
+       consecutive_failures = rep_request_sweep_failures.consecutive_failures + 1,
+       last_outcome         = EXCLUDED.last_outcome,
+       last_failed_at       = NOW()
+     RETURNING consecutive_failures`,
+    [contractorId, jobberRequestId, outcome]
+  );
+  return rows[0].consecutive_failures;
+}
+
+/**
+ * Clears a request's failure streak after any non-failing outcome.
+ * ⚠ A DELETE, NOT A RESET TO ZERO, so the table only ever holds requests that are CURRENTLY
+ * failing — which makes "what is stuck right now" a SELECT with no predicate rather than a
+ * question about counts.
+ */
+async function clearSweepFailure(pool, contractorId, jobberRequestId) {
+  await pool.query(
+    `DELETE FROM rep_request_sweep_failures
+      WHERE contractor_id = $1 AND jobber_request_id = $2`,
+    [contractorId, jobberRequestId]
+  );
+}
+
 async function sweepContractor(contractorId) {
   // The run's start instant is captured BEFORE the first fetch, never after. A request
   // updated while the sweep is in flight must fall inside the NEXT window, not be skipped
@@ -182,6 +229,52 @@ async function sweepContractor(contractorId) {
           fetchAttributionData: _fetchAttributionData,
           token,
         });
+
+        // ── A CAPTURE FAILURE HOLDS THE WATERMARK (6b, Danny's ruling 1) ──────
+        //
+        // ⚠ BEFORE 6b A RETURNED FAILURE ADVANCED THE WATERMARK PAST THE REQUEST, FOREVER.
+        // attributeFromRequest RETURNS 'capture_failed' rather than throwing, so the loop
+        // counted it as swept-but-not-attributed, carried on, and the watermark moved past it at
+        // the end of the run. That request was then never revisited by the sweep — only a later
+        // REQUEST_UPDATE would attribute it. A lock timeout, which is transient by definition,
+        // permanently lost a request's attribution.
+        //
+        // ⚠ 'capture_failed' COVERS THE LOCK TIMEOUT TOO. withClientLock throws on SQLSTATE
+        // 55P03 and requestAttribution's capture try/catch turns any throw there into this one
+        // outcome, so both of the states the ruling names arrive here.
+        if (outcome === 'capture_failed') {
+          const failures = await recordSweepFailure(pool, contractorId, request.id, outcome);
+
+          if (failures < POISON_PILL_RUNS) {
+            // Hold. The watermark stays put and the next hourly run retries this request.
+            await logError({
+              req: null,
+              contractorId,
+              error: new Error(`repRequestSweep: request ${request.id} returned ${outcome} `
+                + `(failure ${failures} of ${POISON_PILL_RUNS}) — watermark HELD, retrying next run`),
+              source: 'repRequestSweep — capture failure',
+              alert: false,
+            });
+            return { swept, attributed, advanced: false, reason: 'capture_failed' };
+          }
+
+          // ⚠ THE CAP IS REACHED: ALERT ENABLED, AND THE SWEEP MOVES ON. This is the one place
+          // in this file that alerts, because it is the one state a human has to act on —
+          // everything else here is a transient the next run handles by itself.
+          await logError({
+            req: null,
+            contractorId,
+            error: new Error(`repRequestSweep: request ${request.id} has failed ${failures} `
+              + 'CONSECUTIVE sweep runs and is now being skipped so the watermark can advance. '
+              + 'This request is stuck and will not be attributed by the sweep until it is fixed.'),
+            source: 'repRequestSweep — poison pill',
+            alert: true,
+          });
+          continue;
+        }
+
+        // Any non-failing outcome resets the streak — CONSECUTIVE means consecutive.
+        await clearSweepFailure(pool, contractorId, request.id);
         if (outcome === 'attributed') attributed += 1;
       } catch (err) {
         // One bad request must not advance the watermark past the rest of the window.
@@ -245,4 +338,7 @@ module.exports = {
   INITIAL_LOOKBACK_DAYS,
   MAX_PAGES,
   WATERMARK_OVERLAP_MS,
+  POISON_PILL_RUNS,
+  recordSweepFailure,
+  clearSweepFailure,
 };

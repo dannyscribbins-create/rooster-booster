@@ -503,7 +503,10 @@ async function logWebhookResolutionFailure(req, topic, itemId, payload, err) {
 
 // Upserts a client into jobber_clients and derives+saves all tags.
 // Called fire-and-forget from webhook handlers.
-async function upsertAndTagClient(contractorId, fullClient, relatedData) {
+// ⚠ `door` IS A REQUIRED-IN-PRACTICE FOURTH ARGUMENT (6b). Four routes share this function, so
+// without it every cost and hold-time line it produces is untraceable to the event that caused it
+// — which is exactly the state the live check found: `door=fetchClientRelatedData contractor=-`.
+async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 'upsertAndTagClient') {
   const email = fullClient.emails?.find(e => e.isPrimary)?.address
     || fullClient.emails?.[0]?.address
     || null;
@@ -563,7 +566,7 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData) {
       // COALESCEd there, so a failed capture leaves the stored stage standing.
       // ⚠ AND THE JOBBER FETCH IS ALREADY DONE BY THE TIME THIS RUNS — a pooled connection must
       // never be held across a call to Jobber. See server/utils/clientLock.js.
-      pipelineStage = await withClientLock(pool, { contractorId, jobberClientId: fullClient.id }, async (tx) => {
+      pipelineStage = await withClientLock(pool, { contractorId, jobberClientId: fullClient.id, door }, async (tx) => {
         await captureClientFacts(tx, { contractorId, client: relatedData });
         // `tx`, not `pool` — a read on another connection would sit outside the lock.
         const decided = await decideFromFacts(tx, { contractorId, jobberClientId: fullClient.id });
@@ -855,7 +858,7 @@ router.post('/jobber/client-create', async (req, res) => {
       // console.warn and return null, which upsertAndTagClient reads as "nothing observed" —
       // so a Jobber outage looked exactly like a client with no jobs and never reached
       // error_log. N5: this is why error_log rises after this ships.
-      const relatedData = await _fetchClientRelatedData(clientId, token).catch(async err => {
+      const relatedData = await _fetchClientRelatedData(clientId, token, { door: 'client-create', contractorId }).catch(async err => {
         await logError({
           req,
           contractorId,
@@ -865,7 +868,7 @@ router.post('/jobber/client-create', async (req, res) => {
         });
         return null;
       });
-      await upsertAndTagClient(contractorId, fullClient, relatedData);
+      await upsertAndTagClient(contractorId, fullClient, relatedData, 'client-create');
 
       // Contact matching pass — isolated, never aborts webhook
       try {
@@ -1008,7 +1011,7 @@ router.post('/jobber/client-update', async (req, res) => {
       // Upsert into jobber_clients and derive tags. The former 'if (token)' guard
       // here is gone: a falsy token now returns above, so it was unreachable.
       // ⚠ Logged as a failure, never passed on as an absence — see client-create above.
-      const relatedData = await _fetchClientRelatedData(clientId, token).catch(async err => {
+      const relatedData = await _fetchClientRelatedData(clientId, token, { door: 'client-update', contractorId }).catch(async err => {
         await logError({
           req,
           contractorId,
@@ -1018,7 +1021,7 @@ router.post('/jobber/client-update', async (req, res) => {
         });
         return null;
       });
-      await upsertAndTagClient(contractorId, fullClient, relatedData);
+      await upsertAndTagClient(contractorId, fullClient, relatedData, 'client-update');
 
       // Contact matching pass — isolated, never aborts webhook
       try {
@@ -1373,7 +1376,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       ;(async () => {
         try {
           // ⚠ Logged as a failure, never passed on as an absence — see client-create above.
-          const relatedData = await _fetchClientRelatedData(clientId, token).catch(async err => {
+          const relatedData = await _fetchClientRelatedData(clientId, token, { door: 'invoice-paid', contractorId }).catch(async err => {
             await logError({
               req: null,
               contractorId,
@@ -1391,7 +1394,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
               emails: fullClient.emails || [],
               phones: fullClient.phones || [],
             };
-            await upsertAndTagClient(contractorId, clientShell, relatedData);
+            await upsertAndTagClient(contractorId, clientShell, relatedData, 'invoice-paid');
           }
         } catch (tagErr) {
           await logError({ req, error: tagErr, contractorId, source: 'POST /webhooks/jobber/invoice-paid — upsertAndTagClient' });
@@ -1699,7 +1702,7 @@ router.post('/jobber/job-update', async (req, res) => {
 
       // Upsert into jobber_clients and derive tags for the affected client
       // ⚠ Logged as a failure, never passed on as an absence — see client-create above.
-      const relatedData = await _fetchClientRelatedData(clientId, token).catch(async err => {
+      const relatedData = await _fetchClientRelatedData(clientId, token, { door: 'job-update', contractorId }).catch(async err => {
         await logError({
           req,
           contractorId,
@@ -1711,7 +1714,7 @@ router.post('/jobber/job-update', async (req, res) => {
       });
       if (relatedData) {
         const clientShell = { id: clientId, firstName: null, lastName: null, emails: [], phones: [] };
-        await upsertAndTagClient(contractorId, clientShell, relatedData);
+        await upsertAndTagClient(contractorId, clientShell, relatedData, 'job-update');
       }
     } catch (err) {
       await logError({ req, error: err, contractorId, source: 'POST /webhooks/jobber/job-update' });
@@ -2014,7 +2017,7 @@ async function handleStageWebhook(req, topic) {
     try {
       token = await _getFreshContractorAccessToken(contractorId);
       jobberClientId = await _fetchStageSubjectClient(topic, itemId, token);
-      relatedData = await _fetchClientRelatedData(jobberClientId, token);
+      relatedData = await _fetchClientRelatedData(jobberClientId, token, { door: topic, contractorId });
     } catch (fetchErr) {
       // Skip-and-log, the established semantics. alert:false keeps a schema-version
       // failure out of the inbox at per-item cardinality; it is one loud row per item in
@@ -2050,7 +2053,7 @@ async function handleStageWebhook(req, topic) {
     // because it calls fetchAttributionData. See server/utils/clientLock.js.
     let stage, factClient, result;
     try {
-      ({ stage, factClient, result } = await withClientLock(pool, { contractorId, jobberClientId }, async (tx) => {
+      ({ stage, factClient, result } = await withClientLock(pool, { contractorId, jobberClientId, door: topic }, async (tx) => {
         await captureClientFacts(tx, { contractorId, client: relatedData });
         const decided = await decideFromFacts(tx, { contractorId, jobberClientId });
         // ⚠ UPDATE ONLY. See the block at the top of this section: a zero-row result is the

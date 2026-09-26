@@ -385,8 +385,34 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1923 server tests across 315 suites, and 1358 React tests across 82 files** (measured 2026-09-26 by the cron-lock-owner commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1923 · suites 315 · pass 1923 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CRON-LOCK-OWNER COMMIT ITSELF, AND IT COVERS THE PAIR.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1932 server tests across 316 suites, and 1358 React tests across 82 files** (measured 2026-09-26 by the 6b sweep-hold commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1932 · suites 316 · pass 1932 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE 6b SWEEP-HOLD COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1923 → 1932 is **+9 = 4 + 2 + 3**: four appended to the EXISTING sweep describe in
+  `requestAttribution.test.js`, two appended to an existing describe in `clientLock.test.js`, and
+  three in a NEW describe in `captureFetchContract.test.js`. Suites 315 → 316 is that one new
+  describe. React did not move and was re-measured. **All four predicted and matched.**
+  ⚠ **A RETURNED FAILURE IS NOT A THROWN ONE, AND THAT GAP LOST REQUESTS SILENTLY.**
+  `attributeFromRequest` RETURNS `'capture_failed'`, so `repRequestSweep`'s try/catch — which only
+  aborts on a throw — counted it as swept, carried on, and advanced the watermark past it. A LOCK
+  TIMEOUT, transient by definition, therefore lost that request's attribution permanently: only a
+  later REQUEST_UPDATE would ever attribute it. **An existing catch does not cover an outcome that
+  is returned rather than raised**, and the test that covered the throwing case could not see it.
+  ⚠ **AND THE HOLD NEEDED A CAP IN THE SAME COMMIT, OR IT WOULD HAVE BEEN A WORSE BUG.** One
+  permanently broken request holding the watermark forever starves every later request in the
+  window. Three CONSECUTIVE failures, counted in a durable table because the process restarts on
+  every deploy and an in-memory counter would reset before reaching the cap — a cap that cannot be
+  reached is a mechanism reporting health it never observed.
+  ⚠ **POOL SAFETY RESTING ON A FLAG IS NOT POOL SAFETY.** `withClientLock`'s rollback path awaited
+  `logError` while the pooled connection was still held, and `logError` can send a Resend alert with
+  two retries. It was safe ONLY because that call passed `alert: false`. The log is now deferred
+  until after `tx.release()`, so one edit to a flag can no longer hold a connection across an
+  outbound HTTP call.
+  ⚠ **AND AN OPTIONAL ARGUMENT WITH A DEFAULT IS INVISIBLE TO EVERY TEST.** Commit 5 added the
+  cost-log `meta` and its own comment said the door is what makes the line useful — then never
+  passed it from five call sites. Production logged `door=fetchClientRelatedData contractor=-` and
+  the suite was green. **Only a call-site sweep can see a missing optional argument**, which is what
+  the new fence does; it names the file and line, proven by dropping one site.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CRON-LOCK-OWNER COMMIT ITSELF, AND IT COVERS THE PAIR.*
   Server 1911 → 1923 is **+12 = 2 + 1 + 9** across TWO commits that ship tests — 7a-2's two
   truncation cases in `attributionEngine.test.js` and one stored-column case in
   `captureThenDecide.test.js`, plus 7a-3's nine in a new file (`cronLockOwner.test.js`). Suites
@@ -2423,6 +2449,32 @@ differenced against the loader's SELECT and that difference is a permanent fence
 missing column fails there instead of shipping. **The audit found 26 of 28 supplied, and the
 fonts were the only gap** — asked mechanically, because "if fonts were missing, what else is?"
 is not answerable by reading either list by eye.
+
+### A call-site fence is name-only unless it follows the call graph, and it must say so
+
+`server/test/clientLock.test.js` fences the rule *"no Jobber fetch inside a per-client lock"* by
+brace-matching each `withClientLock` callback and substring-matching five function names inside it.
+**That is a real check and it has a precise blind spot: it sees DIRECT calls by name and nothing
+else.** A Jobber call added inside a helper the callback invokes — `captureClientFacts`,
+`decideFromFacts`, anything they call — is invisible to it, and the fence stays green.
+
+⚠ **THE DANGEROUS PART IS NOT THE GAP, IT IS ASSUMING THERE ISN'T ONE.** A fence named for a
+property reads as covering the property. This one covers *one shape* of the property, so both the
+fence's own comment and this entry say which shape, and the closure was checked by hand rather
+than inferred: today the three helpers inside a locked section contain no `axios` and call no
+`logError`, and `classifyPipelineStatus` has no `await` at all. ⚠ **The REQUIRE closure DOES reach
+network-capable modules** — `attributionDecide` imports `classifyPipelineStatus` from
+`crm/pipelineSync`, which also houses Jobber callers — **and importing is not calling.** A fence
+built on requires instead of calls would fire constantly and be switched off within a month.
+
+⚠ **AND THE ONE IT ACTUALLY MISSED WAS NOT A JOBBER CALL AT ALL.** `withClientLock`'s own rollback
+path awaited `logError` while still holding the pooled connection, and `logError` can send a Resend
+alert with two retries. It was safe *only* because that call passed `alert: false` and
+`errorLogger` gates the send on `alert !== false` — **pool safety resting on a flag one edit could
+change.** Commit 6b releases the connection before logging so it no longer does. **No name-based
+fence could have caught it: Resend is not in the list, and the list is of Jobber fetches.**
+**The transferable rule: when a fence matches names, write down what it cannot see, and check the
+closure by hand once rather than trusting the fence to have done it.**
 
 ### Measure composited, on the rendered node — never at the declaration
 

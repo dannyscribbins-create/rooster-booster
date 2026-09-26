@@ -150,6 +150,10 @@ beforeEach(async () => {
   sweep._resetTestOverrides();
   // ⚠ THE FACT TABLES CLEAR TOO, SINCE COMMIT 5. The door decides from these rows, so a job or
   // quote fact left by an earlier case decides the next one regardless of its own fixture.
+  // ⚠ 6b's FAILURE COUNTER CLEARS TOO. It is DURABLE by design — that is the whole point of the
+  // table — so without this the poison-pill case inherits the previous case's failure and reaches
+  // the cap a run early. Its first run did exactly that: "run 2 holds" read true !== false.
+  await pool.query('DELETE FROM rep_request_sweep_failures');
   await pool.query('DELETE FROM crm_invoice_job_links');
   await pool.query('DELETE FROM crm_invoice_facts');
   await pool.query('DELETE FROM crm_job_facts');
@@ -749,6 +753,142 @@ describe('Canvass-3.7 — the backfill sweep and its watermark', () => {
     assert.equal(result.advanced, false);
     assert.equal(result.reason, 'attribute_failed');
     assert.equal(new Date(await watermarkOf()).toISOString(), '2026-09-01T00:00:00.000Z');
+  });
+
+  // ── 6b: A CAPTURE FAILURE HOLDS THE WATERMARK, WITH A POISON-PILL CAP ──────
+  //
+  // ⚠ attributeFromRequest RETURNS 'capture_failed' RATHER THAN THROWING, which is why the
+  // "attribution throws" case above did not cover this. Before 6b a returned failure was counted
+  // as swept-but-not-attributed, the loop carried on, and the watermark advanced past the request
+  // at the end of the run — so a LOCK TIMEOUT, transient by definition, permanently lost that
+  // request's attribution. Only a later REQUEST_UPDATE would ever attribute it.
+
+  // Drives the sweep against a client whose capture always fails, by handing fetchFullClient an
+  // invoice whose job set is truncated — writeInvoiceJobLinks throws on it, which is the REAL
+  // capture failure rather than a stubbed throw.
+  function installFailingCapture(requestId = REQ) {
+    sweep._setTestOverrides({
+      getToken: async () => 'tok',
+      fetchRequestsUpdatedSince: async () => ({
+        nodes: [{ id: requestId, createdAt: '2026-09-18T15:41:20Z', updatedAt: '2026-09-18T20:05:17Z', client: { id: CLIENT } }],
+        hasNextPage: false, endCursor: null,
+      }),
+      fetchFullClient: async () => ({
+        ...soldClient(),
+        invoices: { nodes: [{
+          id: 'inv-6b', invoiceNumber: 1, invoiceStatus: 'paid',
+          createdAt: '2026-09-04T00:00:00.000Z', updatedAt: '2026-09-04T00:00:00.000Z',
+          issuedDate: null, dueDate: null, receivedDate: null, client: { id: CLIENT },
+          amounts: { total: 10, subtotal: 10, invoiceBalance: 0, paymentsTotal: 10,
+            depositAmount: 0, discountAmount: 0, taxAmount: 0 },
+          jobs: { nodes: [], pageInfo: { hasNextPage: true } },
+          archivedJobs: { nodes: [], pageInfo: { hasNextPage: false } },
+        }] },
+      }),
+      fetchAttributionData: modeAData(['ju-sweep']),
+    });
+  }
+
+  const failureCount = async (requestId = REQ) => {
+    const { rows } = await pool.query(
+      `SELECT consecutive_failures FROM rep_request_sweep_failures
+        WHERE contractor_id = $1 AND jobber_request_id = $2`, [TENANT, requestId]
+    );
+    return rows[0] ? rows[0].consecutive_failures : 0;
+  };
+
+  it('6b — a capture failure HOLDS the watermark and records the attempt', async () => {
+    await pool.query(
+      `UPDATE contractor_crm_settings SET request_sweep_watermark = $2 WHERE contractor_id = $1`,
+      [TENANT, new Date('2026-09-01T00:00:00Z')]
+    );
+    installFailingCapture();
+
+    const result = await sweep.sweepContractor(TENANT);
+    assert.equal(result.advanced, false, 'the watermark must not move past a failed request');
+    assert.equal(result.reason, 'capture_failed');
+    assert.equal(new Date(await watermarkOf()).toISOString(), '2026-09-01T00:00:00.000Z');
+    assert.equal(await failureCount(), 1, 'and the attempt is recorded DURABLY, not in memory');
+  });
+
+  it('6b — POISON PILL: the third consecutive failure alerts and lets the watermark move', async () => {
+    // ⚠ WITHOUT A CAP THE HOLD IS A TRAP. One permanently broken request would stop the watermark
+    // forever and silently starve every later request in the window. Three runs is three hours,
+    // which is long enough that anything still failing is not transient.
+    await pool.query(
+      `UPDATE contractor_crm_settings SET request_sweep_watermark = $2 WHERE contractor_id = $1`,
+      [TENANT, new Date('2026-09-01T00:00:00Z')]
+    );
+    installFailingCapture();
+
+    const first = await sweep.sweepContractor(TENANT);
+    const second = await sweep.sweepContractor(TENANT);
+    assert.equal(first.advanced, false, 'run 1 holds');
+    assert.equal(second.advanced, false, 'run 2 holds');
+    assert.equal(await failureCount(), 2);
+
+    const third = await sweep.sweepContractor(TENANT);
+    assert.equal(await failureCount(), 3, 'the count is consecutive and durable across runs');
+    assert.equal(third.advanced, true, 'at the cap the sweep is allowed past the stuck request');
+    assert.notEqual(
+      new Date(await watermarkOf()).toISOString(), '2026-09-01T00:00:00.000Z',
+      'and the watermark finally moves'
+    );
+
+    // ⚠ alert ENABLED on this one row, because it is the one state a human must act on.
+    const { rows } = await pool.query(
+      `SELECT error_message FROM error_log
+        WHERE contractor_id = $1 AND source = 'repRequestSweep — poison pill'`, [TENANT]
+    );
+    assert.equal(rows.length, 1, 'the stuck request is logged once, under its own source');
+    assert.match(rows[0].error_message, /3 CONSECUTIVE sweep runs/);
+  });
+
+  it('6b — CONSECUTIVE means consecutive: a success clears the streak', async () => {
+    // ⚠ THE PAIRED NEGATIVE FOR THE COUNTER. Counting TOTAL failures instead would eventually trip
+    // the pill on a merely flaky request, skipping one that works most of the time.
+    installFailingCapture();
+    await sweep.sweepContractor(TENANT);
+    assert.equal(await failureCount(), 1, 'precondition: one failure recorded');
+
+    // The same request now captures cleanly.
+    await seedRep('ju-sweep');
+    sweep._setTestOverrides({
+      getToken: async () => 'tok',
+      fetchRequestsUpdatedSince: async () => ({
+        nodes: [{ id: REQ, createdAt: '2026-09-18T15:41:20Z', updatedAt: '2026-09-18T20:05:17Z', client: { id: CLIENT } }],
+        hasNextPage: false, endCursor: null,
+      }),
+      fetchFullClient: async () => soldClient(),
+      fetchAttributionData: modeAData(['ju-sweep']),
+    });
+    const ok = await sweep.sweepContractor(TENANT);
+
+    assert.equal(ok.advanced, true);
+    assert.equal(await failureCount(), 0, 'the row is deleted, so the streak starts again at zero');
+  });
+
+  it('6b — PAIRED POSITIVE: a sweep with no failures advances exactly as before', async () => {
+    // ⚠ WITHOUT THIS, "a failure holds the watermark" would also pass against a sweep that never
+    // advances at all. It is the same assertion as the first case in this describe, restated after
+    // 6b so the change is pinned as additive rather than assumed to be.
+    const repId = await seedRep('ju-sweep');
+    sweep._setTestOverrides({
+      getToken: async () => 'tok',
+      fetchRequestsUpdatedSince: async () => ({
+        nodes: [{ id: REQ, createdAt: '2026-09-18T15:41:20Z', updatedAt: '2026-09-18T20:05:17Z', client: { id: CLIENT } }],
+        hasNextPage: false, endCursor: null,
+      }),
+      fetchFullClient: async () => soldClient(),
+      fetchAttributionData: modeAData(['ju-sweep']),
+    });
+
+    const result = await sweep.sweepContractor(TENANT);
+    assert.equal(result.advanced, true);
+    assert.equal(result.reason, 'ok');
+    assert.equal(result.swept, 1);
+    assert.equal((await assignmentsFor())[0].sticky_rep_id, repId);
+    assert.equal(await failureCount(), 0, 'and nothing is recorded as failing');
   });
 
   it('⚠ hitting the page cap is a failure, not a clean stop — the watermark is held', async () => {

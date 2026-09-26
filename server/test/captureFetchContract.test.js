@@ -535,6 +535,83 @@ describe('capture fetch — (ii-b) 7a: the REQUESTS connection is selected, wire
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════
+describe('capture fetch â (ii-c) 6b: every capture-path call carries its cost-log meta', () => {
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+
+  // â  THIS FENCE EXISTS BECAUSE THE LIVE CHECK CAUGHT WHAT NO TEST DID. Commit 5 added the
+  // optional `meta` argument and its own source comment said "the door is what makes a cost line
+  // answer anything" â then never passed it from the webhook call sites. Production logged
+  // `door=fetchClientRelatedData contractor=-` on three lines out of eight, and every test passed.
+  // An optional argument with a default is invisible to a type checker and to a unit test; only a
+  // call-site sweep can see it missing.
+
+  const WEBHOOK = readFileSync(join(__dirname, '..', 'routes', 'webhooks', 'jobber.js'), 'utf8');
+  const REQUEST_DOOR = readFileSync(join(__dirname, '..', 'utils', 'requestAttribution.js'), 'utf8');
+
+  // Assembled from pieces so this file is not its own offender.
+  const FETCH_CALL = 'fetch' + 'ClientRelatedData(';
+  const LOCK_CALL = 'with' + 'ClientLock(';
+
+  function callsOf(src, needle) {
+    const out = [];
+    let from = 0;
+    for (;;) {
+      const at = src.indexOf(needle, from);
+      if (at === -1) break;
+      from = at + 1;
+      // Skip the declaration itself, and any require/import of the name.
+      const lineStart = src.lastIndexOf('\n', at) + 1;
+      const line = src.slice(lineStart, src.indexOf('\n', at));
+      if (/function\s|require\(|^\s*\*|^\s*\/\//.test(line)) continue;
+      // Brace-match the argument list.
+      let depth = 0, i = src.indexOf('(', at), end = -1;
+      for (; i < src.length; i += 1) {
+        if (src[i] === '(') depth += 1;
+        else if (src[i] === ')') { depth -= 1; if (depth === 0) { end = i; break; } }
+      }
+      if (end === -1) continue;
+      out.push({ args: src.slice(at, end + 1), line: src.slice(0, at).split('\n').length });
+    }
+    return out;
+  }
+
+  it('every fetchClientRelatedData call passes a door and a contractor', () => {
+    const calls = callsOf(WEBHOOK, FETCH_CALL);
+    // â  NON-VACUITY: five call sites exist (client-create, client-update, invoice-paid,
+    // job-update and the stage handler). If the extraction finds none, the assertion below passes
+    // against an empty set â the failure mode of this entire class of test.
+    assert.ok(calls.length >= 5,
+      `only ${calls.length} fetchClientRelatedData calls found â expected at least 5`);
+    const bad = calls.filter((c) => !/door:/.test(c.args) || !/contractorId/.test(c.args));
+    assert.deepEqual(bad.map((c) => `jobber.js:${c.line}`), [],
+      'a capture-path fetch without door+contractorId logs an untraceable cost line');
+  });
+
+  it('every withClientLock call passes a door', () => {
+    const calls = [
+      ...callsOf(WEBHOOK, LOCK_CALL).map((c) => ({ ...c, file: 'jobber.js' })),
+      ...callsOf(REQUEST_DOOR, LOCK_CALL).map((c) => ({ ...c, file: 'requestAttribution.js' })),
+    ];
+    assert.ok(calls.length >= 3,
+      `only ${calls.length} withClientLock calls found â expected at least 3 (two webhook doors, one request door)`);
+    const bad = calls.filter((c) => !/door/.test(c.args));
+    assert.deepEqual(bad.map((c) => `${c.file}:${c.line}`), [],
+      'a locked section without a door logs an unattributable hold time');
+  });
+
+  it('no call site can reach the door DEFAULT â upsertAndTagClient is always told', () => {
+    // upsertAndTagClient defaults `door` so the signature stays additive, but every real caller
+    // must pass one or the default silently reappears in the logs. Its four callers are the four
+    // routes that share it.
+    const calls = callsOf(WEBHOOK, 'upsertAndTagClient(');
+    assert.ok(calls.length >= 4, `only ${calls.length} upsertAndTagClient calls found â expected 4`);
+    const bad = calls.filter((c) => (c.args.match(/,/g) || []).length < 3);
+    assert.deepEqual(bad.map((c) => `jobber.js:${c.line}`), [],
+      'every caller must pass the fourth argument, the door');
+  });
+});
+
+// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 describe('capture fetch — (iii) paging to EXHAUSTION, no cap that drops records', () => {
 // ═════════════════════════════════════════════════════════════════════════════
 
