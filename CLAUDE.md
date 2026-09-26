@@ -385,8 +385,31 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1911 server tests across 313 suites, and 1358 React tests across 82 files** (measured 2026-09-26 by the request-capture commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1911 · suites 313 · pass 1911 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE REQUEST-CAPTURE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1923 server tests across 315 suites, and 1358 React tests across 82 files** (measured 2026-09-26 by the cron-lock-owner commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1923 · suites 315 · pass 1923 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CRON-LOCK-OWNER COMMIT ITSELF, AND IT COVERS THE PAIR.**
+  Server 1911 → 1923 is **+12 = 2 + 1 + 9** across TWO commits that ship tests — 7a-2's two
+  truncation cases in `attributionEngine.test.js` and one stored-column case in
+  `captureThenDecide.test.js`, plus 7a-3's nine in a new file (`cronLockOwner.test.js`). Suites
+  313 → 315 is that new file's **two** describes only; 7a-2's three cases landed in describes that
+  already existed. React did not move and was re-measured. **All four predicted and matched.**
+  ⚠ **THE FIGURE IS TRUE AT THE SECOND OF THE TWO, NOT AT EITHER ALONE**, which is why 7a-2's own
+  message says the counts are re-armed here. Naming the revision at which the figure is true is the
+  rule; with two test-shipping commits in one turn that revision is the later one.
+  ⚠ **A CRON LOCK THAT RELEASED BY NAME ALONE WAS WORSE THAN NO LOCK, AND THE ARITHMETIC IS THE
+  POINT.** `pipeline_sync` held a 10-minute expiry against a 30-minute tick, so a sweep still
+  running at T+10 had a takeable lock; the T+30 tick started a SECOND sweep, and the first then
+  cleared the row — releasing the lock the second was holding, so a third could join at T+60.
+  Fixed in both halves: the expiry is 25 minutes (under the tick, so a crashed holder self-heals on
+  the very next tick) and the release is scoped `AND locked_by = $2` with a per-run random token.
+  `locked_by` had existed on `cron_job_locks` since the table was created and was never written.
+  ⚠ **AND THE EXPIRY IS NOT DERIVED FROM A MEASURED SWEEP, BECAUSE NO HEALTHY SWEEP EXISTS IN THE
+  LOGS.** Every run in the retained Railway window aborts on a Jobber 401 in under 1.3s — twenty of
+  them — so the observed durations measure a failing sweep. The worst case is structural: a
+  catch-up sweep after an outage is unbounded in principle. **The owner check is the load-bearing
+  half; the number only reduces how often a takeover happens.**
+  ⚠ **AND AN OVERRUN NOW WRITES AN error_log ROW**, because a correct behaviour nobody can see is
+  how a 10-minute expiry survived on a 30-minute tick in the first place.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE REQUEST-CAPTURE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
   Server 1903 → 1911 is **+8 = 4 + 2 + 2**: four in a NEW describe in `captureFetchContract.test.js`
   (three structural fences and one end-to-end), two appended to an existing describe in
   `captureThenDecide.test.js`, and two from the mechanical reads-vs-selects fence gaining its
