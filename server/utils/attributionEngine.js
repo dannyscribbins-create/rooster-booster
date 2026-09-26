@@ -67,6 +67,26 @@ async function resolveModeAMatch(pool, contractorId, requests, referralAnchor) {
   if (matchedReps.length >= 2) {
     return { type: 'multiple', repIds: matchedReps.map(r => r.id), assessmentId: assessment.id };
   }
+
+  // ── A TRUNCATED ASSESSMENT IS NOT A SINGLE MATCH (3d Phase 1a Commit 7a-2) ──
+  //
+  // ⚠ assignedUsers IS CAPPED AT FIVE AND IS NOT PAGED, so "one attributable person among the
+  // five we were given" is NOT the same claim as "one attributable person on this assessment".
+  // A sixth assigned user is simply absent from assignedUserIds, and before 7a-2 that turned a
+  // genuine co-assignment into a single match and wrote the wrong rep a STICKY — existing-wins,
+  // uncorrectable by any later mapping, with no flag and nothing to notice it by.
+  //
+  // ⚠ IT RETURNS 'truncated' RATHER THAN 'multiple', AND THE DISTINCTION IS HONESTY.
+  // We do not know that two attributable reps exist; we know we cannot tell. The caller sends it
+  // to the same Flagged queue a co-assignment goes to — a human decides either way — but the
+  // type keeps the two situations separable for anyone reading this code later.
+  // ⚠ AND IT IS DETECTION, NOT PAGING. Nothing here fetches the sixth person. The flag says
+  // "a human must look", never "here is who it was".
+  if (assessment.assignedUsers && assessment.assignedUsers.pageInfo
+      && assessment.assignedUsers.pageInfo.hasNextPage === true) {
+    return { type: 'truncated', repIds: matchedReps.map(r => r.id), assessmentId: assessment.id };
+  }
+
   return { type: 'single', repId: matchedReps[0].id, assessmentId: assessment.id };
 }
 
@@ -383,7 +403,14 @@ async function runAttributionEngine(pool, {
         } else {
           await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_a_at_close', writtenBy);
         }
-      } else if (match.type === 'multiple') {
+      } else if (match.type === 'multiple' || match.type === 'truncated') {
+        // ⚠ 'truncated' LANDS IN THE SAME QUEUE AS A CO-ASSIGNMENT, DELIBERATELY (7a-2). Both mean
+        // "a human must decide who owns this client", and reusing flag_reason 'rep_co_assignment'
+        // keeps it in the queue admins already work rather than adding a value that would need
+        // the CHECK constraint widened on two tables and the admin surface taught to render it.
+        // ⚠ THE 'WHY' IS STILL RECOVERABLE: crm_request_facts.assigned_users_truncated is TRUE for
+        // this assessment, joined on triggering_assessment_id. A dedicated flag_reason would be
+        // clearer and is filed rather than done.
         await writeCoAssignmentFlag(pool, contractorId, jobberClientId, match.repIds, match.assessmentId, notifyAdminOnFlag);
       } else {
         if (writeOrphanOnMiss) await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
@@ -418,7 +445,13 @@ async function runAttributionEngine(pool, {
       if (currentProvisionalSource !== 'qr_link') {
         await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_a', writtenBy);
       }
-    } else if (match.type === 'multiple') {
+    } else if (match.type === 'multiple' || match.type === 'truncated') {
+      // ⚠ THE PROVISIONAL STEP NEEDS THE SAME BRANCH AS THE STICKY GATE, AND IT WAS MISSED ON THE
+      // FIRST PASS (7a-2). Mode A has TWO consumers — the sticky gate above and this provisional
+      // step — and a 'truncated' match falling through here would have written NOTHING at all:
+      // no provisional, no flag, no orphan. Silent, and the quietest of the three wrong answers.
+      // A provisional to one rep is less harmful than a sticky (every replay re-examines it), but
+      // it is still a claim the truncated list cannot support.
       await writeCoAssignmentFlag(pool, contractorId, jobberClientId, match.repIds, match.assessmentId, notifyAdminOnFlag);
     }
   } else {

@@ -602,6 +602,41 @@ matters more than the individual cases.
 
 ---
 
+# PART 10 — MODE A/B ORDERING: MOST RECENT ELIGIBLE REQUEST WINS
+
+**RULED by Danny, 2026-09-26.** For Mode A and Mode B rep resolution, the **MOST RECENT
+eligible request wins** — not the earliest.
+
+**The ground for it, in Danny's terms:** Mode A/B sets the **provisional** rep only. The
+**sticky** comes from the **quote salesperson at approval**, which is a different and stronger
+signal. So the ordering question decides a value that every later replay re-examines, not a
+permanent owner — and the most recent engagement is the better guess at who is working the
+client now.
+
+⚠ **THE CODE ALREADY ASSERTS THIS IN FOUR PLACES, AND NONE OF THEM WAS A RULING UNTIL NOW.**
+Each is an implementation contract that had no recorded decision behind it:
+- `server/utils/attributionEngine.js` — the comment above `resolveModeAMatch` stating that
+  requests must already be sorted newest-first, as `fetchAttributionData`'s contract;
+- the same file, inside `resolveModeAMatch` — *"most recent in-grade request with an
+  assessment"* beside its `eligible[0]`;
+- the same file, inside `resolveModeBMatch` — *"most recent in-grace request with a
+  salesperson"* beside its `eligible[0]`;
+- `server/utils/attributionReplay.js` — the header's *"NEWEST FIRST. Newest-first is
+  contractual — resolveModeAMatch takes eligible[0]"*.
+
+⚠ **NO MIGRATION AND NO CODE CHANGE IS REQUIRED.** The ruling matches what ships today, so this
+entry is a record of a decision that was previously only an assumption. **That is the whole
+reason it is worth writing down:** four sites agreed with each other and nothing said why, so a
+future reader weighing "earliest engagement owns the client" had nothing to overrule.
+
+⚠ **WHAT THIS DOES NOT SETTLE — the TIE-BREAK, which is a separate defect.**
+`ONE_ENGINE_1a_DESIGN.md` §(ii) records that live and replay currently break ties on
+`createdAt` **oppositely**: live keeps the highest `REQUESTED_AT`, the replay keeps the lowest
+request id. Most-recent-wins is now ruled; which of two requests with the SAME `createdAt` wins
+is not, and the design's fix (one read plus one stable re-sort) is still outstanding.
+
+---
+
 # PART 9 — OPEN ITEMS AT THE END OF THIS SESSION
 
 **Blocking or near-term**

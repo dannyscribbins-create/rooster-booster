@@ -19,16 +19,19 @@ async function writeRequestFacts(db, contractorId, nodes) {
   await db.query(
     `INSERT INTO crm_request_facts
        (contractor_id, jobber_request_id, jobber_client_id, created_at,
-        salesperson_jobber_user_id, assessment_id, assigned_jobber_user_ids)
-     SELECT $1, r.id, r.client_id, r.created_at, r.sp, r.aid, r.assigned
-       FROM unnest($2::text[], $3::text[], $4::timestamptz[], $5::text[], $6::text[], $7::jsonb[])
-         AS r(id, client_id, created_at, sp, aid, assigned)
+        salesperson_jobber_user_id, assessment_id, assigned_jobber_user_ids,
+        assigned_users_truncated)
+     SELECT $1, r.id, r.client_id, r.created_at, r.sp, r.aid, r.assigned, r.trunc
+       FROM unnest($2::text[], $3::text[], $4::timestamptz[], $5::text[], $6::text[], $7::jsonb[],
+                   $8::boolean[])
+         AS r(id, client_id, created_at, sp, aid, assigned, trunc)
      ON CONFLICT (contractor_id, jobber_request_id) DO UPDATE SET
        jobber_client_id           = EXCLUDED.jobber_client_id,
        created_at                 = EXCLUDED.created_at,
        salesperson_jobber_user_id = EXCLUDED.salesperson_jobber_user_id,
        assessment_id              = EXCLUDED.assessment_id,
-       assigned_jobber_user_ids   = EXCLUDED.assigned_jobber_user_ids`,
+       assigned_jobber_user_ids   = EXCLUDED.assigned_jobber_user_ids,
+       assigned_users_truncated   = EXCLUDED.assigned_users_truncated`,
     [
       contractorId,
       rows.map((n) => n.id),
@@ -38,6 +41,13 @@ async function writeRequestFacts(db, contractorId, nodes) {
       rows.map((n) => n.assessment?.id || null),
       // ⚠ ATOMIC PER ASSESSMENT — the people on ONE assessment stay together (ruling 1).
       rows.map((n) => JSON.stringify((n.assessment?.assignedUsers?.nodes || []).map((u) => u.id).filter(Boolean))),
+      // ⚠ STRICT === true, NOT TRUTHINESS, AND THE DIFFERENCE IS THE WHOLE POINT (7a-2).
+      // `hasNextPage` is absent on a node whose query did not select pageInfo — every row captured
+      // before 7a-2, and any future selection that forgets it. `undefined` must record FALSE
+      // ("nobody asked") rather than default to true, because a column reading "truncated" for
+      // every historical row would flag the whole book and teach admins to ignore the flag. The
+      // honest reading of an unasked question is recorded at the column in server/db.js.
+      rows.map((n) => n.assessment?.assignedUsers?.pageInfo?.hasNextPage === true),
     ]
   );
   return rows.length;

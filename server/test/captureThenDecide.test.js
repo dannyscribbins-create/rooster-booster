@@ -95,10 +95,18 @@ const job = (over = {}) => ({
 // A request node in the shape BASE_QUERY selects as of 7a. TWO people on the assessment, because
 // one is the Mode A "single match" case and two is the co-assignment case — and the pair is what
 // proves assigned_jobber_user_ids is stored atomically rather than collapsed to a first winner.
-const requestNode = (over = {}) => ({
+const requestNode = ({ truncated = false, ...over } = {}) => ({
   id: 'req-node-1', requestStatus: 'assessment_completed', createdAt: '2026-09-04T00:00:00.000Z',
   client: OWNER, salesperson: { id: REP_USER },
-  assessment: { id: 'assess-1', assignedUsers: { nodes: [{ id: REP_USER }, { id: 'ju-second' }] } },
+  assessment: {
+    id: 'assess-1',
+    assignedUsers: {
+      nodes: [{ id: REP_USER }, { id: 'ju-second' }],
+      // ⚠ pageInfo MIRRORS THE 7a-2 SELECTION. assignedUsers is capped at five and not paged, so
+      // this bit is the only evidence a sixth person exists.
+      pageInfo: { hasNextPage: truncated },
+    },
+  },
   ...over,
 });
 
@@ -516,7 +524,7 @@ describe('Commit 5 — parity, and paging under the smaller page size', () => {
 
     const { rows } = await pool.query(
       `SELECT jobber_request_id, jobber_client_id, salesperson_jobber_user_id,
-              assessment_id, assigned_jobber_user_ids
+              assessment_id, assigned_jobber_user_ids, assigned_users_truncated
          FROM crm_request_facts WHERE contractor_id = $1`,
       [TENANT]
     );
@@ -527,6 +535,35 @@ describe('Commit 5 — parity, and paging under the smaller page size', () => {
     assert.equal(rows[0].assessment_id, 'assess-1', 'the assessment id is stored');
     assert.deepEqual(rows[0].assigned_jobber_user_ids, [REP_USER, 'ju-second'],
       'and the people on it, atomically — this is what Mode A reads to tell one rep from two');
+    assert.equal(rows[0].assigned_users_truncated, false,
+      'and the truncation signal, false here because this assessment was complete');
+  });
+
+  it('7a-2 — a TRUNCATED assessment stores assigned_users_truncated = true', async () => {
+    // ⚠ THIS CASE EXISTS BECAUSE A GUARD-PROOF FOUND IT MISSING. Hardcoding the writer's
+    // truncation column to `false` left every test GREEN: the engine's behaviour was fenced, the
+    // selection was fenced, and the PERSISTENCE between them was not. The replay reads this column
+    // to rebuild pageInfo, so a writer that always stored false would make the replay resolve a
+    // truncated assessment that the live path flags — the two sides disagreeing on one saved row.
+    await attributeFromRequest(pool, {
+      contractorId: TENANT,
+      request: { id: 'req-ctd-5', createdAt: '2026-09-05T00:00:00.000Z', client: { id: CLIENT } },
+      fetchFullClient: async () => ({
+        id: CLIENT, createdAt: '2026-09-01T00:00:00.000Z', customFields: [],
+        quotes: { nodes: [] }, jobs: { nodes: [job()] }, invoices: { nodes: [] },
+        requests: { nodes: [requestNode({ truncated: true })] },
+      }),
+      fetchAttributionData: async () => ({ requests: [], assessments: [] }),
+      token: 'tok',
+    });
+
+    const { rows } = await pool.query(
+      `SELECT assigned_users_truncated FROM crm_request_facts WHERE contractor_id = $1`,
+      [TENANT]
+    );
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].assigned_users_truncated, true,
+      'the signal survives the round trip — the replay depends on this column');
   });
 
   it('7a — a request node missing client.id is DROPPED, not stored half-formed', async () => {

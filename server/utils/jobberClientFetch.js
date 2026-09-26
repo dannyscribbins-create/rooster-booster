@@ -83,8 +83,14 @@ const INVOICE_JOBS_PAGE_SIZE = 50;
 // list to decide whether an assessment names one rep (a match) or two (a co-assignment flag), so a
 // sixth person is simply absent from that decision. `assignedUsers` is a connection and Jobber
 // would report `pageInfo.hasNextPage`, but nothing selects it and nothing pages it, so the
-// truncation is NOT detectable after the fact: five ids look exactly like all of them. Matches the
-// import's REP_REQUESTS_QUERY, which carries the same cap. Filed, not fixed.
+// truncation IS now detectable, as of 7a-2 — `pageInfo { hasNextPage }` is selected and stored on
+// crm_request_facts.assigned_users_truncated, and a truncated assessment is refused as a single
+// match rather than resolved. ⚠ THAT IS DETECTION, NOT PAGING: a sixth person is still not
+// fetched, so the flag says "a human must look", never "here is the sixth". Matches the import's
+// REP_REQUESTS_QUERY, which carries the same cap and the same signal.
+// ⚠ THIS COMMENT PREVIOUSLY READ "the truncation is NOT detectable after the fact", and that is
+// now false rather than merely old — corrected here because a reader who trusts it would skip the
+// check that exists.
 const ASSIGNED_USERS_PAGE_SIZE = 5;
 
 // A runaway guard, not a record cap. Reaching it means the connection is larger than any real
@@ -149,7 +155,7 @@ const QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } s
 const REQUEST_FIELDS = `id requestStatus createdAt
                 client { id }
                 salesperson { id }
-                assessment { id assignedUsers(first: ${ASSIGNED_USERS_PAGE_SIZE}) { nodes { id } } }`;
+                assessment { id assignedUsers(first: ${ASSIGNED_USERS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } } }`;
 
 // ⚠ EVERY FIELD BELOW IS READ BY A FACT WRITER IN server/utils/factCapture.js, AND THAT IS NOT
 // A COINCIDENCE — it is enforced. The mechanical fence in

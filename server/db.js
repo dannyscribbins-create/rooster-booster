@@ -2470,6 +2470,22 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_request_facts_client
     ON crm_request_facts (contractor_id, jobber_client_id, created_at DESC)`);
 
+  // ── THE TRUNCATION SIGNAL (3d Phase 1a Commit 7a-2) ─────────────────────────
+  // ⚠ assignedUsers(first: 5) CAPS AN ASSESSMENT AT FIVE PEOPLE AND DOES NOT PAGE. Before 7a-2
+  // the cap was invisible after the fact: five stored ids looked exactly like all of them. The
+  // consequence was specific and silent — the engine's Mode A counts attributable people to tell
+  // a single match from a co-assignment, so a SIXTH assigned user could turn a genuine
+  // co-assignment into a single match and give the wrong rep a STICKY, with no flag and nothing
+  // to notice it by.
+  // ⚠ THIS COLUMN IS THE SIGNAL, NOT A FIX. 7a-2 detects and flags; it does not page
+  // assignedUsers. A truncated assessment is now refused as a single match and sent to the
+  // Flagged queue for a human instead.
+  // ⚠ DEFAULT FALSE IS THE HONEST DEFAULT FOR A PRE-7a-2 ROW, and it is also a LIMITATION worth
+  // stating: rows captured before this column existed say "not truncated" because nobody asked,
+  // not because it was checked. They correct themselves on the client's next capture.
+  await pool.query(`ALTER TABLE crm_request_facts
+    ADD COLUMN IF NOT EXISTS assigned_users_truncated BOOLEAN NOT NULL DEFAULT FALSE`);
+
   // ── REP BOOK WINDOW + REP-SCOPE MIRROR ROWS (Canvass-stage follow-ups, 2026-09-22) ──
   //
   // rep_window_start — WHERE A REP'S BOOK STARTS. Danny ruled that a rep's conversions

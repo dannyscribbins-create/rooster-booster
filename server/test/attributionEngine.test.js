@@ -102,8 +102,17 @@ function makeApprovedQuote({
 // Mode A fetcher — returns a request (with createdAt) wrapping an assessment with the given
 // assigned user IDs. requestCreatedAt matters now: the anchor/grace filter operates on the
 // REQUEST's createdAt, not on the assessment (assessments have no timestamp of their own).
-function modeAFetcher(assignedUserIds = [], assessmentId = 'assess-1', requestCreatedAt = '2026-05-01T00:00:00Z') {
-  const assessment = { id: assessmentId, assignedUsers: { nodes: assignedUserIds.map(id => ({ id })) } };
+// ⚠ `truncated` MIRRORS WHAT THE QUERY NOW REPORTS (7a-2). assignedUsers is capped at five and is
+// not paged, so pageInfo.hasNextPage is the only signal that a sixth person exists. The default is
+// false, which is also what a pre-7a-2 stored row reads — see the column note in server/db.js.
+function modeAFetcher(assignedUserIds = [], assessmentId = 'assess-1', requestCreatedAt = '2026-05-01T00:00:00Z', truncated = false) {
+  const assessment = {
+    id: assessmentId,
+    assignedUsers: {
+      nodes: assignedUserIds.map(id => ({ id })),
+      pageInfo: { hasNextPage: truncated },
+    },
+  };
   return async () => ({
     assessments: [assessment],
     requests: [{ id: 'req-1', createdAt: requestCreatedAt, salesperson: null, assessment }],
@@ -798,6 +807,56 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
       [CID, CLIENT_ID]
     );
     assert.equal(rows[0]?.sticky_rep_id, repId, 'Mode A fallthrough resolves the null-salesperson-quote case');
+    assert.equal(rows[0]?.sticky_source, 'mode_a_at_close');
+  });
+
+  it('7a-2 — a TRUNCATED assessment does NOT become a sticky; it flags for review', async () => {
+    // ⚠ THE DEFECT: assignedUsers is capped at five and not paged. One attributable person among
+    // the five we were GIVEN is not the same claim as one attributable person on the assessment.
+    // Before 7a-2 this wrote mode_a_at_close to that one rep — a STICKY, existing-wins, which no
+    // later mapping can correct — with no flag and nothing to notice it by.
+    const client = makeClient([
+      makeApprovedQuote({ id: 'q-trunc', salespersonId: null, quoteStatus: 'converted' }),
+    ]);
+    const fetcher = modeAFetcher(['jobber-user-A'], 'assess-trunc', '2026-05-01T00:00:00Z', true);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+    });
+
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0]?.sticky_rep_id ?? null, null,
+      'no sticky — the truncated list cannot support a single-owner claim');
+
+    const { rows: flags } = await pool.query(
+      'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
+      [CID, CLIENT_ID, 'rep_co_assignment']
+    );
+    assert.equal(flags.length, 1, 'it goes to the queue a human already works');
+    assert.equal(flags[0].triggering_assessment_id, 'assess-trunc',
+      'naming the assessment, so the stored truncation flag is joinable to it');
+  });
+
+  it('7a-2 — PAIRED POSITIVE: the SAME fixture NOT truncated still writes the sticky', async () => {
+    // ⚠ WITHOUT THIS, THE CASE ABOVE PASSES AGAINST AN ENGINE THAT STOPPED RESOLVING MODE A AT
+    // ALL. Same quote, same single attributable assignee, same anchor — only hasNextPage differs.
+    // It is the one-bit difference that makes the flag attributable to the truncation.
+    const client = makeClient([
+      makeApprovedQuote({ id: 'q-trunc', salespersonId: null, quoteStatus: 'converted' }),
+    ]);
+    const fetcher = modeAFetcher(['jobber-user-A'], 'assess-trunc', '2026-05-01T00:00:00Z', false);
+    await runAttributionEngine(pool, {
+      contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
+      client, fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+    });
+    const { rows } = await pool.query(
+      'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
+      [CID, CLIENT_ID]
+    );
+    assert.equal(rows[0]?.sticky_rep_id, repId, 'untruncated, it resolves exactly as before');
     assert.equal(rows[0]?.sticky_source, 'mode_a_at_close');
   });
 

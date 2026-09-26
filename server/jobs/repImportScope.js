@@ -85,7 +85,7 @@ const REP_REQUESTS_QUERY = `
         id createdAt
         client { id }
         salesperson { id }
-        assessment { id assignedUsers(first: 5) { nodes { id } } }
+        assessment { id assignedUsers(first: 5) { nodes { id } pageInfo { hasNextPage } } }
       }
       pageInfo { hasNextPage endCursor }
     }

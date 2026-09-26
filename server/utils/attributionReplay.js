@@ -66,8 +66,19 @@ function toEngineRequest(row) {
     id: row.jobber_request_id,
     createdAt: new Date(row.created_at).toISOString(),
     salesperson: row.salesperson_jobber_user_id ? { id: row.salesperson_jobber_user_id } : null,
+    // ⚠ pageInfo IS CARRIED FROM THE STORED COLUMN (7a-2), NOT OMITTED. resolveModeAMatch reads
+    // assignedUsers.pageInfo.hasNextPage to refuse a truncated assessment as a single match.
+    // Leaving it off here would make the REPLAY resolve a truncated assessment that the LIVE path
+    // flags — the two sides disagreeing on the same saved row, which is the divergence this arc
+    // exists to close.
     assessment: row.assessment_id
-      ? { id: row.assessment_id, assignedUsers: { nodes: ids.map((id) => ({ id })) } }
+      ? {
+        id: row.assessment_id,
+        assignedUsers: {
+          nodes: ids.map((id) => ({ id })),
+          pageInfo: { hasNextPage: row.assigned_users_truncated === true },
+        },
+      }
       : null,
   };
 }
@@ -78,7 +89,8 @@ function toEngineRequest(row) {
  */
 async function replayClientAttribution(db, { contractorId, jobberClientId, logError = realLogError }) {
   const { rows: reqRows } = await db.query(
-    `SELECT jobber_request_id, created_at, salesperson_jobber_user_id, assessment_id, assigned_jobber_user_ids
+    `SELECT jobber_request_id, created_at, salesperson_jobber_user_id, assessment_id,
+            assigned_jobber_user_ids, assigned_users_truncated
        FROM crm_request_facts
       WHERE contractor_id = $1 AND jobber_client_id = $2
       ORDER BY created_at ASC, jobber_request_id ASC`,

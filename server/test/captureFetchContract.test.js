@@ -472,13 +472,21 @@ describe('capture fetch — (ii-b) 7a: the REQUESTS connection is selected, wire
     // top-level and single-nested fields only — so dropping assignedUsers left it GREEN. Mode A
     // reads this list to tell one rep from two, so losing it turns a co-assignment into a single
     // match, silently.
-    assert.match(fetchModule.REQUEST_FIELDS, /assessment \{ id assignedUsers\(first: \d+\) \{ nodes \{ id \} \} \}/,
+    assert.match(fetchModule.REQUEST_FIELDS, /assessment \{ id assignedUsers\(first: \d+\) \{ nodes \{ id \}/,
       'the assessment must carry its assignedUsers ids');
+    // ⚠ AND pageInfo, AS OF 7a-2 — the cap is five and is not paged, so hasNextPage is the ONLY
+    // way a sixth assigned user is ever knowable. Without it the engine cannot refuse a truncated
+    // assessment as a single match, and the wrong rep takes a sticky with no flag.
+    assert.match(fetchModule.REQUEST_FIELDS, /assignedUsers\(first: \d+\) \{ nodes \{ id \} pageInfo \{ hasNextPage \} \}/,
+      'the assessment must report whether its assignedUsers were truncated');
   });
 
   it('a requests page query exists and fetchFullClient pages the connection', () => {
     // Adding a connection with a fixed `first:` and no follow-up query would swap one silent
     // truncation for another (N3).
+    assert.match(repImport.REP_REQUESTS_QUERY, /assignedUsers\(first: \d+\) \{ nodes \{ id \} pageInfo \{ hasNextPage \} \}/,
+      'the IMPORT carries the same signal — a fact captured by the import must be as trustworthy '
+      + 'as one captured live, or the replay flags what the import silently resolved');
     assert.ok(fetchModule.REQUESTS_PAGE_QUERY, 'there must be a requests page query');
     assert.match(fetchModule.REQUESTS_PAGE_QUERY, /GetClientRequestsPage/);
     const src = readFileSync(join(__dirname, '..', 'utils', 'jobberClientFetch.js'), 'utf8');
