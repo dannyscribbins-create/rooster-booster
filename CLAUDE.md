@@ -392,8 +392,57 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1951 server tests across 319 suites, and 1358 React tests across 82 files** (measured 2026-09-26 by the 3d Phase 1a Commit 7 rebuild-safety commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1951 · suites 319 · pass 1951 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE COMMIT 7 REBUILD-SAFETY COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1970 server tests across 323 suites, and 1358 React tests across 82 files** (measured 2026-09-27 by the 3d Phase 1a Commit 7c rebuild-preview commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1970 · suites 323 · pass 1970 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE COMMIT 7c PREVIEW COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1951 → 1970 is **+19**, one new file (`assignmentPreview.test.js`); suites 319 → 323 is
+  that file's **four** top-level describes. React did not move — no `src/` file touched — and was
+  re-measured. **All four predicted before the run and matched.** Counted with an anchored
+  `^\s*it\(` (19); the file's twelve loops were each checked for POSITION — two sit in `beforeEach`,
+  seven inside `it()` bodies, three are `.map` inside assertions — so **none wraps a case** and 19
+  is exact rather than 19 × anything.
+  ⚠ **THE COUNT MOVED 18 → 19 MID-BUILD BECAUSE A DEFECT SHIPPED PAST EVERY TEST IN THE FILE AND
+  WAS CAUGHT BY RUNNING THE SCRIPT AND READING THE REDIRECTED FILE.** dotenv v17 prints a tip line
+  to **STDOUT**, and `server/db.js` loads dotenv as well as the script does — so a real run put TWO
+  dotenv lines ABOVE the CSV header, and the operator's `preview.csv` would have opened with two
+  junk rows. **No assertion about `toCsv()` could have seen it**: the pollution happens in the
+  PROCESS, before `main()`, from a module neither file wrote. That is *"a test that injects the
+  value itself cannot discover that nothing upstream supplies it"* with the boundary being a
+  PROCESS rather than a query, and the repair is a fence that spawns the real script and requires
+  STDOUT to be **empty** when no CSV is produced — with a stderr assertion as its paired positive,
+  because an empty stdout is also what a crashed-on-import process produces.
+  ⚠ **A GUARD-PROOF FOUND A VACUOUS CASE BY REFUSING TO GO RED ON THE CASE IT WAS NAMED FOR, AND
+  THAT IS THE ENTRY WORTH KEEPING.** The loop-threading injection — removing the simulated
+  assignment row from the per-request loop — took two OTHER cases red and left **the
+  loop-threading case itself GREEN**. Cause: the preview's recording `writeSticky` carries its own
+  `if (after.sticky_rep_id == null)` guard, mirroring production's `WHERE sticky_rep_id IS NULL`, so
+  existing-wins was being enforced on the WRITE side whether or not the READ was threaded. **The
+  case asserted a property two mechanisms provided and measured neither.** Repaired by asserting
+  what only the read seam decides: with the row threaded the engine's step 3 returns, and without it
+  iteration 2 proceeds into the gate and raises a **co-assignment flag production would never
+  raise** — a spurious item in the admin queue on a client whose rep never moved. That required a
+  new `would_flag` column, because a flag on a client that keeps its rep does not change its group
+  and was therefore invisible in the output.
+  ⚠ **AND A SECOND VACUITY IN THE SAME FILE, MASKED BY A DIFFERENT MECHANISM.** *"WRITES NOTHING"*
+  passed even with the preview driving the REAL writers, because its only fixture already had a
+  sticky and `writeSticky`'s `WHERE sticky_rep_id IS NULL` made the write a no-op. **The test was
+  protected by existing-wins, not by write-freedom** — a defect masked by a defect, the shape this
+  file already records from the Wave 1.1-c harness. A second client with no assignment row was
+  added, which a real write INSERTS; the injection then takes it red.
+  ⚠ **TWO OF NINE INJECTIONS WERE INVALID ON FIRST WRITING AND WERE REPAIRED RATHER THAN READ.**
+  A tenancy injection written as `WHERE $1 IS NOT NULL` left `$1`'s type undeterminable, so Postgres
+  refused the statement and **12 of 18 cases went red** — the SQL-breaking shape this file records
+  twice, not a result. Recast as `WHERE contractor_id IS NOT NULL AND $1::text IS NOT NULL` it reds
+  **exactly 1**. And a Jobber-call injection that threw aborted every client and reported 12 red;
+  wrapped in a `try/catch` so the counter could be observed instead of the crash, it reds **2**.
+  ⚠ **AND THE HARNESS ITSELF SILENTLY DEGRADED ONE INJECTION INTO ANOTHER.** Applying three patches
+  to ONE file, each computed from the file's ORIGINAL contents, means only the LAST survives — so
+  the combined "real writers AND permissive proxy" injection became the permissive-proxy injection
+  alone and reported an identical, plausible, invalid result. Fixed by re-reading from disk per
+  patch and unwinding in reverse. **A harness bug that produces a plausible number is the failure
+  class, not an inconvenience.**
+  ⚠ **EVERY REVERT WAS AN INVERSE PATCH IN A `finally`, PROVEN BYTE-IDENTICAL BY sha256** — never a
+  `git checkout`, per this file's own record of what that costs on an uncommitted commit.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE COMMIT 7 REBUILD-SAFETY COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
   Server 1938 → 1951 is **+13**, all in the EXISTING `repAssignmentRebuild.test.js`, which went
   10 cases → 23; suites 317 → 319 is its **two NEW top-level describes** (the R5k guard, and the
   writer marker) — the pre-existing describe grew without adding a suite. React did not move —

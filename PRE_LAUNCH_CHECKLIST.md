@@ -5394,12 +5394,86 @@ sale-boundary / payout phase FILED and not built.*
       surface it before the fact.
       ⚠ **THIS GATE IS WHY THE TOOL STAYS AN ENV VAR AND NEVER BECOMES A BUTTON.** A surface would
       make it runnable by someone who has not read this, which is the failure the gate is for.
-      **What clears it:** Commit 7c shipped · its preview run for the target contractor · Danny's
-      review of the CHANGED rows in that output. Record the date and the contractor here when it is
-      cleared — a gate with no closure half becomes a line that was once true.
+      **What clears it:** ~~Commit 7c shipped~~ ✅ **2026-09-27** · its preview run for the target
+      contractor · Danny's review of the CHANGED rows in that output. Record the date and the
+      contractor here when it is cleared — a gate with no closure half becomes a line that was once
+      true.
+      ⚠ **THE FIRST OF THE THREE IS NOW DONE AND THE GATE IS STILL SHUT, WHICH IS THE POINT THIS
+      ENTRY ALREADY MADE AND IS WORTH RE-READING NOW THAT IT BINDS.** The preview exists
+      (`server/scripts/previewRebuild.js`, run as
+      `railway ssh "node server/scripts/previewRebuild.js <contractor-id>" > preview.csv`), and
+      **building it did not clear anything.** What clears the gate is Danny reading the changed rows
+      for the specific contractor, per run.
+      ⚠ **AND THE PREVIEW HAS ALREADY WIDENED WHAT THE REVIEW SHOULD LOOK FOR.** Building it
+      surfaced a THIRD outcome this entry did not list: a client whose rep does not change but whose
+      **`locked` sticky becomes a `provisional`** — same person, lower confidence, because the saved
+      facts support the rep but not the confirmation. It is neither a loss nor a reassignment, it is
+      invisible in a rep's book (membership is `COALESCE(sticky, provisional)`), and it shows up in
+      the CSV's `new_state` column. The preview also reports a `would_flag` column: a rebuild can
+      add items to the admin's Flagged queue on clients whose rep never moved.
 
-- [ ] ⚠ **THE REBUILD HAS NO DRY-RUN, AND R5k's GUARD CANNOT SEE WHAT IT MOST NEEDS TO**
+- [x] ✅ **DONE — 3d Phase 1a Commit 7c, 2026-09-27: `server/scripts/previewRebuild.js`.**
+      **THE REBUILD HAS NO DRY-RUN, AND R5k's GUARD CANNOT SEE WHAT IT MOST NEEDS TO**
       (filed 2026-09-26 by 3d Phase 1a Commit 7; answers Danny's question 2).
+      ⚠ **THE "ESTIMATED WORK" PARAGRAPH BELOW WAS WRONG ON ITS CENTRAL POINT, AND IT IS LEFT
+      STANDING BECAUSE THE CORRECTION IS THE USEFUL PART.** It predicted the preview would need
+      "the whole discard-and-replay run inside a transaction that is **rolled back**", and
+      concluded that the concurrency cost of holding a long transaction made it a commit of its
+      own. **It needed no transaction at all.** `runAttributionEngine` does write as it decides —
+      that half was right — but every write goes through exactly four module-local functions, and
+      no read inside one invocation depends on a write from that same invocation. So a `writers`
+      seam defaulting to those four functions separates deciding from writing in one line, leaves
+      every live path byte-identical, and the preview simply never writes. **A rolled-back
+      transaction would have been strictly worse than not writing**: it takes row locks, and one
+      missed ROLLBACK on an error path leaves the thing it was previewing done.
+      ⚠ **AND THE COST ESTIMATE WAS OUT BY MORE THAN AN ORDER OF MAGNITUDE, IN THE DIRECTION THAT
+      CHANGES THE DESIGN.** A pre-build estimate in this session put the run at 56,000–84,000
+      queries and 1.5–3 minutes, which is what made a background job with a polled status look
+      necessary. **Measured: 4 SELECTs per client, flat** — a two-tier read cache absorbs the
+      engine's per-request repeats — at **0.66ms/client over 2,000 seeded clients locally**, so
+      ~28,000 queries and a handful of seconds for a 7,000-client book. It runs synchronously,
+      which is what Danny ruled. **The estimate was arithmetic; the figure is a measurement, and
+      they disagreed enough to have bought the wrong architecture.**
+
+- [ ] 🟡 **`citecheck --role-only` HAS BEEN IN BASELINE BREACH FOR SOME TIME, WHICH IS THE ONE
+      STATE THAT SWITCHES A TRIPWIRE OFF** (found 2026-09-27 by 3d Phase 1a Commit 7c, incidentally).
+      It reports `BASELINE BREACH — counted 830, ROLE_ONLY_BASELINE is 782 (+48)`.
+      ⚠ **MEASURED AS PRE-EXISTING RATHER THAN ASSUMED TO BE.** The count is **830 both with and
+      without this commit's documentation edits** — checked by stashing only the three `.md` files
+      and re-running — and a grep of every line this commit ADDS to those files finds zero
+      `file:line` citations. So the +48 was already there and belongs to earlier commits.
+      ⚠ **THE FAILURE IS NOT THE 48. IT IS THAT THE CHECK NOW PRINTS A BREACH ON EVERY RUN.** A
+      mechanism that always reports a problem is one nobody reads, which is how a guard gets
+      switched off without anyone deciding to switch it off — the shape *A mechanism that reports
+      health it cannot observe* describes, arriving from the other direction. The next reader
+      cannot tell "48 new violations" from "the baseline was never re-armed".
+      ⚠ **AND THE FIX IS NOT TO RAISE THE BASELINE — THE SCRIPT'S OWN OUTPUT SAYS SO IN TERMS**
+      (*"Do NOT raise the baseline to make this line go away"*), and CLAUDE.md's rule is that a
+      breach binds new writing immediately while the repair stays incremental. **What is owed is an
+      attribution pass:** which commits added the 48, and are they new violations or citations that
+      moved. Until that is done, treat the breach line as unmeasured rather than as 48 known
+      defects.
+
+- [ ] 🟡 **THE SUPER-ADMIN PREVIEW *PAGE* — DEFERRED TO THE SUPER-ADMIN PANEL BUILD-OUT, BEFORE
+      CONTRACTOR #2** (filed 2026-09-27 by 3d Phase 1a Commit 7c, on Danny's ruling).
+      7c ships the preview as a **script** and nothing else. A page was specified and then ruled
+      against, and the reason is worth keeping: **ruling D-K holds** — `isRmControlEnabled()`
+      defaults **OFF** (`src/config/featureFlags.js`), `SuperAdminShell.jsx` is a placeholder with
+      no sections, and shipping the first panel section would have meant either setting
+      `VITE_ENABLE_RM_CONTROL` on Vercel (opening the whole unadvertised door, reversing D-K for a
+      support tool) or shipping a page nobody could reach — which would not have cleared the gate
+      it was built to clear.
+      **When the panel is built, the page must reuse `server/utils/assignmentPreview.js`**, not
+      re-derive the decision. The module is already shaped for it: `previewAssignments()` returns
+      `{ totals, rows, stats }` and takes an `onProgress` callback, so a route needs only auth,
+      `contractor_id` scoping and a JSON envelope. ⚠ **Re-deriving it would be the second copy of
+      a decision path this arc spent four commits reducing to one**, and a preview that disagrees
+      with the rebuild is worse than no preview.
+      ⚠ **AND THE ROUTE MUST BE READ-ONLY WITH NO APPLY PATH, WHICH IS A RULING AND NOT A
+      PREFERENCE.** Applying stays the gated env var. `verifySuperAdminSession()`
+      (`server/middleware/auth.js`) has **zero route callers today**, so whichever route is first
+      will be exercising that verifier in production for the first time — worth a deliberate test
+      rather than an assumption.
       `runAssignmentRebuild` only mutates. An operator sets an env var, restarts, and reads what
       already happened.
       ⚠ **AND THE GUARD IS NARROWER THAN ITS NAME.** `recreatableClientsSql` proves *the replay will

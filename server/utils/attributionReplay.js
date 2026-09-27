@@ -60,6 +60,62 @@ function getReplayStatus(contractorId) {
 // status object, so a later trigger waits for the earlier one.
 const chains = new Map();
 
+// ── THE TIE-BREAK (Danny, 2026-09-27 — amended; 3d Phase 1a Commit 7c) ────────
+//
+// Most recent eligible request wins. ⚠ WHEN TWO ELIGIBLE REQUESTS SHARE A createdAt, THE ONE
+// JOBBER CREATED LATER WINS, AND THAT IS THE HIGHER NUMERIC ID INSIDE THE EncodedId — decoded,
+// and compared AS A NUMBER.
+//
+// ⚠ BASE64 TEXT ORDER IS NOT NUMERIC ORDER, AND THAT IS THE WHOLE REASON THIS FUNCTION EXISTS.
+// Request 341664448 and request 99999999 decode to strings whose lexical order puts the '9'
+// first, so a text comparison ranks the OLDER request as later. The ids are 9-and-8-digit
+// neighbours in real data, so this is the common shape rather than a contrived one.
+//
+// ⚠ WHAT THIS CORRECTS: until 7c the replay's tie order was `jobber_request_id ASC` followed by
+// a STABLE descending sort, so `eligible[0]` on a tie was the LOWEST id — the opposite of the
+// ruling wherever ids ascend with creation. No column and no Jobber field was added; the number
+// was already inside the id we store.
+//
+// Returns null for any id that is not a decodable Jobber gid. ⚠ A NULL IS NOT AN ERROR AND MUST
+// NOT BECOME ONE: test fixtures and any pre-gid row carry plain ids, and the comparator falls
+// back to raw string order for them so ordering stays deterministic instead of throwing.
+function jobberIdNumber(encodedId) {
+  if (typeof encodedId !== 'string' || encodedId === '') return null;
+  let decoded;
+  try {
+    decoded = Buffer.from(encodedId, 'base64').toString('utf8');
+  } catch {
+    return null;
+  }
+  // ⚠ ANCHORED ON THE WHOLE gid SHAPE, NOT ON "ends with digits". Buffer.from(…, 'base64') is
+  // LENIENT — it silently drops characters it does not recognise — so a plain id like 'r-12'
+  // decodes to mojibake that a bare /(\d+)$/ could still match, inventing a number from noise.
+  const m = /^gid:\/\/Jobber\/[A-Za-z]+\/(\d+)$/.exec(decoded);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+// Orders two engine-shaped requests OLDEST FIRST. Negative when `a` is older.
+// ⚠ ONE COMPARATOR FOR BOTH THE ORDERING AND THE "AT OR BEFORE" CUT BELOW, DELIBERATELY. The cut
+// is what stops a replayed request seeing requests that did not exist yet, and under this ruling
+// "did not exist yet" includes a same-instant request with a HIGHER id — so a cut written as
+// `createdAt <= trigger` and an ordering written on the id would disagree with each other about
+// which of two tied requests came first. Two spellings of one rule is how they drift.
+function compareRequestsOldestFirst(a, b) {
+  const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  if (byTime !== 0) return byTime;
+  const an = jobberIdNumber(a.id);
+  const bn = jobberIdNumber(b.id);
+  if (an !== null && bn !== null) return an - bn;
+  // Neither decodes, or only one does: raw string order, which is deterministic and is the
+  // pre-7c behaviour. A decodable id sorts after an undecodable one so the two sets never
+  // interleave unpredictably.
+  if (an !== null) return 1;
+  if (bn !== null) return -1;
+  return String(a.id) < String(b.id) ? -1 : (String(a.id) > String(b.id) ? 1 : 0);
+}
+
 function toEngineRequest(row) {
   const ids = Array.isArray(row.assigned_jobber_user_ids) ? row.assigned_jobber_user_ids : [];
   return {
@@ -87,7 +143,16 @@ function toEngineRequest(row) {
  * Replay one client's stored history through the engine.
  * Returns the number of stored requests replayed (0 = nothing to replay).
  */
-async function replayClientAttribution(db, { contractorId, jobberClientId, logError = realLogError }) {
+async function replayClientAttribution(db, {
+  contractorId, jobberClientId, logError = realLogError,
+  // ⚠ FORWARDED TO THE ENGINE UNTOUCHED (7c). Both are `undefined` on every live path, and a
+  // destructured default treats `undefined` as absent — so the engine takes its own defaults and
+  // this pass-through is inert unless the rebuild preview supplies recording writers and the
+  // simulated row that goes with them. The preview reuses THIS loop rather than copying it,
+  // because a second copy of the per-request walk is a second place for the ordering, the
+  // anchor and the "at or before" cut to drift from what production does.
+  writers, readAssignmentRow,
+}) {
   const { rows: reqRows } = await db.query(
     `SELECT jobber_request_id, created_at, salesperson_jobber_user_id, assessment_id,
             assigned_jobber_user_ids, assigned_users_truncated
@@ -105,14 +170,21 @@ async function replayClientAttribution(db, { contractorId, jobberClientId, logEr
   // the decision inherited the display column. Nothing here reads it any more.
   const { currentStatus, client } = await decideFromFacts(db, { contractorId, jobberClientId });
 
-  const allRequests = reqRows.map(toEngineRequest);
+  // ⚠ ORDERED IN JS, NOT BY THE SQL ABOVE, SINCE 7c. The `ORDER BY created_at ASC,
+  // jobber_request_id ASC` stays for the index and for a deterministic starting point, but the
+  // TIE is now decided by compareRequestsOldestFirst — the decoded numeric id — and Postgres
+  // cannot express that without decoding base64 in SQL. See the comparator for the ruling.
+  const allRequests = reqRows.map(toEngineRequest).sort(compareRequestsOldestFirst);
   for (let i = 0; i < allRequests.length; i += 1) {
     const trigger = allRequests[i];
-    const triggerMs = new Date(trigger.createdAt).getTime();
     // History AS OF this request, newest first — see the header.
+    // ⚠ `.reverse()` RATHER THAN A SECOND SORT, AND IT IS NOT A SHORTCUT: allRequests is already
+    // oldest-first under the one comparator, and filter preserves order, so reversing yields
+    // newest-first with ties HIGHEST-ID FIRST — which is exactly what `eligible[0]` must be.
+    // Re-sorting here would be a second expression of the same rule.
     const asOf = allRequests
-      .filter((r) => new Date(r.createdAt).getTime() <= triggerMs)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      .filter((r) => compareRequestsOldestFirst(r, trigger) <= 0)
+      .reverse();
 
     await runAttributionEngine(db, {
       contractorId,
@@ -132,6 +204,8 @@ async function replayClientAttribution(db, { contractorId, jobberClientId, logEr
       // operator-run rebuild discard what the replay wrote while leaving live and manual
       // assignments alone — see server/jobs/repAssignmentRebuild.js.
       writtenBy: 'replay',
+      writers,
+      readAssignmentRow,
       logError,
     });
   }
@@ -315,5 +389,9 @@ module.exports = {
   clientsNamingUsers,
   mappedAttributableUserIds,
   recreatableClientsSql,
+  namesUsersSql,
   getReplayStatus,
+  toEngineRequest,
+  jobberIdNumber,
+  compareRequestsOldestFirst,
 };

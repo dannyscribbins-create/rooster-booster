@@ -242,6 +242,26 @@ async function writeOrphanFlag(pool, contractorId, jobberClientId, triggeringQuo
   );
 }
 
+// ── THE WRITER SEAM (3d Phase 1a Commit 7c) ───────────────────────────────────
+// ⚠ THE ONLY FOUR FUNCTIONS IN THIS FILE THAT WRITE, GATHERED SO A CALLER CAN DECIDE WHETHER
+// WRITING HAPPENS AT ALL. They are module-local and unexported, so this object is a COMPLETE
+// account of the engine's write surface — a fifth writer cannot appear without appearing here.
+//
+// ⚠ WHY A SEAM RATHER THAN A ROLLED-BACK TRANSACTION. The rebuild preview
+// (server/utils/assignmentPreview.js) has to answer "what would this do" against PRODUCTION,
+// and a transaction that writes and rolls back is still a write: it takes row locks, burns
+// sequences, fires nothing that reads them, and one missing ROLLBACK on an error path leaves
+// the thing it was previewing done. Not writing at all is the only version of write-free that
+// cannot fail open.
+//
+// ⚠ AND IT CHANGES NO LIVE BEHAVIOUR, WHICH IS THE WHOLE REQUIREMENT. The default is these
+// same four function references, destructured back onto the same names inside
+// runAttributionEngine — so all eleven call sites there are byte-identical to before the seam
+// existed, and the diff for this change contains no call site at all.
+const DEFAULT_WRITERS = Object.freeze({
+  writeSticky, writeProvisional, writeCoAssignmentFlag, writeOrphanFlag,
+});
+
 // Assigns a sales rep to a referred Jobber client.
 //
 // Inputs:
@@ -303,19 +323,39 @@ async function runAttributionEngine(pool, {
   // ⚠ THE WRITER MARKER — 'live' unless the historical replay says otherwise. See
   // writeProvisional above for why it exists and why NULL rows mean "before the column".
   writtenBy = 'live',
+  // ⚠ THE SEAM (7c). Defaults to the four real writers — see DEFAULT_WRITERS above.
+  writers = DEFAULT_WRITERS,
+  // ⚠ AND ITS READ HALF, WHICH THE LOOP MAKES NECESSARY RATHER THAN OPTIONAL. The replay calls
+  // this engine ONCE PER STORED REQUEST, and iteration N+1 reads the row iteration N wrote —
+  // step 2 below, and the sticky short-circuit in step 3. A caller whose writers do not write
+  // must therefore supply what those writes WOULD have produced, or every iteration re-decides
+  // against the stored row, the short-circuit never fires, and the answer is one no real run
+  // could reach. Null (the default) reads the real row.
+  readAssignmentRow = null,
   logError = realLogError,
 }) {
+  // ⚠ SHADOWED ONTO THE MODULE-LOCAL NAMES ON PURPOSE (7c). This one line is what keeps the
+  // eleven call sites below unchanged; without it the seam would touch every one of them and the
+  // diff could not be checked mechanically. Reading `writeSticky` anywhere after this point
+  // means `writers.writeSticky`, which is the real one unless a caller said otherwise.
+  const { writeSticky, writeProvisional, writeCoAssignmentFlag, writeOrphanFlag } = writers;
+
   // 1. Guard — fail closed on missing identity
   if (!contractorId || !jobberClientId) return;
 
   // 2. Read existing assignment row
-  const { rows: existing } = await pool.query(
-    `SELECT provisional_rep_id, provisional_source, sticky_rep_id
-     FROM client_rep_assignments
-     WHERE contractor_id = $1 AND jobber_client_id = $2`,
-    [contractorId, jobberClientId]
-  );
-  const existingRow = existing[0] || null;
+  let existingRow;
+  if (readAssignmentRow) {
+    existingRow = await readAssignmentRow();
+  } else {
+    const { rows: existing } = await pool.query(
+      `SELECT provisional_rep_id, provisional_source, sticky_rep_id
+       FROM client_rep_assignments
+       WHERE contractor_id = $1 AND jobber_client_id = $2`,
+      [contractorId, jobberClientId]
+    );
+    existingRow = existing[0] || null;
+  }
   const currentProvisionalRepId = existingRow ? existingRow.provisional_rep_id : null;
   const currentProvisionalSource = existingRow ? existingRow.provisional_source : null;
 
@@ -488,4 +528,4 @@ async function runAttributionEngine(pool, {
   }
 }
 
-module.exports = { runAttributionEngine };
+module.exports = { runAttributionEngine, DEFAULT_WRITERS };

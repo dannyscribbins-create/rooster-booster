@@ -634,6 +634,58 @@ future reader weighing "earliest engagement owns the client" had nothing to over
 `createdAt` **oppositely**: live keeps the highest `REQUESTED_AT`, the replay keeps the lowest
 request id. Most-recent-wins is now ruled; which of two requests with the SAME `createdAt` wins
 is not, and the design's fix (one read plus one stable re-sort) is still outstanding.
+⚠ **SUPERSEDED BY PART 10a BELOW (2026-09-27). The paragraph above is kept as the record of what
+was open**, not as a statement about today — it is the sentence 10a answers.
+
+---
+
+# PART 10a — THE TIE-BREAK: THE HIGHER NUMERIC ID INSIDE THE EncodedId WINS
+
+**RULED by Danny, 2026-09-27, amending the tie-break question Part 10 left open. Implemented in
+3d Phase 1a Commit 7c.**
+
+When two eligible requests share the same `createdAt`, **the one Jobber created later wins**, and
+that is determined by the **higher NUMERIC id inside the Jobber request id** — the base64
+`EncodedId` is decoded (`gid://Jobber/Request/341664448` → `341664448`) and the numbers are
+compared **as numbers**.
+
+⚠ **NEVER AS BASE64 TEXT, AND THAT IS THE OPERATIVE HALF OF THE RULING RATHER THAN A DETAIL.**
+`341664448` and `99999999` are ordinary neighbours in real Accent data, and lexically the `9`
+sorts first — so a text comparison ranks the OLDER request as the later one. Compared as numbers
+it is right; compared as text it is wrong in the common case, not an edge one.
+
+⚠ **NO NEW COLUMN AND NO NEW JOBBER FIELD.** The first reading of this question concluded a
+`request_number` would be needed and reported the ruling as unimplementable: `requestNumber`
+appears nowhere in the repo, `crm_request_facts` has no such column, and `ATTRIBUTION_QUERY`
+selects none. **Danny's amendment removed the need** — the number was already inside the id we
+already store, so this is a pure ordering change over existing data.
+
+**WHAT IT CORRECTS, STATED PLAINLY.** Until 7c the replay read its facts
+`ORDER BY created_at ASC, jobber_request_id ASC` and then applied a **stable** descending sort, so
+`eligible[0]` on a tie was the **LOWEST** id — the **opposite** of this ruling wherever Jobber ids
+ascend with creation. Ties were therefore resolved backwards, silently, for as long as the replay
+has existed.
+
+**SCOPE.** The fact-based ordering used by the replay and by the rebuild preview — which is the
+same ordering Commit 7b switches the live doors onto. ⚠ **Live's Jobber-side ordering is
+deliberately OUT of scope**: it sorts server-side on `REQUESTED_AT` and 7b retires that path, so
+changing it now would mean maintaining a tie-break in a code path scheduled for removal.
+
+**WHERE IT LIVES.** `compareRequestsOldestFirst` and `jobberIdNumber` in
+`server/utils/attributionReplay.js`. ⚠ **ONE COMPARATOR SERVES BOTH THE ORDERING AND THE "AT OR
+BEFORE" CUT**, because under this ruling "did not exist yet" includes a same-instant request with
+a higher id — two spellings of that rule would drift apart.
+
+⚠ **AN UNDECODABLE ID IS NOT AN ERROR.** Test fixtures and any pre-gid row carry plain ids; they
+fall back to raw string order so ordering stays deterministic. The gid shape is anchored end to
+end (`^gid://Jobber/<Type>/<digits>$`) because `Buffer.from(…, 'base64')` is **lenient** — it
+drops characters it does not recognise, so a bare "ends with digits" match would invent a number
+out of mojibake.
+
+**GUARD-PROOFED.** Comparing as base64 text instead takes two cases red, and the fixture's own
+non-vacuity is a test of its own: the two ids are asserted to DISAGREE between text order and
+numeric order, because a fixture whose orderings happened to agree would leave the injection green
+and the ruling untested while looking tested.
 
 ---
 
