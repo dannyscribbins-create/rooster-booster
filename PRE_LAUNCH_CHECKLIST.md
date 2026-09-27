@@ -5376,6 +5376,34 @@ sale-boundary / payout phase FILED and not built.*
       to 10:27 pm). The rep steps took about **12 minutes** (10:15 to 10:27, as predicted). **The other
       ~1.5 hours were the campaign import sweeping full history on Recommended** — the unfiltered
       Steps B–E that Step G then trims. See the ruling-3 item below; still not changed, by ruling.
+      ⚠ **AND `jobber_import_progress.started_at` CANNOT MEASURE A RUN, WHICH IS WHY THE FIGURE ABOVE
+      HAD TO COME FROM WALL-CLOCK NOTES** (found 2026-09-27 by the Commit 7c gate review).
+      The upsert writes `started_at = COALESCE(jobber_import_progress.started_at, NOW())`. That is
+      right for a **resume** — a resumed run must keep the original start — but **it never resets on a
+      FRESH run**, and the row is `ON CONFLICT (contractor_id)`, so there is one row per contractor
+      forever. Measured after the 2026-09-27 import: `completed_at` was `2026-09-27T20:54:25Z` while
+      `started_at` still read `2026-09-22T01:48:48Z`, so the difference reports **five days**.
+      ⚠ **THE 2026-09-21 DURATION IN THIS ENTRY IS TRUE ONLY BECAUSE THAT WAS THE FIRST RUN** — the
+      row was INSERTed, so `started_at` was real exactly once. Any later reading of that column as a
+      duration is wrong, and nothing about it announces that.
+      ⚠ **AND `completed_at` IS NOT THE FINISH LINE EITHER.** It is written at the end of Step H+I,
+      before contact matching and the whole rep scope — on 2026-09-27 that was 20:54 while Rep Step 4
+      stamped `rep_names_checked_at` at 21:28 and the replay ran later still. Reading it as "the
+      import finished" understates a run by a third and would make any calibration from it wrong.
+      **What is owed, as one piece of work:**
+      · **Reset `started_at` on a fresh run** (keep the COALESCE only when resuming), and add
+        `last_run_seconds` or a `finished_at` that means the WHOLE import, so a duration is readable
+        from the row instead of from someone's notes.
+      · **An estimate scaled to client count, calibrated from this run** — the campaign sweep
+        dominates and scales with clients, so `clients_total` is the right divisor.
+      · **Live per-step progress**, since `importState.repStep` currently changes once per STEP and a
+        step can run for minutes with no output. ⚠ **Rep Step 3b specifically: it logs one line at the
+        END (`Rep Step 3b complete — 7054 clients …`) and nothing while it runs**, which on
+        2026-09-27 was the longest silent stretch of the import. **A progress line every N clients,
+        as Step H+I already does every 100.**
+      ⚠ **THIS IS THE health-reporting SHAPE, NOT A COSMETIC GAP:** a mechanism that records progress
+      ARRIVING (`completed_at`, one line per finished step) and cannot report that it is still going,
+      or how long it took, is one an operator reads as finished or as hung with no way to tell which.
 
 - [x] **✅ MEASURED — THE PER-CLIENT CAPTURE COSTS, READ IN GRAPHIQL BY DANNY (2026-09-25, API
       2026-05-12, client Adrianne Boswell, first page, the app's own queries).**
@@ -5430,6 +5458,47 @@ sale-boundary / payout phase FILED and not built.*
       what makes the row recreatable and therefore safe under R5k's guard. **A safety argument
       resting on another file's current behaviour is a coincidence with a comment beside it** —
       which is why it is filed rather than concluded. The fix is the same `CASE`, in one place.
+
+- [x] ✅ **GATE CLEARED FOR `accent-roofing-dev`, 2026-09-27 — Danny's review of the preview's
+      changed rows. THE CLEARANCE IS PER RUN AND IS SPENT ON THIS ONE.**
+      **The run reviewed:** `server/scripts/previewRebuild.js accent-roofing-dev`, taken AFTER the
+      2026-09-27 import captured job and invoice facts (`crm_job_facts` 11 → **6,172**,
+      `crm_invoice_facts` 8 → **3,868**, `crm_invoice_job_links` 7 → **5,210**; every import step
+      `0 failed`, no `repScopeError`).
+      **Totals: 442 candidates · 408 unchanged · 34 would change · 0 unassigned or flagged.**
+      **All 34 are `locked → provisional`, the SAME rep in every row, 0 clients changing hands, and
+      `would_flag` empty on all 442** — so a rebuild adds nothing to the Flagged queue.
+      **The 34, as reviewed:**
+      · **10 = the confidence rule** — the gate fires and the winning quote's author is not a mapped
+        attributable rep. These are **Danny's 10 pre-confidence-rule stickies**, written by the
+        2026-09-21 replay before the rule shipped. **Correcting them is the reason this rebuild runs.**
+      · **24 = no job in the saved facts.** Measured: of the 44 `mode_a_at_close` holders, **25 hold
+        no `crm_job_facts` row AND no `client_sales` row**, while `jobber_clients.pipeline_stage` says
+        `paid`/`sold` for all 25. Their only jobs predate the 12-month rep window.
+      **DANNY'S RULING (2026-09-27): Option A — REBUILD NOW. No window change, no wider re-import.**
+      The 24 becoming provisional is the **accepted consequence** of the decisions record **§4.3**
+      (the 12-month window, filtered by activity) together with **Q7** (*no wider re-import; §4.3
+      stands and the pre-window hole is its accepted consequence*). Book membership is unaffected —
+      `OWN_BOOK_PREDICATE` is `COALESCE(sticky, provisional)` — so only the rep app's
+      locked/provisional split moves, and `provisional` is the honest label for a client whose job
+      we do not hold.
+      ⚠ **Q7 LIVES ONLY IN AN UNTRACKED FILE (`ONE_ENGINE_1a_DESIGN.md`), WHICH IS WHY ITS SUBSTANCE
+      IS WRITTEN OUT ABOVE RATHER THAN CITED.** A ruling git has never seen is one a future session
+      cannot find; this entry is now the tracked record of it.
+      ⚠ **AND A PREDICTION IN THE 7c REVIEW WAS WRONG, RECORDED BECAUSE THE CORRECTION IS THE USEFUL
+      PART.** The review predicted the import would collapse the 24 into `unchanged`. It did not:
+      their derived status did not move at all (14 `lead → lead`, 9 `inspection → inspection`, 1
+      `not_sold → not_sold`). The import worked — `paid` appeared for 171 clients where there had
+      been none — but these 25 clients have no job in our data at any window we have fetched.
+      **The estimate was reasoning; the diff was a measurement, and they disagreed.**
+      ⚠ **AND THE IMPORT'S REPLAY CHANGED EXACTLY ONE ASSIGNMENT**, which is the measurement behind
+      the Commit-7d cancellation rather than an argument for it: 439 clients replayed,
+      `provisional/mode_a` 208 → 207 and `locked/quote_salesperson` 166 → 167. That one row is
+      Robert Lester, the single gain the first preview predicted. The feared mass-freezing of
+      provisionals did not happen, because when the gate fires it mostly meets an unmapped quote
+      author and writes a provisional rather than a sticky.
+      **What remains of this gate:** nothing for this run. ⚠ **The next run needs its own preview and
+      its own review** — the entry below preserves the reasoning that makes that non-negotiable.
 
 - [ ] 🚧 **GATE — NO `REP_ASSIGNMENT_REBUILD` RUN AGAINST REAL DATA UNTIL THE PREVIEW EXISTS AND
       DANNY HAS REVIEWED ITS OUTPUT** (ruled by Danny 2026-09-26, after 3d Phase 1a Commit 7).
