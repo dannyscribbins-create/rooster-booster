@@ -5171,6 +5171,62 @@ sale-boundary / payout phase FILED and not built.*
 
 ### Canvass-stage backfill — the first production run, and three follow-ups (2026-09-22)
 
+- [x] ✅ **RULED 2026-09-27 (Danny): A FACTS-ONLY REP-SCOPE IMPORT WILL NOT BE BUILT. The import runs
+      its replay, and that is correct.** *(Commit 7d, scoped after Commit 7c's preview review, then
+      CANCELLED before any code was written. Recorded because the question was asked and answered,
+      and the next session will otherwise ask it again.)*
+      **What was proposed:** `runRepScope` captures facts and writes no assignment, while
+      `fullJobberImport` calls `replayForMappedReps` five lines later — two separate calls. So a thin
+      `server/scripts/captureRepFacts.js` calling only the first would have allowed facts to be
+      captured, the preview re-run on complete facts, and only then a decision to write. The
+      sequencing argument was that a replay converts **provisionals into stickies**, and a sticky is
+      existing-wins and cannot be corrected by later mapping.
+      **Danny's ruling, and the grounds:** pre-launch · one tenant · **one mapped attributable rep** ·
+      the 7c preview showed **no rep changes and no losses across 442 candidates** · the rebuild is
+      now safe under R5k **and** previewable. On those facts a replay locking provisionals from
+      newly-captured facts **is the correct answer, not a risk** — it is the engine reaching the
+      conclusion the complete facts support — and it is reversible by a rebuild whose output can be
+      previewed first.
+      ⚠ **THE REVERSIBILITY IS LOAD-BEARING AND IT IS A PROPERTY OF R5k + 7c TOGETHER, NOT OF THE
+      REPLAY.** "A sticky is existing-wins" is still true; what changed is that a rebuild can now
+      clear one without losing what it cannot recreate, and a preview can show which ones would move
+      before anything writes. **If either half is ever weakened, this ruling's grounds are gone** —
+      it is a decision about today's state, not a general licence to let the replay write first.
+      ⚠ **AND IT IS SCOPED TO ONE MAPPED REP.** The rebuild exists because mapping reps one at a time
+      lets the first one's stickies block the others. With a second attributable rep mapped, a replay
+      that freezes provisionals is no longer obviously harmless, and the facts-only question becomes
+      live again. **Re-derive this before contractor #2, and before mapping a second rep.**
+      **The agreed sequence:** (1) database backup · (2) import from CRM Settings, Recommended ·
+      (3) re-run `server/scripts/previewRebuild.js` · (4) review · (5) rebuild per
+      `REP_ASSIGNMENT_REBUILD_SOP.md` to correct the 10 pre-confidence-rule stickies · (6) Commit 7b.
+
+- [x] ✅ **THE 7c PREVIEW'S FIRST PRODUCTION RUN, RECORDED AS MEASURED (Accent, 2026-09-27).**
+      442 candidate clients · **407 unchanged · 35 would change · 0 unassigned or flagged** · 3.0s ·
+      1,823 queries issued, 1,972 served from cache. **`would_flag` empty on all 442**, and **all 35
+      are the same rep** — nothing changes hands.
+      **The 35, by root cause, reconciled against production rather than inferred:**
+      · **24 = MISSING FACTS.** No `crm_job_facts` and no `client_sales` row, so the derived status
+        reads `lead`/`inspection`/`not_sold`, all in `GATE_EXCLUSIONS`, and the sticky gate cannot
+        fire. ⚠ **`job_facts: 11` against `request_facts: 6690`** — Rep Step 3b entered
+        `repImportScope.js` on **2026-09-25**, three days AFTER the 2026-09-21 import, so the capture
+        has never run here. **This is what the import in the sequence above fixes.**
+      · **10 = the CONFIDENCE RULE**, and they are **Danny's 10 wrong stickies** — the population
+        measured by hand on 2026-09-22 (see the entry below, and `attributionEngine.js`'s
+        *"10 of Danny's 13"*), independently rediscovered by the preview. Nine were written in one
+        **7-second burst at 2026-09-22T02:27:1x** — the replay — **before the confidence rule
+        shipped that day.** They are the rebuild's purpose, not a hazard.
+      · **1 = MAPPING**, going UP: Robert Lester, provisional → locked `quote_salesperson`, his quote
+        author being mapped and attributable. The confidence rule working as designed.
+      · **0 = ORDERING.** ⚠ **The 7c tie-break has exactly one candidate in the whole book and
+        changes nothing:** only `Sadie Hill` carries two request facts sharing a `created_at`, and the
+        higher-numbered one has `assessment_id = NULL`, so `resolveModeAMatch`'s `assessment != null`
+        filter already decides it. **The ruling is correct and currently prospective** — do not cite
+        the tie-break as a reason to act on this contractor.
+      ⚠ **AND A LIMIT OF THE PREVIEW'S OWN GROUPING, DISCLOSED RATHER THAN LEFT TO BE FOUND:** `group`
+      is decided on rep + state only, so a row whose **source** is re-derived while rep and state hold
+      reads as `unchanged`. Nine such rows exist (`mode_a_at_close` at derived `sold`). "Unchanged" is
+      not "untouched"; `new_source` is the column that shows it.
+
 - [x] **✅ THE FIRST REAL RUN, RECORDED AS MEASURED (Accent, 2026-09-21, Recommended).** Rep Step 1
       requests 67 pages / 6,656 nodes (requested 100,835, actual 74,917); Rep Step 2 quotes 96 /
       9,592 (86,880 / 86,792); Rep Step 3 jobs 62 / 6,110 (31,310 / 30,860); throttle retries of
