@@ -837,7 +837,7 @@ router.post('/jobber/client-create', async (req, res) => {
       let fullClient;
       try {
         token = await _getFreshContractorAccessToken(contractorId);
-        fullClient = await _fetchFullClient(clientId, token);
+        fullClient = await _fetchFullClient(clientId, token, { door: 'client-create', contractorId });
       } catch (fetchErr) {
         await logError({
           req,
@@ -997,7 +997,7 @@ router.post('/jobber/client-update', async (req, res) => {
       let fullClient;
       try {
         token = await _getFreshContractorAccessToken(contractorId);
-        fullClient = await _fetchFullClient(clientId, token);
+        fullClient = await _fetchFullClient(clientId, token, { door: 'client-update', contractorId });
       } catch (fetchErr) {
         await logError({
           req,
@@ -1216,7 +1216,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       }
       console.log(`[invoice-paid] resolved client id: ${clientId}`);
 
-      const fullClient = await _fetchFullClient(clientId, token);
+      const fullClient = await _fetchFullClient(clientId, token, { door: 'invoice-paid', contractorId });
       const clientName = (`${fullClient.firstName || ''} ${fullClient.lastName || ''}`).trim();
       const clientEmail = fullClient.emails?.[0]?.address || null;
       const clientPhone = fullClient.phones?.[0]?.number || null;

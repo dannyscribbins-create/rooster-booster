@@ -392,8 +392,52 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1984 server tests across 324 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the 3d Phase 1a Commit 7b one-engine commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1984 · suites 324 · pass 1984 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE COMMIT 7b ONE-ENGINE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1984 server tests across 324 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the post-1a door-tagging-and-fence commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1984 · suites 324 · pass 1984 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE POST-1a DOOR-TAGGING COMMIT, AND NOT ONE OF THE FOUR NUMBERS
+  MOVED — WHICH IS NOT STALENESS.** That commit REWROTE a describe block in
+  `captureFetchContract.test.js` (three cases out, three cases in; one top-level describe out, one
+  in) and changed three production call sites in `routes/webhooks/jobber.js`, so the tree differs
+  from Commit 7b in things the gate can observe while the counts stay put. **Predicted before the
+  run from an anchored `^\s*it\(` count of the file at HEAD and in the working tree — 48 both ways,
+  7 top-level describes both ways — then all four measured off this run's own log rather than
+  carried.** React did not move because no `src/` file was touched, and was re-measured. **Every
+  loop in the rewritten block was checked for POSITION**: eight sit in helper bodies
+  (`serverFiles`, `argsFrom`, `optionsObjectOf`, the two collectors) and the rest are `for`/`.map`
+  inside `it()` bodies or assertions, so **none wraps a case** and 48 is exact rather than 48 ×
+  anything.
+  ⚠ **AND A GUARD-PROOF FOUND THE NEW LOCK FENCE VACUOUS ON ITS FIRST WRITING, WHICH IS THE ENTRY
+  WORTH KEEPING.** Deleting the real `door: 'pipeline-sync'` from `crm/pipelineSync.js` left the
+  fence **GREEN**. Cause: `withClientLock(pool, {…}, async (tx) => { … })` closes its paren at the
+  END of the callback, so paren-matching hands back the entire locked section — and a `/door/`
+  needle over that extent is satisfied by the word **"doors"** in a COMMENT inside the body. The
+  needle now reads the OPTIONS OBJECT only, with comments stripped, accepting the ES6 shorthand
+  (`upsertAndTagClient`'s locked section passes a bare `door`, so a `door\s*:` needle would have
+  flagged a correct site). **This is the "scans read comments" rule with the sign flipped: there prose MATCHES
+  a forbidden pattern, here prose SATISFIES a required one.**
+  ⚠ **AND THE PRE-EXISTING 6b NEEDLE WAS FALSIFIABLE AT THE THREE SITES IT READ AND VACUOUS AT THE
+  ONE IT DID NOT — MEASURED, NOT INFERRED.** With the options object removed entirely, `/door/` still
+  matches the rest of the call at `attributeReferredClient`'s locked section and at **none** of the
+  other three. So
+  widening the fence's SCOPE without tightening its NEEDLE would have added the single door whose
+  prose defeats the needle, and reported coverage it never had. **A widening that lands on the one
+  unfalsifiable site is indistinguishable from a widening that worked.**
+  ⚠ **THE FENCE'S FILE LIST IS NOW DERIVED BY WALKING `server/`, NOT TYPED**, because every sweep in
+  this repo that iterated a hand-maintained FILES list has gone stale without announcing it. Six
+  guard-proofs, with their widths: (i) the client-update call untagged → **exactly 1**, naming
+  the client-update handler's `fetchFullClient` call; (ii) the referral door's lock untagged → **exactly 1**, naming
+  `attributeReferredClient`'s locked section; (iii) the fetch needle renamed to match nothing → **exactly 1**, the
+  non-vacuity floor firing rather than the fence passing against an empty set; (iii-b) the same for
+  the lock needle → **exactly 1**; (iii-c) the walk stopped from reaching `crm/` → **2**, both
+  fences' named-door-file checks; (iv) the paired positive — baseline **96/96 green** on the two
+  fence suites, and every injection left the other 95 green, so no legitimate site is flagged.
+  Every revert was an inverse patch in a `finally`, proven byte-identical by sha256.
+  ⚠ **AND 78 DOUBLE-ENCODED UTF-8 SEQUENCES REMAIN IN `captureFetchContract.test.js`, ALL ON PURE
+  COMMENT LINES — VERIFIED, NOT ASSUMED.** The rewrite removed the 7 that sat in prose inside the
+  block it replaced; the rest are box-drawing separators. **Checked that none sits in a needle, an
+  assertion message or a string literal**, so nothing silently matches the wrong thing. It is the
+  only file in the repo with any, and repairing it is a docs-pass job, deliberately not mixed into
+  a behaviour-and-fence commit.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE COMMIT 7b ONE-ENGINE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
   Server 1970 → 1984 is **+14 = +19 − 5**, and it is the first entry in this arc where a test file
   was DELETED: one new file (`oneEngineFromFacts.test.js`, 19 cases) against the removal of
   `attributionFetcher.test.js` (5), whose entire subject was `fetchAttributionData` — the live

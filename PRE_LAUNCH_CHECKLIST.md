@@ -6881,6 +6881,16 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       cost measurement — carries `// diagnostic log — intentional`. **Filed rather than fixed:
       sweeping a background job's operational logging is a separate decision about what that
       job's interface is, and mixing it into a stage commit would make the diff unreviewable.**
+      ⚠ **AND THE SCOPE IS WIDER THAN THIS ENTRY'S TITLE — MEASURED 2026-09-28 BY THE POST-1a
+      DOOR-TAGGING COMMIT, WHICH READ THOSE FILES FOR AN UNRELATED REASON.**
+      `server/routes/webhooks/jobber.js` carries **29** unmarked `console.log` calls and
+      `server/crm/pipelineSync.js` carries **11**, neither file named above. **An entry scoped to
+      one file reads as covering the class**, which is this repo's *"a negative finding is only as
+      wide as the scope it names"* with the sign flipped — so the two counts are written here
+      rather than left for the sweep to rediscover. `server/utils/jobberClientFetch.js` is the
+      compliant case and is named as the control: its single `console.log` is `logCaptureCost`'s
+      and it carries the marker. **Still filed rather than fixed, for the same reason as the line
+      above**, and the numbers are a measurement at that date, not a budget.
 
 - [x] **✅ A HARNESS REPORTED FAILURE FOR ITS OWN LAST CONDITIONAL — FILED BECAUSE THE SHAPE IS THE
       ONE THIS REPO KEEPS RECORDING.** A background poll checking the Railway backend after the

@@ -535,76 +535,225 @@ describe('capture fetch — (ii-b) 7a: the REQUESTS connection is selected, wire
 });
 
 // ═════════════════════════════════════════════════════════════════════════════════
-describe('capture fetch â (ii-c) 6b: every capture-path call carries its cost-log meta', () => {
-// ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+describe('capture fetch — (ii-c) 6b, widened post-1a: every capture-path call carries its cost-log meta', () => {
+// ──────────────────────────────────────────────────────────────────────────────
 
-  // â  THIS FENCE EXISTS BECAUSE THE LIVE CHECK CAUGHT WHAT NO TEST DID. Commit 5 added the
+  // ⚠ THIS FENCE EXISTS BECAUSE THE LIVE CHECK CAUGHT WHAT NO TEST DID. Commit 5 added the
   // optional `meta` argument and its own source comment said "the door is what makes a cost line
-  // answer anything" â then never passed it from the webhook call sites. Production logged
+  // answer anything" — then never passed it from the webhook call sites. Production logged
   // `door=fetchClientRelatedData contractor=-` on three lines out of eight, and every test passed.
   // An optional argument with a default is invisible to a type checker and to a unit test; only a
   // call-site sweep can see it missing.
+  //
+  // ⚠ AND IT HAPPENED A SECOND TIME, WHICH IS WHY THIS FENCE NO LONGER MATCHES ONE NAME IN ONE
+  // FILE. 6b fenced fetchClientRelatedData in routes/webhooks/jobber.js and nothing else, so the
+  // THREE fetchFullClient calls in that very file stayed untagged and production logged
+  // `door=fetchFullClient contractor=-` (measured live 2026-09-28 03:07Z) for another arc. The
+  // fence was never wrong about what it measured. Its SCOPE was the defect, which is this repo's
+  // recorded "a negative finding is only as wide as the scope it names".
+  //
+  // ⚠ SO THE FILE LIST IS DERIVED, NOT TYPED. Every sweep in this repo that iterated a
+  // hand-maintained FILES list has gone stale without announcing it. This one WALKS server/
+  // (excluding server/test and node_modules) and fences every file it finds a call in, so a fifth
+  // door written in a new file is covered on the day it is written rather than on the day someone
+  // remembers to add it here.
+  //
+  // ⚠ AND THE NEEDLE IS A SUFFIX MATCH ON THE IDENTIFIER, NOT A LITERAL, BECAUSE EVERY REAL CALL
+  // GOES THROUGH AN INJECTED ALIAS. The four spellings live today are `fetchFullClient`,
+  // `_fetchFullClient`, `_psFetchFullClient` and `_fetchClientRelatedData` — a literal needle for
+  // the two exported names matches the two definitions and misses three of the four call forms.
+  // Any identifier whose lowercased name ENDS with one of the two bases and is immediately
+  // followed by `(` is a call, whatever the test seam chose to name it.
+  //
+  // ⚠ WHAT THIS CANNOT SEE, WRITTEN DOWN RATHER THAN ASSUMED AWAY — a fence named for a property
+  // reads as covering the property. It skips any line that declares a function, requires a
+  // module, or begins with a comment marker, so a call parked after code on a comment-bearing
+  // line, or on a line that also contains the word `function`, is invisible to it. It matches
+  // names and does not follow the call graph: a capture fetch reached through a helper is not
+  // seen here. The count floors below cannot name a call that went missing, but they refuse to
+  // pass against a set that has silently shrunk.
 
-  const WEBHOOK = readFileSync(join(__dirname, '..', 'routes', 'webhooks', 'jobber.js'), 'utf8');
-  const REQUEST_DOOR = readFileSync(join(__dirname, '..', 'utils', 'requestAttribution.js'), 'utf8');
+  const fs = require('node:fs');
+  const path = require('node:path');
 
-  // Assembled from pieces so this file is not its own offender.
-  const FETCH_CALL = 'fetch' + 'ClientRelatedData(';
+  const SERVER_ROOT = join(__dirname, '..');
+
+  // Assembled from pieces so this file is not its own offender, which stays true even if the
+  // walk's server/test exclusion is ever loosened.
+  const FETCH_BASES = ['fetch' + 'fullclient', 'fetch' + 'clientrelateddata'];
   const LOCK_CALL = 'with' + 'ClientLock(';
+  const IDENT_BEFORE_PAREN = /[A-Za-z_$][\w$]*(?=\s*\()/g;
 
-  function callsOf(src, needle) {
-    const out = [];
-    let from = 0;
-    for (;;) {
-      const at = src.indexOf(needle, from);
-      if (at === -1) break;
-      from = at + 1;
-      // Skip the declaration itself, and any require/import of the name.
-      const lineStart = src.lastIndexOf('\n', at) + 1;
-      const line = src.slice(lineStart, src.indexOf('\n', at));
-      if (/function\s|require\(|^\s*\*|^\s*\/\//.test(line)) continue;
-      // Brace-match the argument list.
-      let depth = 0, i = src.indexOf('(', at), end = -1;
-      for (; i < src.length; i += 1) {
-        if (src[i] === '(') depth += 1;
-        else if (src[i] === ')') { depth -= 1; if (depth === 0) { end = i; break; } }
-      }
-      if (end === -1) continue;
-      out.push({ args: src.slice(at, end + 1), line: src.slice(0, at).split('\n').length });
+  // Walks server/ for .js files, skipping this suite's own tree and node_modules.
+  function serverFiles(dir, out = []) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === 'test') continue;
+      const p = join(dir, e.name);
+      if (e.isDirectory()) serverFiles(p, out);
+      else if (e.name.endsWith('.js')) out.push(p);
     }
     return out;
   }
 
-  it('every fetchClientRelatedData call passes a door and a contractor', () => {
-    const calls = callsOf(WEBHOOK, FETCH_CALL);
-    // â  NON-VACUITY: five call sites exist (client-create, client-update, invoice-paid,
-    // job-update and the stage handler). If the extraction finds none, the assertion below passes
-    // against an empty set â the failure mode of this entire class of test.
-    assert.ok(calls.length >= 5,
-      `only ${calls.length} fetchClientRelatedData calls found â expected at least 5`);
-    const bad = calls.filter((c) => !/door:/.test(c.args) || !/contractorId/.test(c.args));
-    assert.deepEqual(bad.map((c) => `jobber.js:${c.line}`), [],
+  // Bounds the argument list of a call whose name begins at `at`, by paren matching.
+  function argsFrom(src, at) {
+    let depth = 0, i = src.indexOf('(', at), end = -1;
+    for (; i < src.length; i += 1) {
+      if (src[i] === '(') depth += 1;
+      else if (src[i] === ')') { depth -= 1; if (depth === 0) { end = i; break; } }
+    }
+    return end === -1 ? null : src.slice(at, end + 1);
+  }
+
+  function isDeclarationOrComment(src, at) {
+    const lineStart = src.lastIndexOf('\n', at) + 1;
+    const nl = src.indexOf('\n', at);
+    const line = src.slice(lineStart, nl === -1 ? src.length : nl);
+    return /function\s|require\(|^\s*\*|^\s*\/\//.test(line);
+  }
+
+  function lineOf(src, at) { return src.slice(0, at).split('\n').length; }
+
+  function rel(file) { return path.relative(SERVER_ROOT, file).replace(/\\/g, '/'); }
+
+  // ⚠ THE META IS READ OUT OF THE OPTIONS OBJECT, NOT OUT OF THE CALL'S WHOLE EXTENT, AND A
+  // GUARD-PROOF IS WHY. `withClientLock(pool, {...}, async (tx) => { ... })` closes its paren at
+  // the END of the callback, so paren-matching hands back the entire locked section — and a
+  // `/door/` needle over that is satisfied by the word "doors" in a COMMENT inside the body.
+  // Deleting the real `door: 'pipeline-sync'` from crm/pipelineSync.js left this fence GREEN on
+  // its first writing, for exactly that reason.
+  // ⚠ AND THE PRE-EXISTING NEEDLE WAS FALSIFIABLE AT THE THREE SITES IT READ AND VACUOUS AT THE
+  // ONE IT DID NOT. Measured: with the options object removed entirely, `/door/` still matches the
+  // rest of the call at attributeReferredClient's locked section and at none of the other three,
+  // which is measured rather than inferred. So widening the
+  // fence's SCOPE without tightening its NEEDLE would have added the single door whose prose
+  // defeats the needle, and reported coverage it never had.
+  function optionsObjectOf(args) {
+    const ob = args.indexOf('{');
+    if (ob === -1) return null;
+    let depth = 0;
+    for (let i = ob; i < args.length; i += 1) {
+      if (args[i] === '{') depth += 1;
+      else if (args[i] === '}') { depth -= 1; if (depth === 0) return args.slice(ob, i + 1); }
+    }
+    return null;
+  }
+
+  // Comments are stripped before any key is looked for — this repo's `\bFROM\b`-in-a-SQL-comment
+  // defect is the same mechanism with the sign flipped.
+  function withoutComments(s) {
+    return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  }
+
+  // True when `key` is present as a property of the options object, in either the `key: value`
+  // or the ES6 shorthand form. The shorthand is load-bearing: upsertAndTagClient's locked section
+  // passes `{ contractorId, jobberClientId: fullClient.id, door }`, so a needle requiring a colon
+  // after the key would report that correct call site as an offender.
+  function hasKey(args, key) {
+    const opts = optionsObjectOf(args);
+    if (opts === null) return false;
+    return new RegExp('\\b' + key + '\\b\\s*[:,}]').test(withoutComments(opts));
+  }
+
+  // Every capture-path fetch call across the walked tree, under any alias.
+  function captureFetchCalls() {
+    const out = [];
+    for (const file of serverFiles(SERVER_ROOT)) {
+      const src = readFileSync(file, 'utf8');
+      IDENT_BEFORE_PAREN.lastIndex = 0;
+      let m;
+      while ((m = IDENT_BEFORE_PAREN.exec(src)) !== null) {
+        const low = m[0].toLowerCase();
+        if (!FETCH_BASES.some((b) => low.endsWith(b))) continue;
+        if (isDeclarationOrComment(src, m.index)) continue;
+        const args = argsFrom(src, m.index);
+        if (args === null) continue;
+        out.push({ where: `${rel(file)}:${lineOf(src, m.index)}`, name: m[0], args });
+      }
+    }
+    return out;
+  }
+
+  // Every withClientLock call across the walked tree.
+  function lockCalls() {
+    const out = [];
+    for (const file of serverFiles(SERVER_ROOT)) {
+      const src = readFileSync(file, 'utf8');
+      let from = 0;
+      for (;;) {
+        const at = src.indexOf(LOCK_CALL, from);
+        if (at === -1) break;
+        from = at + 1;
+        if (isDeclarationOrComment(src, at)) continue;
+        const args = argsFrom(src, at);
+        if (args === null) continue;
+        out.push({ where: `${rel(file)}:${lineOf(src, at)}`, args });
+      }
+    }
+    return out;
+  }
+
+  const filesOf = (calls) => [...new Set(calls.map((c) => c.where.split(':')[0]))].sort();
+
+  // The three files that hold a live door today. Named so the walk cannot silently stop
+  // reaching one of them and still report a clean run.
+  const DOOR_FILES = ['crm/pipelineSync.js', 'routes/webhooks/jobber.js', 'utils/requestAttribution.js'];
+
+  it('every capture-path fetch call passes a door and a contractor', () => {
+    const calls = captureFetchCalls();
+    // ⚠ NON-VACUITY, AND IT IS TWO CHECKS RATHER THAN ONE. Ten calls exist: eight in
+    // routes/webhooks/jobber.js (three fetchFullClient — client-create, client-update,
+    // invoice-paid — and five fetchClientRelatedData), one in utils/requestAttribution.js and one
+    // in crm/pipelineSync.js. A rename, a broken suffix match, or a paren-matcher returning
+    // nothing leaves an EMPTY set, against which the assertion beneath passes — the failure mode
+    // of this whole class of test. The floor catches a set that shrank; the named-files check
+    // catches a walk that stopped reaching a door while the count stayed plausible.
+    assert.ok(calls.length >= 10,
+      `only ${calls.length} capture-path fetch calls found — expected at least 10`);
+    const found = filesOf(calls);
+    for (const f of DOOR_FILES) {
+      assert.ok(found.includes(f), `the walk found no capture-path fetch call in ${f}`);
+    }
+    const bad = calls.filter((c) => !hasKey(c.args, 'door') || !hasKey(c.args, 'contractorId'));
+    assert.deepEqual(bad.map((c) => `${c.where} (${c.name})`), [],
       'a capture-path fetch without door+contractorId logs an untraceable cost line');
   });
 
   it('every withClientLock call passes a door', () => {
-    const calls = [
-      ...callsOf(WEBHOOK, LOCK_CALL).map((c) => ({ ...c, file: 'jobber.js' })),
-      ...callsOf(REQUEST_DOOR, LOCK_CALL).map((c) => ({ ...c, file: 'requestAttribution.js' })),
-    ];
-    assert.ok(calls.length >= 3,
-      `only ${calls.length} withClientLock calls found â expected at least 3 (two webhook doors, one request door)`);
-    const bad = calls.filter((c) => !/door/.test(c.args));
-    assert.deepEqual(bad.map((c) => `${c.file}:${c.line}`), [],
+    const calls = lockCalls();
+    // ⚠ NON-VACUITY, AND THE FOURTH SECTION IS WHY THIS CASE CHANGED. Four locked sections exist:
+    // two webhook doors, the request door, and the referral door in crm/pipelineSync.js — which
+    // 7b put under the lock and which this fence did not read until now, so its door tag was
+    // unenforced. Reading three files and calling the property fenced is the same scope defect
+    // the header records for the fetch needle.
+    assert.ok(calls.length >= 4,
+      `only ${calls.length} withClientLock calls found — expected at least 4`);
+    const found = filesOf(calls);
+    for (const f of DOOR_FILES) {
+      assert.ok(found.includes(f), `the walk found no withClientLock call in ${f}`);
+    }
+    const bad = calls.filter((c) => !hasKey(c.args, 'door'));
+    assert.deepEqual(bad.map((c) => c.where), [],
       'a locked section without a door logs an unattributable hold time');
   });
 
-  it('no call site can reach the door DEFAULT â upsertAndTagClient is always told', () => {
+  it('no call site can reach the door DEFAULT — upsertAndTagClient is always told', () => {
     // upsertAndTagClient defaults `door` so the signature stays additive, but every real caller
     // must pass one or the default silently reappears in the logs. Its four callers are the four
     // routes that share it.
-    const calls = callsOf(WEBHOOK, 'upsertAndTagClient(');
-    assert.ok(calls.length >= 4, `only ${calls.length} upsertAndTagClient calls found â expected 4`);
+    const WEBHOOK = readFileSync(join(SERVER_ROOT, 'routes', 'webhooks', 'jobber.js'), 'utf8');
+    const calls = [];
+    let from = 0;
+    for (;;) {
+      const at = WEBHOOK.indexOf('upsertAndTagClient(', from);
+      if (at === -1) break;
+      from = at + 1;
+      if (isDeclarationOrComment(WEBHOOK, at)) continue;
+      const args = argsFrom(WEBHOOK, at);
+      if (args === null) continue;
+      calls.push({ args, line: lineOf(WEBHOOK, at) });
+    }
+    assert.ok(calls.length >= 4, `only ${calls.length} upsertAndTagClient calls found — expected 4`);
     const bad = calls.filter((c) => (c.args.match(/,/g) || []).length < 3);
     assert.deepEqual(bad.map((c) => `jobber.js:${c.line}`), [],
       'every caller must pass the fourth argument, the door');
