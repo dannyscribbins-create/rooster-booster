@@ -2671,6 +2671,82 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_invoice_job_links_job
     ON crm_invoice_job_links (contractor_id, jobber_job_id)`);
 
+  // ── THE ASSIGNED DATE (3d Phase 1b Commit 1 — R5, R5f, R5g, R5h, #15) ────────────────
+  //
+  // R5f: ONE stored date meaning "when THIS rep first got this client", which changes only
+  // when the effective owner — COALESCE(sticky_rep_id, provisional_rep_id) — becomes a
+  // DIFFERENT rep. Today the displayed date is a SECOND, independent
+  // COALESCE(sticky_set_at, provisional_set_at), so a same-rep LOCK flips which column is
+  // read and the client looks newly assigned on the day it locks. That is the defect.
+  //
+  // ⚠ THIS COMMIT ADDS THE COLUMNS AND NOTHING READS OR WRITES THEM YET, AND THE ORDER IS
+  // THE POINT RATHER THAN CAUTION. `assigned_at` becomes NOT NULL in Commit 4, AFTER all
+  // eight writers set it. Shipping NOT NULL first — the obvious "schema first" ordering —
+  // would make every engine write fail immediately on a live service, inside a locked
+  // transaction, returning capture_failed on every door. See PHASE_1b_DESIGN.md §6.
+  //
+  // ⚠ APPENDED AT THE VERY END OF initDB, one step further down than the design said, for
+  // the citation reason db.js already records above: the highest citation anywhere into
+  // this file is far above it, so a block landing at the end moves nothing anyone points at.
+  // There is no ordering dependency — the backfill reads only columns created by
+  // add_decision_b_schema.js, which runs ~1000 lines earlier.
+  await pool.query(`ALTER TABLE client_rep_assignments
+    ADD COLUMN IF NOT EXISTS assigned_at        TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS assigned_fact_kind TEXT,
+    ADD COLUMN IF NOT EXISTS assigned_fact_id   TEXT,
+    ADD COLUMN IF NOT EXISTS assigned_fact_at   TIMESTAMPTZ`);
+
+  // ⚠ NO DEFAULT ON assigned_at, AND IT IS THE LOAD-BEARING CHOICE OF THIS COMMIT
+  // (Danny, Q2, 2026-09-28). A DEFAULT NOW() is exactly the mechanism that turns "a writer
+  // forgot the date" into "the writer silently stamped the clock" — which is the R5 defect
+  // wearing a schema hat, and it would be invisible and permanent. With no default the same
+  // omission raises a NOT NULL violation inside the writer's own locked transaction: the
+  // door returns capture_failed, the sweep HOLDS its watermark (6b), and error_log says why.
+  // ⚠ Do not "fix" a future NOT NULL violation by adding a default. The violation is the
+  // mechanism working.
+  //
+  // ⚠ NO CHECK ON assigned_fact_kind, for the reason written_by's own block above gives:
+  // a CHECK would have to admit NULL anyway, and a constraint on a tail-block column CANNOT live in
+  // add_decision_b_schema.js because that file runs ~1000 lines earlier, before the column
+  // exists. A source fence over the writer module is the check instead, and unlike a CHECK
+  // it can also assert the value set is COMPLETE.
+  //
+  // THE FOUR KINDS: 'request' (R5g — a request-based assignment, dated by the request's own
+  // created_at) · 'quote' (dated by the quote's approved_at) · 'manual' (an admin action,
+  // whose own time IS the write time) · 'write_time' (no stored fact time was available).
+  // ⚠ 'write_time' IS A KIND RATHER THAN A NULL BECAUSE THE BATCH RULING REQUIRES EVERY SUCH
+  // CASE "LISTED BY NAME". A column value IS that list — `WHERE assigned_fact_kind =
+  // 'write_time'` enumerates it forever with nobody maintaining a document. A fallback that
+  // does not announce itself in the data is indistinguishable from a fact-derived date.
+
+  // ⚠ THE INDEX #15 NEEDS, AND IT IS A SIBLING RATHER THAN AN EDIT OF idx_cra_contractor_owner
+  // (Danny, Q4, 2026-09-28: keep that one). CREATE INDEX IF NOT EXISTS cannot MODIFY an
+  // existing index, so "editing" it would mean a DROP and a CREATE — destructive DDL on a
+  // live table, to change an index the count query still uses through its first two keys.
+  //
+  // ⚠ THE COALESCE ARGUMENT ORDER MUST MATCH OWN_BOOK_PREDICATE's, AND idx_cra_contractor_owner's
+  // OWN HEADER ALREADY RECORDS WHAT GETTING IT WRONG COSTS: Postgres matches the indexed
+  // expression against the
+  // predicate's TEXTUALLY, so swapping the two columns leaves an index that still builds,
+  // still looks right, and is silently never used. assignedAtIndex.test.js compares this
+  // index's real definition — read back from pg_get_indexdef — against repBook.js's real
+  // OWN_BOOK_PREDICATE, so neither side of that check is a hand-typed copy.
+  //
+  // ⚠ ALL FOUR KEYS, IN THIS ORDER. After #15 the clients list is
+  // `ORDER BY assigned_at DESC, jobber_client_id DESC` with a keyset on the same pair, and
+  // BOTH sort keys must be in the index in that order and direction or the ORDER BY is
+  // satisfied by a sort over the matched rows instead. The existing index omits
+  // jobber_client_id entirely, so it has only ever half-served the list — a pre-existing gap
+  // this closes as a side effect, worth naming because "we already had an index" is why
+  // nobody looked.
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_cra_owner_assigned
+      ON client_rep_assignments
+         (contractor_id, (COALESCE(sticky_rep_id, provisional_rep_id)), assigned_at DESC, jobber_client_id DESC)
+  `);
+
+  await backfillAssignedAt(pool);
+
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
   // log-only. Replaced with a tenant-neutral startup log; the old single-row-keyed
@@ -2679,4 +2755,56 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   console.log(`${result.rows[0].n} contractor token(s) loaded`);
 }
 
-module.exports = { pool, initDB };
+// ── THE assigned_at BACKFILL (3d Phase 1b Commit 1) ───────────────────────────────────
+//
+// Fills assigned_at on every row that has none, from today's displayed date. Returns the
+// number of rows it filled, which is how the "it is a permanent no-op after the first run"
+// case observes itself.
+//
+// ⚠ ITS OWN EXPORTED FUNCTION RATHER THAN AN INLINE STATEMENT, AND THE REASON IS THAT THE
+// NO-OP IS THE PROPERTY WORTH TESTING. Inline, a test could only exercise it by re-running
+// the whole of initDB(); as a function, the second-run case is three lines and the
+// guard-proof that removes the WHERE clause reds exactly it.
+//
+// ⚠ GUARDED ON `assigned_at IS NULL`, WHICH IS WHAT MAKES IT A PERMANENT NO-OP (db.js's
+// pattern 3, as used by the rep_window_start backfill above). Without the guard it runs
+// on EVERY BOOT and overwrites a correctly-derived historical date with today's displayed
+// COALESCE — which is R5's defect reintroduced by the very statement meant to seed it, and
+// it would happen silently, on every restart, forever.
+//
+// ── THE THIRD COALESCE ARM IS NOT DECORATION ──────────────────────────────────────────
+// ⚠ BOTH *_set_at COLUMNS ARE NULLABLE WITH NO DEFAULT, AND A ROW WITH NEITHER EXISTS.
+// timeframeClause's own note in repBook.js records that shape deliberately ("A ROW WITH NO
+// ASSIGNMENT DATE AT ALL IS EXCLUDED FROM EVERY WINDOW AND INCLUDED IN `all`"), and
+// repClients.test.js seeds one.
+// So COALESCE(sticky_set_at, provisional_set_at) CAN be NULL — and a NULL is exactly what
+// makes Commit 4's SET NOT NULL throw, during initDB, on a service where that throw stops
+// the cron jobs without taking the app down (server.js's initDB bootstrap logs and carries
+// on). updated_at is NOT NULL DEFAULT NOW() in add_decision_b_schema.js's CREATE, so the
+// third arm cannot be NULL and cannot leave a hole for Commit 4 to trip over.
+//
+// ⚠ AND A THIRD-ARM ROW IS A WRITE-TIME VALUE DRESSED AS AN ASSIGNMENT DATE, SO IT SAYS SO.
+// Without the kind marker, a row whose date is really `updated_at` is indistinguishable
+// from one whose date is a real historical set_at. These are the only rows that carry
+// 'write_time' after 1b — every reachable writer has a fact time (PHASE_1b_DESIGN.md §3.5).
+//
+// ⚠ assigned_fact_kind IS LEFT NULL ON EVERY OTHER BACKFILLED ROW, AND THAT IS A RULING
+// (Danny, Q1, 2026-09-28) RATHER THAN AN OMISSION. The producing fact is not recorded
+// anywhere — R5_WINDOW_CUTOFF_REPORT.md §2b establishes that any rule re-deriving it is an
+// approximation with five named reasons it can be wrong. NULL means "we do not know", which
+// is true; a guess in a provenance column is worse than a blank, because it reads as
+// provenance. The date-restoring rebuild is what replaces these NULLs with real facts.
+async function backfillAssignedAt(db) {
+  const { rowCount } = await db.query(`
+    UPDATE client_rep_assignments
+       SET assigned_at = COALESCE(sticky_set_at, provisional_set_at, updated_at),
+           assigned_fact_kind = CASE
+             WHEN sticky_set_at IS NULL AND provisional_set_at IS NULL THEN 'write_time'
+             ELSE NULL
+           END
+     WHERE assigned_at IS NULL
+  `);
+  return rowCount;
+}
+
+module.exports = { pool, initDB, backfillAssignedAt };

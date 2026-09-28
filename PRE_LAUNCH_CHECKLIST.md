@@ -274,6 +274,97 @@ all cite 1.3 / 1.4 / 1.7 by number. Every existing citation stays true.
 
 ## 🔴 PRE-LAUNCH — must be done before real contractor traffic
 
+**3d Phase 1b — the assigned date (filed 2026-09-28, Commit 1)**
+
+*The plan, the rulings and every guard-proof are in `PHASE_1b_DESIGN.md` at the repo root
+(untracked). Commit 1 shipped the four columns, the backfill and the `idx_cra_owner_assigned`
+index. Commits 2–6 are the writers, the shared admin writer, `NOT NULL`, the readers and the
+preview — in that order, and **the order is load-bearing**: §6 records that the obvious
+"schema first" ordering would fail every engine write on a live service.*
+
+- [ ] **🔴 `assigned_at` IS STILL NULLABLE AND NOTHING READS IT.** Commit 1 is inert by
+      design. Until Commit 5 lands, every rep surface still reads
+      `COALESCE(sticky_set_at, provisional_set_at)` and R5f's defect — a same-rep lock moving
+      the displayed date — **is still live**. ⚠ Do not read "the column exists" as "the date
+      is fixed".
+
+- [ ] **🔴 THE DATE-RESTORING REBUILD, AFTER COMMIT 6.** The 2026-09-27 rebuild reset roughly
+      400 rows' dates to that day, and Commit 1's backfill has now copied those same wrong
+      dates into `assigned_at`. **The fix is the EXISTING rebuild under the EXISTING gate** —
+      preview with the date before → after, Danny's review, **one run** (confirmed Q7,
+      2026-09-28). It works because the dates are re-derived from facts, not preserved:
+      the discard deletes the row and the replay re-inserts it with the request's own
+      `created_at` or the quote's `approved_at`. See `PHASE_1b_DESIGN.md` §5.2.
+      ⚠ **The rebuild re-runs the whole attribution, so it can move REPS as well as dates.**
+      The 442/442-unchanged preview is a 2026-09-27 measurement and is **not** evidence about
+      the tree after 1b. Re-measure; a non-zero "would change" column is a STOP.
+
+- [ ] **THE `qr_link` DISCARD LEAK — gated on the first `qr_link` MINT, not on Phase 4's
+      number.** Ruled 2026-09-28 (Danny, Q5): file it, do nothing now.
+      **The shape:** the rebuild's discard clears assignment HALVES and deliberately does not
+      touch `assigned_at` (a rebuild is a re-run, not an ownership change). If an engine
+      **sticky** is cleared while a `qr_link` **provisional** survives, the effective owner
+      changes from the sticky's rep to the provisional's rep **while `assigned_at` still
+      records the sticky rep's tenure** — a date belonging to somebody else.
+      ⚠ **UNREACHABLE TODAY, AND THE PROOF IS SPECIFIC:** `qr_link` is the only provisional
+      value absent from `ENGINE_PROVISIONAL_SOURCES`, and nothing in production writes it —
+      re-verified at `5572ac1`. **It becomes reachable at the first write of
+      `provisional_source = 'qr_link'`**, which is why this is gated on the mint rather than
+      on a phase number: Phase 4 could ship the link machinery without minting one.
+      ⚠ **No bulk `UPDATE` can fix it correctly** — the statement cannot know the surviving
+      owner's tenure date, and `assigned_at` is NOT NULL so there is no "unknown" to write.
+
+- [ ] **THE IN-FLIGHT CURSOR — revisit WHEN REPS ARE USING THE APP LIVE.** Ruled 2026-09-28
+      (Danny, Q3): **add nothing now.** Commit 5 moves the clients-list keyset from
+      `updated_at` to `assigned_at`; a cursor minted before that deploy is then compared
+      against the wrong column and yields one wrong page boundary. **Pre-launch nobody is
+      mid-scroll, so the anomaly has no occupant** and a version field would be a migration
+      for a population of zero.
+      ⚠ **THE CONDITION, STATED SO IT IS NOT LOST: the first deploy that changes the cursor's
+      column while reps are actually using the app.** This is a decision about today's
+      population, **not** a finding that the in-flight cursor is safe — it is safe because
+      nobody is holding one. The mechanism and the recommended fix (a version field, and a
+      400 rather than a silent restart at page 1, which would HIDE rows) are in
+      `PHASE_1b_DESIGN.md` §4.4 and are left standing for whoever hits the condition.
+
+- [ ] **FOUR COMMENTS AND ONE TEST GO INVERTED AT COMMIT 4/5, AND THEY ARE LISTED BY ROLE
+      BECAUSE AN INVERTED RECORD INSTRUCTS AGAINST THE FIX.**
+      · `timeframeClause`'s dateless-row note in `server/utils/repBook.js` ("a row with no
+      assignment date… is excluded from every window and included in `all`") — its subject
+      stops existing once the column is NOT NULL;
+      · `timeframeClause`'s own header in the same file, which names the COALESCE;
+      · `idx_cra_contractor_owner`'s header comment in `server/db.js` ("`updated_at DESC` is
+      the third column so the ORDER BY is satisfied by the index too") — ⚠ **still inverted
+      even though Q4 KEPT that index**, because keeping it does not make the sentence true;
+      · the `encodeCursor` / `decodeCursor` header block in `server/routes/rep.js`, for the
+      column name only — ⚠ **the `::text` microsecond measurement inside it is a RECORD of a
+      measured defect and must NOT be touched**;
+      · and `repClients.test.js`'s *"⚠ a row with NO assignment date is in `all` and in NO
+      window"* case, whose subject becomes unreachable — removed openly, with its reason, and
+      replaced by a NOT NULL fence so the property that supersedes it is observed.
+
+- [ ] **CITATION ROT THIS COMMIT CAUSED, MEASURED AND NOT REPAIRED — for the documentation
+      pass.** `citecheck --changed-files` after Commit 1 reports **40 LIKELY ROTTED**: 22
+      pointing into `PRE_LAUNCH_CHECKLIST.md` (+63 lines, this block) and 18 into `CLAUDE.md`
+      (+74 lines, the tripwire entry and the production-read rule).
+      ⚠ **NOT REPAIRED BY DELTA, DELIBERATELY.** "LIKELY ROTTED" means an edit MOVED the
+      target line, **not** that the citation was right beforehand — and the measured precedent
+      is a commit that flagged 11 of its own and found **all eleven already wrong**. Adding
+      +63/+74 would certify wrong numbers as repaired. Each must be read at the OLD line in
+      the OLD revision first, then re-cited **by role**.
+      ⚠ **THE 18 INTO `CLAUDE.md` ARE PROBABLY THE PRE-RULED SET.** Their targets sit inside
+      the test-count tripwire's chain of dated records, and CDL_3c_PHASE05_RULINGS ruled those
+      **not to be repaired**. Verify before touching one.
+      ⚠ **AND THE ROT IS THE COST OF THE FILE'S OWN CONVENTION, not an accident:** this
+      checklist is newest-first, so a new block goes near the top and moves everything below
+      it. `server/db.js`'s insertion, by contrast, went at the very END of `initDB()` and
+      rotted **nothing** — every db.js finding came back "TARGET TOUCHED… only below the
+      citation", which is that convention working exactly as `db.js` documents it.
+      ⚠ **`citecheck --role-only` is at 836 against a baseline of 782.** The handoff recorded
+      830 pre-existing, so **six were added by this commit and all six were converted to role
+      form before it landed** — the bullet above is what they became. **Do NOT raise the
+      baseline.** The remaining 48 are pre-existing and belong to the documentation pass.
+
 **Money path — the Stripe architecture phase**
 
 - [ ] **🔴🔴 DO NOT SWITCH STRIPE TO LIVE MODE BEFORE THE ARCHITECTURE PHASE COMPLETES.**

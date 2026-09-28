@@ -348,6 +348,38 @@ then say what was not checked.
 **Every commit to main auto-deploys to Railway.** Pushing IS deploying.
 
 **Local environment cannot connect to Railway PostgreSQL.** Always test login-dependent features on live deployment.
+⚠ **THAT SENTENCE IS ABOUT THE APP'S INTERNAL `DATABASE_URL`, WHICH IS NOT REACHABLE FROM
+OUTSIDE RAILWAY. THE POSTGRES SERVICE'S PUBLIC TCP PROXY IS REACHABLE**, and the rule below
+governs what may be done through it. Read as an unqualified "you cannot reach production",
+the line above forecloses a check that is permitted — which is why the two sit together.
+*(A fuller narrowing of this line is filed separately; this commit adds only what the
+read-only rule requires to not contradict it.)*
+
+### ⚠ READ-ONLY PRODUCTION READS ARE PERMITTED — UNDER FOUR CONDITIONS, ALL OF THEM
+
+Ruled by Danny 2026-09-28, during 3d Phase 1b. **A question about what production data
+actually holds may be answered by reading it, rather than guessed at or left open.** The
+conditions are not advisory and none of them is optional:
+
+1. **Read-only `SELECT`s only.** No `INSERT`, `UPDATE`, `DELETE`, no DDL, no `EXPLAIN ANALYZE`
+   on a data-modifying statement, nothing that takes a lock. A statement that is not a bare
+   `SELECT` is outside the ruling, whatever it is for.
+2. **Over the public Postgres TCP proxy**, never by reaching for the app's internal URL.
+3. **Credentials are NEVER printed and NEVER written to any file** — not into a script, not a
+   report, not a log line, not a commit message, not a shell history. ⚠ A connection string
+   carries the password; echoing the command echoes the credential.
+4. **Scripts live OUTSIDE the repo**, and **every query actually run is stated in the report.**
+   Not "I queried the assignments table" — the statement, as it was run.
+
+⚠ **THE FOURTH CONDITION IS THE ONE THAT WILL GET SKIPPED, AND IT IS THE ONE THAT MAKES THE
+OTHER THREE CHECKABLE.** A reported finding whose query is not written down cannot be
+distinguished from a remembered one, and this repo's records are full of numbers that were
+right on the day and had no source. **A production read with no stated query is not evidence.**
+
+⚠ **AND THE OUTPUT IS DATA ABOUT REAL PEOPLE.** Client names, emails and phone numbers are in
+these tables. Aggregate where the question allows it, never paste a row dump into a tracked
+file, and keep any CSV outside the repo — the rebuild preview's own CSVs are already handled
+this way for exactly this reason.
 
 **`server/migrations/add_payout_columns.js` — superseded by initDB(). DO NOT RUN AGAIN.**
 
@@ -392,9 +424,52 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1984 server tests across 324 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the post-1a door-tagging-and-fence commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1984 · suites 324 · pass 1984 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE POST-1a DOOR-TAGGING COMMIT, AND NOT ONE OF THE FOUR NUMBERS
-  MOVED — WHICH IS NOT STALENESS.** That commit REWROTE a describe block in
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1998 server tests across 327 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the Phase 1b Commit 1 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1998 · suites 327 · pass 1998 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 1 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1984 → 1998 is **+14**, one new file (`assignedAtColumn.test.js`); suites 324 → 327 is
+  that file's **three** top-level describes. React did not move — **no `src/` file was touched at
+  all**, and the three non-test files this commit edits are `server/db.js`, `CLAUDE.md` and
+  `PRE_LAUNCH_CHECKLIST.md`, none of them under one of `adminBranding.test.jsx`'s four walked
+  roots — and was re-measured rather than carried. **All four predicted before the run and
+  matched.** Counted with an anchored `^\s*it\(` (14); the file's two loops were each checked for
+  POSITION — one `.map` building a Map and one `for` iterating column names, **both inside `it()`
+  bodies** — so neither wraps a case and 14 is exact rather than 14 × anything.
+  ⚠ **A GUARD-PROOF'S REVERT REFUSED AND LEFT A SOURCE FILE INJECTED, AND THE CAUSE IS THIS
+  FILE'S OWN "SCANS READ COMMENTS" RULE WITH THE SIGN FLIPPED.** Injection (iii) replaced the
+  backfill's `COALESCE(sticky_set_at, provisional_set_at, updated_at),` with the two-argument
+  form. The FORWARD patch landed (the three-argument anchor was unique). The REVERT then searched
+  for the two-argument form and found it **twice** — once in the SQL it had just injected, and
+  once in a **PROSE SENTENCE in the same file's header comment** describing the very
+  two-COALESCE defect the column exists to fix. The revert asserted rather than guessing, which
+  is right, but its `finally` raised **before writing**, so `db.js` was left holding the
+  injection. Recovered by hand, re-verified 14/14 green, and the anchor now carries
+  `SET assigned_at = ` so it cannot match prose. ⚠ **There prose MATCHES a forbidden pattern;
+  here prose SATISFIED A REVERT ANCHOR — and an anchor that is unique in one direction is not
+  therefore unique in the other.** Check both.
+  ⚠ **AND A GUARD-PROOF MEASURED ONE OF THIS COMMIT'S OWN COMMENTS FALSE, WHICH IS THE ENTRY
+  WORTH KEEPING.** The index fence's non-vacuity floor carried the standard claim — *"an empty
+  set, and every assertion built on it would otherwise be skipped rather than failed."*
+  Guard-proof (iv) pointed the index name at nothing and reds **3**; guard-proof (iv-b) did the
+  same **with the floor assertion deleted** and reds **the same 3**. Every downstream assertion
+  dereferences `rows[0]`, so an empty set reds either way — **the floor is a LEGIBILITY guard
+  here, not a vacuity guard**, converting a `TypeError` into a named failure. It is kept, for the
+  case the measurement does not cover (a later assertion reading the SET rather than a row), and
+  the comment now records the measurement instead of the reasoning. **A non-vacuity floor is a
+  claim like any other; ask what actually fails without it.**
+  ⚠ **THE OTHER THREE WIDTHS, AND TWO DISAGREED WITH THE PREDICTION.** (i) the backfill's
+  `WHERE assigned_at IS NULL` guard removed → **2** red, not the predicted 1: it takes the no-op
+  case AND "fills only the rows that need it", because without the guard the second call refills
+  every row rather than the one new one. (ii) the index's `COALESCE` arguments swapped → **exactly
+  1**, the argument-order fence — the defect `idx_cra_contractor_owner`'s own header warning
+  describes as an index that "still builds, still looks right, and is silently never used".
+  (iii) the backfill's third `COALESCE`
+  arm dropped → **exactly 1**, the dateless-row case, with both fact-dated siblings staying green,
+  so the injection is narrow. Every revert was an inverse patch in a `finally`, proven
+  byte-identical by sha256, and each patch re-read the file from disk so several edits to one
+  file could not degrade into the last one only.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE POST-1a DOOR-TAGGING COMMIT, AND
+  NOT ONE OF THE FOUR NUMBERS MOVED — WHICH IS NOT STALENESS.* It read **1984 / 324 / 1358 / 82**.
+  That commit REWROTE a describe block in
   `captureFetchContract.test.js` (three cases out, three cases in; one top-level describe out, one
   in) and changed three production call sites in `routes/webhooks/jobber.js`, so the tree differs
   from Commit 7b in things the gate can observe while the counts stay put. **Predicted before the
