@@ -217,8 +217,8 @@ describe('PART 1 — seeing and changing a client\'s rep from the client record'
     assert.equal(await getClientAssignment(pool, TENANT, 'c1'), null);
     const rep = await seedMember({ email: 'rep7@corr.test', tier: 'general', fullName: 'Rep Seven' });
     await pool.query(
-      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at)
-       VALUES ($1, 'c1', $2, 'mode_a', NOW())`, [TENANT, rep]);
+      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at, assigned_at)
+       VALUES ($1, 'c1', $2, 'mode_a', NOW(), NOW())`, [TENANT, rep]);
     const read = await getClientAssignment(pool, TENANT, 'c1');
     assert.equal(read.state, 'provisional', 'and a provisional reads as provisional, not as locked');
     assert.equal(read.source_label, 'On the assessment for this visit');
@@ -232,11 +232,11 @@ describe('PART 2 — deactivation marks history and moves nothing', () => {
     const owner = await seedMember({ email: 'owner8@corr.test', tier: 'owner', attributable: false });
     const leaver = await seedMember({ email: 'leaver@corr.test', tier: 'general', fullName: 'Tom Rees' });
     await pool.query(
-      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, written_by)
-       VALUES ($1, 'c1', $2, 'mode_a_at_close', NOW(), 'replay')`, [TENANT, leaver]);
+      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, written_by, assigned_at)
+       VALUES ($1, 'c1', $2, 'mode_a_at_close', NOW(), 'replay', NOW())`, [TENANT, leaver]);
     await pool.query(
-      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at, written_by)
-       VALUES ($1, 'c2', $2, 'mode_a', NOW(), 'live')`, [TENANT, leaver]);
+      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at, written_by, assigned_at)
+       VALUES ($1, 'c2', $2, 'mode_a', NOW(), 'live', NOW())`, [TENANT, leaver]);
     const token = await sessionFor(owner);
 
     const res = await fetch(`${base}/api/admin/team/${leaver}/deactivate`, {
@@ -259,8 +259,8 @@ describe('PART 2 — deactivation marks history and moves nothing', () => {
     const owner = await seedMember({ email: 'owner9@corr.test', tier: 'owner', attributable: false });
     const leaver = await seedMember({ email: 'leaver2@corr.test', tier: 'general', fullName: 'Tom Rees' });
     await pool.query(
-      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at)
-       VALUES ($1, 'c1', $2, 'mode_a_at_close', NOW())`, [TENANT, leaver]);
+      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, assigned_at)
+       VALUES ($1, 'c1', $2, 'mode_a_at_close', NOW(), NOW())`, [TENANT, leaver]);
     // c1 also carries an ordinary campaign tag, so the control audience really contains it.
     await pool.query(
       `INSERT INTO contact_tags (jobber_client_id, contractor_id, tag, source, applied_at)
@@ -307,8 +307,8 @@ describe('PART 2 — deactivation marks history and moves nothing', () => {
     const successor = await seedMember({ email: 'successor@corr.test', tier: 'general', fullName: 'New Rep' });
     await pool.query(`UPDATE team_members SET jobber_user_id = 'ju-new' WHERE id = $1`, [successor]);
     await pool.query(
-      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at)
-       VALUES ($1, 'c1', $2, 'mode_a', NOW())`, [TENANT, leaver]);
+      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at, assigned_at)
+       VALUES ($1, 'c1', $2, 'mode_a', NOW(), NOW())`, [TENANT, leaver]);
     const token = await sessionFor(owner);
     await fetch(`${base}/api/admin/team/${leaver}/deactivate`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
 
@@ -326,8 +326,8 @@ describe('PART 2 — deactivation marks history and moves nothing', () => {
     const owner = await seedMember({ email: 'owner11@corr.test', tier: 'owner', attributable: false });
     const leaver = await seedMember({ email: 'leaver4@corr.test', tier: 'general', fullName: 'Tom Rees' });
     await pool.query(
-      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at)
-       VALUES ($1, 'c1', $2, 'mode_a_at_close', NOW())`, [TENANT, leaver]);
+      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, assigned_at)
+       VALUES ($1, 'c1', $2, 'mode_a_at_close', NOW(), NOW())`, [TENANT, leaver]);
     const token = await sessionFor(owner);
     await fetch(`${base}/api/admin/team/${leaver}/deactivate`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } });
     assert.equal((await tagsOf('c1')).length, 1, 'precondition');

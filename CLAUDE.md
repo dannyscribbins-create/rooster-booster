@@ -424,8 +424,48 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2036 server tests across 335 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the Phase 1b Commit 3 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2036 · suites 335 · pass 2036 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 3 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2045 server tests across 337 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the Phase 1b Commit 4 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2045 · suites 337 · pass 2045 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 4 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2036 → 2045 is **+9**, one new file (`assignedAtNotNull.test.js`); suites 335 → 337 is
+  that file's **two** top-level describes. React did not move — no `src/` file was touched — and
+  was re-measured. Counted with an anchored `^\s*it\(` (9); the file's one loop sits inside an
+  `it()` body. **The case count matched; the GATE DID NOT — see below.**
+  ⚠ **THE GATE WENT RED FIRST AT `fail 9`, AND EVERY ONE WAS A TEST WHOSE SUBJECT THIS COMMIT
+  DELETED.** `assigned_at` became NOT NULL, and Commit 1's own suite is built entirely on the
+  column being NULLABLE: its nullability assertion, its "inserted without it gets NULL" case,
+  and every backfill case — which seeds a row with `assigned_at` NULL and therefore **cannot
+  insert its fixture at all** any more. Repaired openly per the characterization rule: the
+  nullability assertion was INVERTED with its reason, the insert case was REPOINTED onto the
+  R5h triple (its old property now lives beside the constraint), and the backfill describe
+  **drops the constraint for each case and restores it in `afterEach`**.
+  ⚠ **I PREDICTED THE FIXTURE BLAST RADIUS AND MISSED THIS ONE, WHICH IS THE ENTRY WORTH
+  KEEPING.** I enumerated the ~20 fixture INSERTs that would fail and repaired them before
+  running — and did not think of the suite whose SUBJECT was the nullability itself. **A search
+  for "who writes this column" cannot find "who asserts this column's shape".** The gate found
+  it; nothing else would have.
+  ⚠ **AND A SUITE THAT MUTATES THE SHARED SCHEMA IS UNUSUAL ENOUGH TO SAY TWICE.** Both the new
+  gate suite and Commit 1's backfill describe now DROP and re-add the constraint around their
+  cases, because a row with `assigned_at` NULL cannot otherwise exist. Restores are in
+  `afterEach`/`after` rather than at the end of each case, so an assertion failure cannot leave
+  the column nullable for everything that follows — which would surface as unrelated suites
+  failing on inserts, a long way from the cause.
+  ⚠ **THE THREE GUARD-PROOF WIDTHS, AND (i-b) IS THE ONE THAT SEPARATES TWO CLAIMS.** (i) the
+  PRE-RULING code restored — no gate, and the throw allowed to escape → **4 red**; (i-b) the
+  gate removed with the catch left in place → **2 red**, and crucially the "never throws" cases
+  stay GREEN: **the boot survives because of the CATCH, while the operator loses the precise
+  "N rows, here are their ids" alert because of the GATE.** Those are two different claims and
+  only running both injections tells them apart. (ii) the constraint never applied → **exactly
+  1**, the paired positive, which without it would be invisible — every "it was not applied"
+  assertion would still pass.
+  ⚠ **AND THE HARNESS REFUSED TO INJECT UNTIL I STOPPED REPLACING WITH `''`.** The
+  both-directions uniqueness check fired on an empty replacement, because `''.count('')` is
+  enormous — which is this file's own *"never revert by replacing with `''`; use a marker"*
+  rule, caught by a check rather than by a left-injected file. Markers now.
+  ⚠ **AND A SHELL HEREDOC ATE THE ESCAPES IN THE FIX FOR THAT**, so the harness edit was made
+  with an editor instead. Third recorded instance in this arc of the rule that regex- and
+  escape-bearing code goes in a FILE.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 3 COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2036 / 335 / 1358 / 82**.
   Server 2023 → 2036 is **+13**, one new file (`manualAssignedAt.test.js`); suites 332 → 335 is
   that file's **three** top-level describes. React did not move — no `src/` file was touched —
   and was re-measured. **All four predicted before the run and matched.** Counted with an

@@ -79,9 +79,9 @@ async function assign(contractorId, jobberClientId, { sticky = null, provisional
   await pool.query(
     `INSERT INTO client_rep_assignments
        (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at,
-        provisional_rep_id, provisional_source, provisional_set_at, updated_at)
+        provisional_rep_id, provisional_source, provisional_set_at, updated_at, assigned_at)
      VALUES ($1, $2, $3, $4, CASE WHEN $3::int IS NULL THEN NULL ELSE NOW() END,
-             $5, $6, CASE WHEN $5::int IS NULL THEN NULL ELSE NOW() END, NOW())`,
+             $5, $6, CASE WHEN $5::int IS NULL THEN NULL ELSE NOW() END, NOW(), NOW())`,
     [contractorId, jobberClientId,
      sticky, sticky ? stickySource : null,
      provisional, provisional ? provisionalSource : null]
@@ -1061,9 +1061,9 @@ describe('Canvass-6 — GET /api/rep/home (A34.5 ruling ④, A34.6, A34.7)', () 
     await seedClient(TENANT, id, name || id);
     await pool.query(
       `INSERT INTO client_rep_assignments
-         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
+         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, assigned_at)
        VALUES ($1, $2, $3, 'mode_a_at_close', NOW() - ($4 || ' minutes')::interval,
-               NOW() - ($4 || ' minutes')::interval)`,
+               NOW() - ($4 || ' minutes')::interval, NOW() - ($4 || ' minutes')::interval)`,
       [TENANT, id, me, String(minutesAgo)]
     );
     if (stage) {
@@ -1387,7 +1387,7 @@ describe('Canvass-9a — the timeframe window (Parts 3b / 4b)', () => {
     await pool.query(
       `INSERT INTO client_rep_assignments
          (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at,
-          provisional_rep_id, provisional_source, provisional_set_at, updated_at)
+          provisional_rep_id, provisional_source, provisional_set_at, updated_at, assigned_at)
        VALUES ($1, $2,
                CASE WHEN $4 THEN $3::int ELSE NULL END,
                CASE WHEN $4 THEN 'mode_a_at_close' ELSE NULL END,
@@ -1395,6 +1395,7 @@ describe('Canvass-9a — the timeframe window (Parts 3b / 4b)', () => {
                CASE WHEN $4 THEN NULL ELSE $3::int END,
                CASE WHEN $4 THEN NULL ELSE 'mode_a' END,
                CASE WHEN $4 THEN NULL ELSE NOW() - ($5 || ' days')::interval END,
+               NOW() - ($5 || ' days')::interval,
                NOW() - ($5 || ' days')::interval)`,
       [TENANT, jobberClientId, repId, sticky, String(daysAgo)]
     );
@@ -1591,10 +1592,21 @@ describe('Canvass-9a — the timeframe window (Parts 3b / 4b)', () => {
     // — and it is the reason `all` is the ABSENCE of a predicate rather than a sentinel
     // date, which would have dropped this row from `all` too. Not hypothetical: the
     // schema requires neither date column.
+    //
+    // ── 3d PHASE 1b COMMIT 4: THE FIXTURE CHANGED, THE SUBJECT DID NOT ─────────
+    // ⚠ `assigned_at` IS NOW NOT NULL, SO THIS INSERT HAS TO SUPPLY ONE — but the row is
+    // still UNDATED in the sense this case is about, because `timeframeClause` still reads
+    // `COALESCE(sticky_set_at, provisional_set_at)` and BOTH of those remain nullable.
+    // Only `assigned_at` became NOT NULL. So the property under test is untouched.
+    // ⚠ THIS CASE DIES IN COMMIT 5, NOT HERE, AND DELETING IT NOW WOULD DROP REAL COVERAGE
+    // A COMMIT EARLY. When the clause moves onto `assigned_at` its subject genuinely stops
+    // existing — no row can be dateless — and it is removed openly then, with a NOT NULL
+    // fence put in its place so the property that supersedes it is observed rather than
+    // assumed.
     await pool.query(
       `INSERT INTO client_rep_assignments
-         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
-       VALUES ($1, 'tf-undated', $2, 'manual', NULL, NOW())`,
+         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, assigned_at)
+       VALUES ($1, 'tf-undated', $2, 'manual', NULL, NOW(), NOW())`,
       [TENANT, repId]
     );
     const all = await request('/api/rep/clients?timeframe=all', TOKEN);

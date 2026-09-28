@@ -617,8 +617,8 @@ describe('Ruling 1 + 5 — the replay reproduces the engine over stored history'
     await setStage('st-1', 'sold');
     await addRequest('st-1', 'rq-st', 15, { assigned: ['ju-a'] });
     await pool.query(
-      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
-       VALUES ($1, 'st-1', $2, 'manual', NOW(), NOW())`, [TENANT, other]);
+      `INSERT INTO client_rep_assignments (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, assigned_at)
+       VALUES ($1, 'st-1', $2, 'manual', NOW(), NOW(), NOW())`, [TENANT, other]);
     await replay.replayForTeamMember(pool, { contractorId: TENANT, teamMemberId: a });
     assert.equal((await assignmentOf('st-1')).sticky_rep_id, other);
   });

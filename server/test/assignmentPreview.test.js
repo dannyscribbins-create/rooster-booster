@@ -52,8 +52,8 @@ const seedAssignment = async (contractorId, clientId, row) => {
   await pool.query(
     `INSERT INTO client_rep_assignments
        (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at,
-        sticky_rep_id, sticky_source, sticky_set_at, written_by)
-     VALUES ($1, $2, $3, $4, NOW(), $5, $6, NOW(), $7)`,
+        sticky_rep_id, sticky_source, sticky_set_at, written_by, assigned_at)
+     VALUES ($1, $2, $3, $4, NOW(), $5, $6, NOW(), $7, NOW())`,
     [contractorId, clientId, row.provisionalRepId || null, row.provisionalSource || null,
       row.stickyRepId || null, row.stickySource || null, row.writtenBy || null]
   );

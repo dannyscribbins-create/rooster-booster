@@ -739,9 +739,9 @@ async function seedStack(pool) {
     await pool.query(
       `INSERT INTO client_rep_assignments
          (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at,
-          provisional_rep_id, provisional_source, provisional_set_at, updated_at)
+          provisional_rep_id, provisional_source, provisional_set_at, updated_at, assigned_at)
        VALUES ($1, $2, $3, $4, CASE WHEN $3::int IS NULL THEN NULL ELSE NOW() END,
-               $5, $6, CASE WHEN $5::int IS NULL THEN NULL ELSE NOW() END, NOW())
+               $5, $6, CASE WHEN $5::int IS NULL THEN NULL ELSE NOW() END, NOW(), NOW())
        ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE
          SET sticky_rep_id = EXCLUDED.sticky_rep_id,
              sticky_source = EXCLUDED.sticky_source,
@@ -847,8 +847,9 @@ async function seedStack(pool) {
     );
     await pool.query(
       `INSERT INTO client_rep_assignments
-         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
-       VALUES ($1, $2, $3, $4, NOW(), NOW() - ($5 || ' minutes')::interval)
+         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, assigned_at)
+       VALUES ($1, $2, $3, $4, NOW(), NOW() - ($5 || ' minutes')::interval,
+               NOW() - ($5 || ' minutes')::interval)
        ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE
          SET sticky_rep_id = EXCLUDED.sticky_rep_id, updated_at = EXCLUDED.updated_at`,
       // A spread of sources so the detail screen's vocabulary is exercised, and a
@@ -882,8 +883,8 @@ async function seedStack(pool) {
      ON CONFLICT (jobber_client_id, contractor_id) DO NOTHING`, [beta]);
   await pool.query(
     `INSERT INTO client_rep_assignments
-       (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
-     VALUES ($1, 'jc-beta-rev', $2, 'manual', NOW(), NOW())
+       (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, assigned_at)
+     VALUES ($1, 'jc-beta-rev', $2, 'manual', NOW(), NOW(), NOW())
      ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET sticky_rep_id = EXCLUDED.sticky_rep_id`,
     [beta, betaRevRepId]);
 
@@ -914,9 +915,10 @@ async function seedStack(pool) {
     );
     await pool.query(
       `INSERT INTO client_rep_assignments
-         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
+         (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, assigned_at)
        VALUES ($1, $2, $3, 'mode_a_at_close',
-               NOW() - ($4 || ' minutes')::interval, NOW() - ($4 || ' minutes')::interval)
+               NOW() - ($4 || ' minutes')::interval, NOW() - ($4 || ' minutes')::interval,
+               NOW() - ($4 || ' minutes')::interval)
        ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE
          SET sticky_rep_id = EXCLUDED.sticky_rep_id, sticky_set_at = EXCLUDED.sticky_set_at,
              updated_at = EXCLUDED.updated_at`,

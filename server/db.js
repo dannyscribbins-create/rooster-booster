@@ -2746,6 +2746,7 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   `);
 
   await backfillAssignedAt(pool);
+  await applyAssignedAtNotNull(pool);
 
   // TF-P0-2 (CRM_TOKEN_FIX_SPEC.md v1.0): this bootstrap read's return value is discarded
   // by every caller — server.js does `await initDB();` with no assignment — so it was
@@ -2807,4 +2808,102 @@ async function backfillAssignedAt(db) {
   return rowCount;
 }
 
-module.exports = { pool, initDB, backfillAssignedAt };
+// ── assigned_at BECOMES NOT NULL, BEHIND A GATE (3d Phase 1b Commit 4) ──────────────
+//
+// ⚠ THE RULING IS THAT THIS CAN NEVER STOP THE SERVICE FROM BOOTING (Danny, 2026-09-28),
+// AND IT SUPERSEDES THE DESIGN'S ORIGINAL "IT THROWS, AND THAT IS FAIL-CLOSED" READING.
+// `ALTER COLUMN ... SET NOT NULL` throws if any row is still NULL, and an initDB() throw on
+// this service is QUIETER THAN IT LOOKS: server.js runs initDB() in an IIFE whose catch logs
+// and carries on, with app.listen() OUTSIDE it. So a throw here does not take the app down —
+// it aborts the REST of initDB() and **startCronJobs() never runs**. The symptom is "the
+// crons stopped" on a service that still serves traffic, which is not where anyone looks.
+//
+// SO: count first. If anything is still NULL, SAY SO LOUDLY AND SKIP THE CONSTRAINT.
+//
+// ⚠ `alert: true` IS EXPLICIT, AND IT IS THE ONE LINE THAT MAKES THIS SAFE RATHER THAN
+// MERELY SURVIVABLE. It is also the DEFAULT, so writing it is redundant to the machine and
+// not to the reader: **every other logError in this arc passes `alert: false`**, so an
+// unmarked call here would read as "someone forgot to think about it". A skipped constraint
+// is a SILENT degradation — the app serves, the crons run, the column stays nullable, and no
+// surface looks different. **A skip nobody is told about is worse than the throw it
+// replaces**, because the throw at least stopped the crons and left a signature.
+//
+// ⚠ AND THE SAMPLE OF IDS IS NOT DECORATION. A bare count sends the operator to SQL to find
+// out WHICH clients — the failure Q8 already ruled on for the rebuild's kept-rows log. The
+// count is printed beside the sample so a truncated list cannot read as a complete one.
+//
+// ⚠ THE WHOLE BODY IS WRAPPED, AND THE CATCH ALERTS RATHER THAN SWALLOWING. "Never stop the
+// boot" means a lock timeout or a permissions error must not either — but a catch that
+// swallowed would turn this into a mechanism reporting health it never observed, which is
+// the failure class this repo names. Loud and non-fatal, never quiet and non-fatal.
+//
+// ⚠ AND THE LOGGER IS REQUIRED LAZILY, WHICH IS NOT A STYLE CHOICE.
+// server/middleware/errorLogger.js requires THIS file at its first line, so a top-level
+// require here is a cycle — under which Node hands out a half-initialised module and
+// `logError` is `undefined` at call time, with no error until something tries to alert.
+// That would fail exactly when it mattered.
+const NULL_SAMPLE_LIMIT = 20;
+
+async function applyAssignedAtNotNull(db, { logError } = {}) {
+  const log = logError || require('./middleware/errorLogger').logError;
+  // The gate must not fail on its own alerting either.
+  const safeLog = async (payload) => {
+    try { await log(payload); } catch { /* nothing left to report it with */ }
+  };
+
+  try {
+    const { rows: colRows } = await db.query(
+      `SELECT is_nullable FROM information_schema.columns
+        WHERE table_name = 'client_rep_assignments' AND column_name = 'assigned_at'`
+    );
+    if (colRows.length === 0) return { applied: false, reason: 'column-missing', nullCount: null };
+    // Already constrained: skip the ACCESS EXCLUSIVE lock entirely. SET NOT NULL is a no-op
+    // on an already-NOT-NULL column, so this is about the lock, not about correctness.
+    if (colRows[0].is_nullable === 'NO') return { applied: false, reason: 'already-applied', nullCount: 0 };
+
+    const { rows: countRows } = await db.query(
+      `SELECT COUNT(*)::int AS n FROM client_rep_assignments WHERE assigned_at IS NULL`
+    );
+    const nullCount = countRows[0].n;
+
+    if (nullCount > 0) {
+      const { rows: sample } = await db.query(
+        `SELECT contractor_id, jobber_client_id FROM client_rep_assignments
+          WHERE assigned_at IS NULL
+          ORDER BY contractor_id, jobber_client_id LIMIT $1`,
+        [NULL_SAMPLE_LIMIT]
+      );
+      const shown = sample.map((r) => `${r.contractor_id}/${r.jobber_client_id}`);
+      await safeLog({
+        req: null,
+        error: new Error(
+          `assigned_at SET NOT NULL SKIPPED — ${nullCount} row(s) still have a NULL assigned_at, `
+          + `so the constraint was NOT applied and the column remains nullable. `
+          + `Showing ${shown.length} of ${nullCount}: ${shown.join(', ')}`
+        ),
+        source: 'initDB — assigned_at SET NOT NULL',
+        alert: true,
+      });
+      // diagnostic log — intentional
+      console.warn(`[assigned_at] SET NOT NULL SKIPPED — ${nullCount} NULL row(s); constraint NOT applied`);
+      return { applied: false, reason: 'nulls-present', nullCount, sample: shown };
+    }
+
+    await db.query(`ALTER TABLE client_rep_assignments ALTER COLUMN assigned_at SET NOT NULL`);
+    // diagnostic log — intentional
+    console.log('[assigned_at] SET NOT NULL applied — 0 NULL rows');
+    return { applied: true, reason: 'applied', nullCount: 0 };
+  } catch (err) {
+    await safeLog({
+      req: null,
+      error: new Error(`assigned_at SET NOT NULL FAILED, and boot continued: ${err.message}`),
+      source: 'initDB — assigned_at SET NOT NULL',
+      alert: true,
+    });
+    // diagnostic log — intentional
+    console.warn(`[assigned_at] SET NOT NULL FAILED, boot continues: ${err.message}`);
+    return { applied: false, reason: 'failed', error: err.message };
+  }
+}
+
+module.exports = { pool, initDB, backfillAssignedAt, applyAssignedAtNotNull };

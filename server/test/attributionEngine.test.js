@@ -43,8 +43,8 @@ async function seedAssignment(pool, {
     `INSERT INTO client_rep_assignments
        (contractor_id, jobber_client_id,
         provisional_rep_id, provisional_source, provisional_set_at,
-        sticky_rep_id, sticky_source, sticky_set_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        sticky_rep_id, sticky_source, sticky_set_at, assigned_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($8::timestamptz, $5::timestamptz, NOW()))
      ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
        provisional_rep_id = EXCLUDED.provisional_rep_id,
        provisional_source = EXCLUDED.provisional_source,

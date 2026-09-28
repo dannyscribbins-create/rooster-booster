@@ -289,6 +289,34 @@ preview — in that order, and **the order is load-bearing**: §6 records that t
       writers fill it" as "the date is fixed". What Commit 2 changed is what gets WRITTEN;
       what a rep SEES is Commit 5.
 
+- [x] **Commit 4 — `assigned_at` IS NOW NOT NULL, BEHIND THE GATE. SHIPPED locally
+      2026-09-28, NOT PUSHED.** The gate counts NULLs first, alerts with `alert: true` naming
+      the count and up to 20 client ids, skips the constraint and lets boot continue; it
+      applies the constraint only at zero. It never throws — the catch alerts too.
+      ⚠ **~20 FIXTURE INSERTS ACROSS 9 FILES HAD TO SUPPLY A DATE**, plus
+      `scripts/seedLocalStack.js`. That is Q2 working, not collateral damage: a fixture is a
+      writer, and a writer that forgets the date is meant to fail loudly. Each took the date
+      it already used, so no fixture's meaning changed — **the backdated ones stayed
+      backdated**, which matters because `repClients.test.js`'s own comment says "a window
+      test whose rows are all new is the vacuous one".
+      ⚠ **AND THE GATE RAN RED AT `fail 9` FIRST, ON COMMIT 1'S OWN SUITE** — whose subject is
+      the column being NULLABLE. Repaired openly: the nullability assertion inverted, the
+      insert case repointed, and the backfill describe now drops and restores the constraint
+      around each case. **Predicting the fixture blast radius did not find this; the gate did.**
+      ⚠ **TWO SUITES NOW MUTATE THE SHARED SCHEMA** (`assignedAtNotNull.test.js` and Commit 1's
+      backfill describe), dropping and re-adding the constraint. Restores are in
+      `afterEach`/`after`, so a failing assertion cannot leave the column nullable for
+      everything after it.
+
+- [ ] **🔴 WATCH THE FIRST PRODUCTION BOOT AFTER COMMIT 4 DEPLOYS.** The gate is the only
+      thing that decides whether `assigned_at` becomes NOT NULL on real data, and it is
+      designed to be QUIET WHEN IT SUCCEEDS and LOUD WHEN IT SKIPS. Production measured 0
+      NULL rows on 2026-09-28, so the expected outcome is
+      `[assigned_at] SET NOT NULL applied — 0 NULL rows` in the boot log and no alert.
+      ⚠ **IF AN ALERT ARRIVES INSTEAD, THE COLUMN IS STILL NULLABLE AND NOTHING ELSE WILL SAY
+      SO** — the app serves, the crons run, and every later commit behaves normally. Read the
+      alert's client ids, fix those rows, and redeploy; the gate re-tries on every boot.
+
 - [ ] **🔴🔴 COMMIT 4's `SET NOT NULL` MUST NEVER BE ABLE TO STOP THE SERVICE BOOTING.**
       Ruled by Danny 2026-09-28, and it **supersedes** the design's original "it throws, and
       that is fail-closed" reading. **The required shape, in order:**

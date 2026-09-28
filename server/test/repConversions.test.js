@@ -87,8 +87,8 @@ async function seedClient(contractorId, jobberClientId) {
 async function assign(contractorId, jobberClientId, repId) {
   await pool.query(
     `INSERT INTO client_rep_assignments
-       (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
-     VALUES ($1, $2, $3, 'mode_a_at_close', NOW(), NOW())`,
+       (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, assigned_at)
+     VALUES ($1, $2, $3, 'mode_a_at_close', NOW(), NOW(), NOW())`,
     [contractorId, jobberClientId, repId]
   );
 }

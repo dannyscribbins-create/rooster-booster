@@ -32,7 +32,7 @@
 // on the day it was written and stop agreeing the first time either side moved.
 
 const { initTestDb } = require('./setup');
-const { describe, it, before, beforeEach, after } = require('node:test');
+const { describe, it, before, beforeEach, afterEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 
 const { backfillAssignedAt } = require('../db');
@@ -112,10 +112,20 @@ describe('Phase 1b Commit 1 — the assigned_at columns', () => {
     assert.equal(byName.get('assigned_fact_kind').data_type, 'text');
     assert.equal(byName.get('assigned_fact_id').data_type, 'text');
 
-    // ⚠ NULLABLE IN THIS COMMIT, ON PURPOSE. NOT NULL arrives in Commit 4, AFTER every
-    // writer sets it. Shipping it here would fail every engine write on a live service.
-    for (const c of ['assigned_at', 'assigned_fact_at', 'assigned_fact_id', 'assigned_fact_kind']) {
-      assert.equal(byName.get(c).is_nullable, 'YES', `${c} is nullable until Commit 4`);
+    // ── INVERTED BY COMMIT 4, AND UPDATED OPENLY RATHER THAN DELETED ──────────
+    // ⚠ THIS ASSERTED ALL FOUR WERE NULLABLE, with the note "NOT NULL arrives in Commit 4,
+    // AFTER every writer sets it. Shipping it here would fail every engine write on a live
+    // service." Commit 4 arrived and every writer now sets it, so the assertion moves with
+    // the schema — a deliberate behaviour change, updated in the open.
+    // ⚠ AND THE HALF THAT STILL NEEDS SAYING IS THE OTHER THREE. Only `assigned_at` was ever
+    // going to be constrained; the R5h triple stays nullable because NULL there means "we do
+    // not know which fact produced this row", which is true of every backfilled row and is
+    // Q1's ruling. A future tidy-up that constrained them would be inventing provenance.
+    assert.equal(byName.get('assigned_at').is_nullable, 'NO',
+      'assigned_at is NOT NULL from Commit 4');
+    for (const c of ['assigned_fact_at', 'assigned_fact_id', 'assigned_fact_kind']) {
+      assert.equal(byName.get(c).is_nullable, 'YES',
+        `${c} stays nullable — NULL means "we do not know" (Q1)`);
     }
   });
 
@@ -131,12 +141,23 @@ describe('Phase 1b Commit 1 — the assigned_at columns', () => {
     assert.equal(rows[0].column_default, null, 'assigned_at must have no default');
   });
 
-  it('a row inserted without assigned_at gets NULL, not a clock value', async () => {
-    // The paired positive for the fence above: the catalog says "no default", and this says
-    // what that MEANS at insert time. A default would make this row carry today's date.
-    await seedRow('c-nodefault', { stickyAt: STICKY_AT });
+  it('⚠ REPOINTED BY COMMIT 4: the R5h triple still defaults to NULL', async () => {
+    // ── WHAT THIS CASE USED TO BE, AND WHY IT MOVED ───────────────────────────
+    // ⚠ IT READ "a row inserted without assigned_at gets NULL, not a clock value" — the
+    // paired positive for "no default" at insert time. Commit 4 makes that INSERT fail
+    // outright, so the old case cannot run at all, and its property is now asserted where
+    // the constraint lives: assignedAtNotNull.test.js's "an INSERT omitting assigned_at now
+    // FAILS". ⚠ Repointed rather than deleted, because the R5h half was never about
+    // assigned_at and is covered nowhere else: a row that supplies a date but no fact must
+    // still carry NULL provenance rather than an invented kind.
+    await pool.query(
+      `INSERT INTO client_rep_assignments
+         (contractor_id, jobber_client_id, sticky_set_at, updated_at, assigned_at)
+       VALUES ($1, $2, $3::timestamptz, $4::timestamptz, $3::timestamptz)`,
+      [TENANT, 'c-nodefault', STICKY_AT, UPDATED_AT]
+    );
     const row = await readRow('c-nodefault');
-    assert.equal(row.assigned_at, null);
+    assert.equal(iso(row.assigned_at), STICKY_AT, 'harness: the row really was written');
     assert.equal(row.assigned_fact_kind, null);
     assert.equal(row.assigned_fact_id, null);
     assert.equal(row.assigned_fact_at, null);
@@ -145,6 +166,26 @@ describe('Phase 1b Commit 1 — the assigned_at columns', () => {
 
 // ═══════════════════════════════════════════════════════════════════════════
 describe('Phase 1b Commit 1 — the backfill', () => {
+
+  // ── COMMIT 4 MADE THIS FIXTURE IMPOSSIBLE, SO THE FIXTURE CHANGED ─────────
+  // ⚠ THE BACKFILL'S ENTIRE SUBJECT IS A ROW WITH assigned_at NULL, AND FROM COMMIT 4 THE
+  // COLUMN IS NOT NULL — so such a row cannot be inserted at all. That is not a reason to
+  // weaken the constraint or to delete these cases: the backfill still runs on every boot
+  // and still has to be a permanent no-op, and it is the only thing standing between a
+  // legacy NULL row and the gate skipping the constraint forever.
+  // ⚠ SO THE CONSTRAINT IS DROPPED FOR THE DURATION OF EACH CASE AND RESTORED AFTER, which
+  // is the pre-Commit-4 schema these cases were written against. Stated here rather than
+  // left to be inferred, because a suite that mutates the shared schema is unusual and a
+  // half-restored one would surface as unrelated suites failing on inserts.
+  // ⚠ RESTORED IN afterEach, NOT AT THE END OF EACH CASE: an assertion failure must not
+  // leave the column nullable for everything that follows.
+  beforeEach(async () => {
+    await pool.query('ALTER TABLE client_rep_assignments ALTER COLUMN assigned_at DROP NOT NULL');
+  });
+  afterEach(async () => {
+    await pool.query('DELETE FROM client_rep_assignments WHERE assigned_at IS NULL');
+    await pool.query('ALTER TABLE client_rep_assignments ALTER COLUMN assigned_at SET NOT NULL');
+  });
 
   it('takes sticky_set_at when it is present, over both other arms', async () => {
     await seedRow('c-sticky', { stickyAt: STICKY_AT, provAt: PROV_AT, updatedAt: UPDATED_AT });
