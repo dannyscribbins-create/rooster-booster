@@ -95,9 +95,22 @@ test.describe('Canvass-9a — the timeframe SQL fragments', () => {
     // Windowing on `updated_at` would be defensible and unverifiable: a row touched by
     // a sync would drift into "this week" while displaying an assignment date from
     // March, so a rep could not check the filter against the dates in front of them.
+    //
+    // ── REPOINTED IN 3d PHASE 1b COMMIT 5, NOT DELETED ────────────────────────
+    // ⚠ THIS FENCE WAS EXPECTED TO GO RED HERE, AND IT DID — it is filed as a known
+    // consequence of the phase. It pinned the retired expression by name:
+    // `assert.match(sql, /COALESCE\(cra\.sticky_set_at, cra\.provisional_set_at\)/)`.
+    // ⚠ THE PROPERTY IT GUARDS IS UNCHANGED AND STILL THE RIGHT ONE — the window must be
+    // the ASSIGNMENT date and must never be the write clock. Only the column moved, so the
+    // needle moves with it and the `updated_at` half is untouched.
+    // ⚠ AND THE RETIRED EXPRESSION IS NOW FORBIDDEN RATHER THAN MERELY ABSENT. The batch
+    // ruling is that the old columns stay as HISTORY and nothing reads them as "the date";
+    // a fence that only required `assigned_at` would pass against a clause that read BOTH.
     const sql = timeframeClause(3);
-    assert.match(sql, /COALESCE\(cra\.sticky_set_at, cra\.provisional_set_at\)/);
+    assert.match(sql, /cra\.assigned_at/);
     assert.ok(!/updated_at/.test(sql), 'must not window on updated_at');
+    assert.ok(!/sticky_set_at|provisional_set_at/.test(sql),
+      'and must not read the retired date columns — they are history now');
   });
 
   test('⚠ a CONVERSION is windowed by its own date, on its own table', () => {

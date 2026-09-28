@@ -424,8 +424,46 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2045 server tests across 337 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the Phase 1b Commit 4 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2045 · suites 337 · pass 2045 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 4 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2056 server tests across 341 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the Phase 1b Commit 5 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2056 · suites 341 · pass 2056 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 5 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2045 → 2056 is **+11**, one new file (`assignedAtReaders.test.js`); suites 337 → 341
+  is that file's **four** top-level describes. React did not move — the only `src/` edit is a
+  COMMENT in an existing file — and was re-measured. ⚠ **THE +11 NETS A DELETION: one case was
+  REMOVED from `repClients.test.js` and one added in its place**, so the arithmetic is
+  11 + 1 − 1. Writing both numbers rather than the net is this file's own rule.
+  ⚠ **TWO OF FIVE GUARD-PROOFS CAME BACK GREEN, AND BOTH WERE VACUOUS FIXTURES — THIS IS THE
+  ENTRY WORTH KEEPING.** Neither was a fence failing to fire; both were tests that could not
+  reach the mechanism they named.
+  ⚠ **(i) THE PAGING CASE SEEDED 12 ROWS AND `REP_BOOK_LIMIT` IS 100.** Everything came back
+  on page 1, `nextCursor` was null, and **the keyset clause was never evaluated at all** —
+  `$4` is NULL and the whole condition is inert. So reverting the cursor to `updated_at`
+  changed nothing. **A paging test on a book smaller than one page is not a paging test.**
+  The book is 105 rows now and the PAGE COUNT is asserted, so it cannot quietly shrink back
+  under the limit.
+  ⚠ **(iii) THE WINDOW CASE SET `sticky_set_at` EQUAL TO `assigned_at`.** Reverting
+  `timeframeClause` to the retired COALESCE therefore produced the SAME answer. The
+  discriminating fixture is the shape R5f actually exists for — a tenure that began 200 days
+  ago and a same-rep LOCK a day ago — and the case now asserts the two readings disagree
+  about that row BEFORE asserting the window. **A fixture whose columns agree cannot tell two
+  readings apart**, which is this file's recorded "seed the state furthest from the default".
+  ⚠ **THE REPAIRED WIDTHS:** (i) → **1**; (ii) the list ORDER BY reverted → **2**; (iii) → **1
+  behavioural** plus 1 structural text fence; (iv) Focus §1's tie-break reverted → **1**;
+  (v) `getClientAssignment` reverted to the rep-id branch → **1**. Every revert an inverse
+  patch in a `finally`, byte-identical by sha256, anchors unique in BOTH directions, and the
+  harness refuses an empty-string replacement outright.
+  ⚠ **AND A BACKTICK INSIDE A SQL COMMENT INSIDE A TEMPLATE LITERAL CLOSED THE STRING —
+  THE THIRD RECORDED INSTANCE, COMMITTED BY A SESSION THAT HAD READ THE RULE AT THE TOP OF
+  THIS FILE.** Two new comments in `rep.js`'s query strings quoted column names in backticks.
+  It surfaced as `SyntaxError: missing ) after argument list` with **`tests 1 · suites 0`** —
+  the loud variant, and the exact signature this file names. Reworded, never escaped.
+  **Knowing the rule is not the mechanism; the `suites 0` reading is.**
+  ⚠ **THE GATE ALSO WENT RED ON `repTimeframe.test.js`'s SOURCE-TEXT FENCE, WHICH WAS
+  PREDICTED AND FILED.** It pinned the retired COALESCE by name. Re-pointed rather than
+  deleted: the property — the window is the ASSIGNMENT date and never the write clock — is
+  unchanged, and it now ALSO forbids the retired columns, because a fence that merely
+  required `assigned_at` would pass against a clause reading both.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 4 COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2045 / 337 / 1358 / 82**.
   Server 2036 → 2045 is **+9**, one new file (`assignedAtNotNull.test.js`); suites 335 → 337 is
   that file's **two** top-level describes. React did not move — no `src/` file was touched — and
   was re-measured. Counted with an anchored `^\s*it\(` (9); the file's one loop sits inside an

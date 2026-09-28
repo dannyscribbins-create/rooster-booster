@@ -2266,8 +2266,15 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // app's primary screen, and it degrades as attribution fills in. Canvass-0 S2 recorded
   // that nothing indexed either column; this is that gap closed.
   //
-  // updated_at DESC is the third column so the ORDER BY is satisfied by the index too,
-  // rather than by a sort over the matched rows.
+  // ⚠ THE THIRD KEY NO LONGER SERVES THE LIST'S ORDER BY, AND THIS SENTENCE CLAIMED IT
+  // DID UNTIL COMMIT 5 — INVERTED, NOT STALE. It read: "updated_at DESC is the third
+  // column so the ORDER BY is satisfied by the index too, rather than by a sort over the
+  // matched rows." #15 moved the clients list onto `assigned_at DESC, jobber_client_id
+  // DESC`, which `idx_cra_owner_assigned` below serves instead.
+  // ⚠ THIS INDEX IS KEPT ANYWAY (Danny, Q4, 2026-09-28): it still serves the clients
+  // COUNT query, which has no ORDER BY and uses the first two keys. Keeping it does not
+  // make the retired sentence true again, which is why the sentence is corrected rather
+  // than left standing beside a surviving index.
   await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_cra_contractor_owner
       ON client_rep_assignments

@@ -43,7 +43,7 @@ SELECT
   cra.jobber_client_id,
   COALESCE(cra.sticky_source, cra.provisional_source) AS assignment_source,
   (cra.sticky_rep_id IS NOT NULL)                     AS is_sticky,
-  COALESCE(cra.sticky_set_at, cra.provisional_set_at) AS assigned_at,
+  cra.assigned_at,
   pc.pipeline_status                                  AS stage_if_referred
 FROM client_rep_assignments cra
 LEFT JOIN jobber_clients jc
@@ -53,7 +53,7 @@ LEFT JOIN pipeline_cache pc
 WHERE cra.contractor_id = 'REPLACE_CONTRACTOR_ID'
   AND COALESCE(cra.sticky_rep_id, cra.provisional_rep_id) = REPLACE_MEMBER_ID
   AND jc.jobber_client_id IS NULL
-ORDER BY COALESCE(cra.sticky_set_at, cra.provisional_set_at) DESC;
+ORDER BY cra.assigned_at DESC;
 
 -- ── Q3. THE OTHER CANDIDATES, RULED IN OR OUT BY MEASUREMENT ─────────────────
 -- ⚠ CHECKED RATHER THAN ASSUMED AWAY. Three things other than the client join

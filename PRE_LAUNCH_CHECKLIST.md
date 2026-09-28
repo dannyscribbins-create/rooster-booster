@@ -282,12 +282,32 @@ index. Commits 2–6 are the writers, the shared admin writer, `NOT NULL`, the r
 preview — in that order, and **the order is load-bearing**: §6 records that the obvious
 "schema first" ordering would fail every engine write on a live service.*
 
-- [ ] **🔴 `assigned_at` IS STILL NULLABLE AND NOTHING READS IT.** Commits 1 and 2 are inert
-      *on the surface* by design. Until Commit 5 lands, every rep surface still reads
-      `COALESCE(sticky_set_at, provisional_set_at)` and R5f's defect — a same-rep lock moving
-      the **displayed** date — **is still live**. ⚠ Do not read "the column exists and the
-      writers fill it" as "the date is fixed". What Commit 2 changed is what gets WRITTEN;
-      what a rep SEES is Commit 5.
+- [x] **Commit 5 — EVERY READER IS ON `assigned_at`. SHIPPED locally 2026-09-28, NOT PUSHED.**
+      R5f's defect is closed on the surface: a same-rep lock no longer moves the displayed
+      date, the clients list sorts and PAGES newest-assigned-first (#15), Home's Focus §1
+      tie-break moved with it (Q6), the timeframe bar windows on `assigned_at`, and
+      `getClientAssignment` reads one column — closing the last divergent reader, the one
+      that branched on the rep-id column while every other branched on the date.
+      ⚠ **NO REACT COMPONENT CHANGED.** `assignedAt` and `set_at` keep their payload names,
+      so the only `src/` edit in the whole phase is one comment. That was a design property,
+      not luck: 1b replaces how the date is COMPUTED, not what it IS.
+      ⚠ **TWO OF FIVE GUARD-PROOFS CAME BACK GREEN FIRST, BOTH VACUOUS FIXTURES** — a paging
+      test on a 12-row book when `REP_BOOK_LIMIT` is 100 (so the cursor was never used at
+      all), and a window test whose `sticky_set_at` equalled its `assigned_at` (so the two
+      readings could not differ). Both repaired and re-run red.
+      ⚠ **AND `repTimeframe.test.js`'s SOURCE-TEXT FENCE WENT RED AS PREDICTED** — it pinned
+      the retired COALESCE by name. Re-pointed, and it now also FORBIDS the retired columns,
+      because a fence that merely required `assigned_at` would pass against a clause reading
+      both.
+
+- [ ] **🔴 THE OLD `*_set_at` COLUMNS ARE NOW HISTORY, AND NOTHING MAY READ THEM AS "THE
+      DATE" AGAIN.** They are still WRITTEN by every writer — deliberately, per the batch
+      ruling — so they look alive, and a future session reaching for
+      `COALESCE(sticky_set_at, provisional_set_at)` would find data there and get a
+      plausible wrong answer. Two fences hold the line: `repTimeframe.test.js`'s clause
+      fence and `assignedAtReaders.test.js`'s source sweep over `rep.js`, `repBook.js` and
+      `clientAssignment.js`. ⚠ **The sweep covers those three files only** — it is not a
+      repo-wide guarantee, and it says so.
 
 - [x] **Commit 4 — `assigned_at` IS NOW NOT NULL, BEHIND THE GATE. SHIPPED locally
       2026-09-28, NOT PUSHED.** The gate counts NULLs first, alerts with `alert: true` naming

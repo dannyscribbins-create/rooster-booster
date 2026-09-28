@@ -239,12 +239,17 @@ const REP_BOOK_LIMIT = 100;
 // by `OFFSET 400` is **312 buffers / 0.379 ms** — and the offset cost grows with
 // depth while the keyset cost is flat.
 //
-// ⚠ THE TIEBREAKER IS LOAD-BEARING, NOT TIDINESS. `updated_at` is NOT unique:
-// the sweep writes a whole page of assignments in one burst, and the same
-// measurement found **99 `updated_at` values shared by more than one row**. A
-// cursor on a non-unique key skips or duplicates across every tie boundary.
-// `jobber_client_id` completes the order — it is UNIQUE per contractor by
-// constraint — so `(updated_at, jobber_client_id)` is a TOTAL order.
+// ⚠ THE TIEBREAKER IS LOAD-BEARING, NOT TIDINESS. The ordering column is NOT
+// unique: the sweep writes a whole page of assignments in one burst, and the
+// measurement behind this block found **99 `updated_at` values shared by more than
+// one row**. A cursor on a non-unique key skips or duplicates across every tie
+// boundary. `jobber_client_id` completes the order — it is UNIQUE per contractor by
+// constraint — so `(assigned_at, jobber_client_id)` is a TOTAL order.
+// ⚠ THE ORDER MOVED TO `assigned_at` IN COMMIT 5 (#15), AND THE 99 IS KEPT AS THE
+// RECORD IT IS — it was measured on `updated_at` and is not restated of the new
+// column. Ties are if anything MORE common on `assigned_at`: a replay writes a whole
+// book's dates from a small set of fact times, so the tiebreaker matters more here
+// than it did, not less.
 //
 // ⚠⚠ AND THE TIMESTAMP TRAVELS AS TEXT, WHICH IS THE ONE THING IN THIS FILE
 // MOST LIKELY TO BE "SIMPLIFIED" BACK INTO A BUG. `timestamptz` carries
@@ -335,7 +340,9 @@ router.get('/api/rep/clients', async (req, res) => {
          -- client_name above, so the presence of the ROW is what separates them.
          (jc.jobber_client_id IS NULL) AS client_row_missing,
          -- The cursor's timestamp, as TEXT so microseconds survive the round trip.
-         cra.updated_at::text                                  AS cursor_ts,
+         -- ⚠ assigned_at SINCE COMMIT 5 — it must be the column the ORDER BY uses, or
+         -- the next page is cut at a boundary in a different ordering.
+         cra.assigned_at::text                                 AS cursor_ts,
          jc.pipeline_stage,
          -- ⚠ A BOOLEAN, NEVER THE REFERRER'S NAME (Ruling 2, Danny 2026-09-21). The list
          -- answers "is this from my network"; the DETAIL screen answers "who referred
@@ -345,7 +352,7 @@ router.get('/api/rep/clients', async (req, res) => {
          (pc.jobber_client_id IS NOT NULL)                     AS is_referred,
          COALESCE(cra.sticky_source, cra.provisional_source)   AS assignment_source,
          (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
-         COALESCE(cra.sticky_set_at, cra.provisional_set_at)   AS assigned_at,
+         cra.assigned_at,
          ${openCoFlagExists(2)}                                 AS is_flagged,
          -- ⚠ EXISTS, NOT A JOIN, AND THIS FIXED A LIVE DOUBLE-COUNT FOUND IN THE BROWSER.
          -- The users.jobber_client_id column has NO unique constraint and no index, so two app
@@ -391,10 +398,17 @@ router.get('/api/rep/clients', async (req, res) => {
          -- The keyset. When no cursor is supplied $4/$5 are NULL and the clause is
          -- inert, so page 1 and page N run the same statement.
          AND ($4::timestamptz IS NULL
-              OR (cra.updated_at, cra.jobber_client_id) < ($4::timestamptz, $5))
-       -- ⚠ BOTH KEYS, ALWAYS. updated_at alone is not unique (99 tied values measured
-       -- in a 20k-row book), and a cursor on a partial order skips rows at every tie.
-       ORDER BY cra.updated_at DESC, cra.jobber_client_id DESC
+              OR (cra.assigned_at, cra.jobber_client_id) < ($4::timestamptz, $5))
+       -- ⚠ BOTH KEYS, ALWAYS. assigned_at alone is not unique — a replay writes a whole
+       -- book's dates from a small set of fact times, so ties are MORE common on it than
+       -- the 99 updated_at ties measured in a 20k-row book — and a cursor on a partial
+       -- order skips rows at every tie.
+       -- ⚠⚠ THE KEYSET AND THE ORDER BY ARE ONE EDIT, NEVER TWO. Move the sort onto
+       -- assigned_at while the cursor still compares updated_at and the page boundary is
+       -- computed against a column the rows are not ordered by: it SILENTLY SKIPS AND
+       -- DUPLICATES ROWS, with no error and nothing on screen to say so. Same family as
+       -- the Date-vs-::text defect recorded above, and the same symptom.
+       ORDER BY cra.assigned_at DESC, cra.jobber_client_id DESC
        -- LIMIT+1: the extra row is how "is there another page" is known without a
        -- second COUNT. It is sliced off before the response.
        LIMIT $3`,
@@ -544,7 +558,7 @@ router.get('/api/rep/clients/:jobberClientId', async (req, res) => {
          pc.referred_by,
          COALESCE(cra.sticky_source, cra.provisional_source)   AS assignment_source,
          (cra.sticky_rep_id IS NOT NULL)                       AS is_sticky,
-         COALESCE(cra.sticky_set_at, cra.provisional_set_at)   AS assigned_at,
+         cra.assigned_at,
          ${openCoFlagExists(2)}                                 AS is_flagged,
          -- ⚠ EXISTS, NOT A JOIN, AND THIS FIXED A LIVE DOUBLE-COUNT FOUND IN THE BROWSER.
          -- The users.jobber_client_id column has NO unique constraint and no index, so two app
@@ -817,7 +831,7 @@ router.get('/api/rep/home', async (req, res) => {
          TRIM(COALESCE(jc.first_name, '') || ' ' || COALESCE(jc.last_name, '')) AS client_name,
          (jc.jobber_client_id IS NULL)                                          AS client_row_missing,
          jc.pipeline_stage,
-         COALESCE(cra.sticky_set_at, cra.provisional_set_at)                    AS assigned_at
+         cra.assigned_at
        FROM client_rep_assignments cra
        LEFT JOIN jobber_clients jc
          ON jc.contractor_id = cra.contractor_id AND jc.jobber_client_id = cra.jobber_client_id
@@ -836,7 +850,11 @@ router.get('/api/rep/home', async (req, res) => {
        -- row whose status was NULL appeared in NEITHER section and vanished from
        -- Today's Focus entirely. Section 1 is now exactly the complement of Section 2,
        -- which is what the comment down there has always claimed.
-       ORDER BY ${STAGE_RANK_SQL} DESC, cra.updated_at DESC, cra.jobber_client_id DESC
+       -- ⚠ THE TIE-BREAK IS THE ASSIGNMENT DATE, NOT updated_at (#15, Q6). It read
+       -- cra.updated_at DESC until Commit 5, which meant this section DISPLAYED one clock
+       -- and SORTED BY another — the recon's flagged item, and a row touched by a sync would
+       -- jump the order while showing an assignment date from March.
+       ORDER BY ${STAGE_RANK_SQL} DESC, cra.assigned_at DESC, cra.jobber_client_id DESC
        LIMIT $3`,
       [...params, FOCUS_LIMIT]
     );
@@ -865,7 +883,7 @@ router.get('/api/rep/home', async (req, res) => {
          TRIM(COALESCE(jc.first_name, '') || ' ' || COALESCE(jc.last_name, '')) AS client_name,
          (jc.jobber_client_id IS NULL)                                          AS client_row_missing,
          jc.pipeline_stage,
-         COALESCE(cra.sticky_set_at, cra.provisional_set_at)                    AS assigned_at
+         cra.assigned_at
        FROM client_rep_assignments cra
        LEFT JOIN jobber_clients jc
          ON jc.contractor_id = cra.contractor_id AND jc.jobber_client_id = cra.jobber_client_id
@@ -877,8 +895,10 @@ router.get('/api/rep/home', async (req, res) => {
        -- stage would duplicate Referral progress's ordering and collapse the two jobs
        -- above into one list, and the subtitle claims recency. The label must stay true
        -- of the rows beneath it, which is A34.5's whole point.
-       ORDER BY COALESCE(cra.sticky_set_at, cra.provisional_set_at) DESC NULLS LAST,
-                cra.jobber_client_id DESC
+       -- ⚠ NULLS LAST IS GONE, AND ITS ABSENCE IS THE POINT. assigned_at is NOT NULL
+       -- from Commit 4, so a NULLS LAST here would be a standing claim that the column
+       -- can be null — which is exactly the belief this phase removed.
+       ORDER BY cra.assigned_at DESC, cra.jobber_client_id DESC
        LIMIT $3`,
       [...params, FOCUS_LIMIT]
     );

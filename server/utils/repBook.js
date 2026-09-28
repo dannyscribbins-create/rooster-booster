@@ -122,28 +122,40 @@ function parseTimeframe(raw) {
 
 // ── THE CLAUSE, OVER THE ASSIGNMENT DATE ────────────────────────────────────
 //
-// ⚠ IT WINDOWS ON WHEN THE ASSIGNMENT HAPPENED — `COALESCE(sticky_set_at,
-// provisional_set_at)`, the same expression the list already sorts and displays as
-// "Assigned Sep 15". So "this week" means what the row itself says, and a rep can
-// check the filter against the dates in front of them. Windowing on `updated_at`
-// instead would be defensible and unverifiable: a row touched by a sync would drift
-// into "this week" while displaying an assignment date from March.
+// ⚠ IT WINDOWS ON WHEN THE ASSIGNMENT HAPPENED — `client_rep_assignments.assigned_at`,
+// the same column the list sorts, pages and displays as "Assigned Sep 15". So "this
+// week" means what the row itself says, and a rep can check the filter against the
+// dates in front of them. Windowing on `updated_at` instead would be defensible and
+// unverifiable: a row touched by a sync would drift into "this week" while displaying
+// an assignment date from March.
+// ⚠ IT READ `COALESCE(sticky_set_at, provisional_set_at)` UNTIL COMMIT 5, AND THAT IS
+// NOT A RENAME. Those two columns are a pair read through one COALESCE, so a same-rep
+// LOCK flipped which one answered and the client jumped into "this week" on the day it
+// locked, with nobody having changed hands. `assigned_at` is one stored date that moves
+// only when the effective owner does (R5f). The old columns remain as history and
+// **nothing may read them as "the date" again.**
 //
 // ⚠ INERT WHEN THE PARAMETER IS NULL, exactly like the keyset clause above, so `all`
 // and a window run the SAME statement rather than two assembled variants. A route
 // that concatenates a clause conditionally has two shapes and tests one.
 //
-// ⚠ A ROW WITH NO ASSIGNMENT DATE AT ALL IS EXCLUDED FROM EVERY WINDOW AND INCLUDED
-// IN `all`. That is correct rather than convenient: `NULL >= x` is NULL, and a row
-// whose date we do not know cannot be claimed to fall inside a named window. It is
-// also not hypothetical — the seeded fixture carries an assignment with no client
-// mirror row, and the schema does not require either date column.
+// ⚠ THERE IS NO LONGER SUCH A THING AS A ROW WITH NO ASSIGNMENT DATE, AND THIS
+// PARAGRAPH SAID THE OPPOSITE UNTIL COMMIT 5 — IT IS INVERTED, NOT MERELY STALE.
+// It read: "A ROW WITH NO ASSIGNMENT DATE AT ALL IS EXCLUDED FROM EVERY WINDOW AND
+// INCLUDED IN `all` … the schema does not require either date column." That was true
+// of `COALESCE(sticky_set_at, provisional_set_at)`, which this clause used to read and
+// which can still be NULL. **`assigned_at` is NOT NULL from Commit 4**, so the state it
+// describes cannot occur, and a reader acting on it would be defending a case that has
+// no instances.
+// ⚠ WHAT IS STILL TRUE, AND WHY `all` IS STILL THE ABSENCE OF A PREDICATE: a sentinel
+// date would be a second thing to keep in step with the column, and the absence of a
+// clause cannot go wrong. That reasoning never depended on NULLs.
 //
 // @param {number} n - the 1-based parameter position holding the window start
 // @returns {string} a SQL fragment beginning with AND
 function timeframeClause(n) {
   return `AND ($${n}::timestamptz IS NULL
-              OR COALESCE(cra.sticky_set_at, cra.provisional_set_at) >= $${n}::timestamptz)`;
+              OR cra.assigned_at >= $${n}::timestamptz)`;
 }
 
 // ── THE OPEN CO-ASSIGNMENT FLAG, AS A PREDICATE RATHER THAN A JOIN ──────────

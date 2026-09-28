@@ -1587,32 +1587,53 @@ describe('Canvass-9a — the timeframe window (Parts 3b / 4b)', () => {
   });
 
 
-  it('⚠ a row with NO assignment date is in `all` and in NO window', async () => {
-    // `NULL >= x` is NULL, so this falls out of the SQL rather than being special-cased
-    // — and it is the reason `all` is the ABSENCE of a predicate rather than a sentinel
-    // date, which would have dropped this row from `all` too. Not hypothetical: the
-    // schema requires neither date column.
-    //
-    // ── 3d PHASE 1b COMMIT 4: THE FIXTURE CHANGED, THE SUBJECT DID NOT ─────────
-    // ⚠ `assigned_at` IS NOW NOT NULL, SO THIS INSERT HAS TO SUPPLY ONE — but the row is
-    // still UNDATED in the sense this case is about, because `timeframeClause` still reads
-    // `COALESCE(sticky_set_at, provisional_set_at)` and BOTH of those remain nullable.
-    // Only `assigned_at` became NOT NULL. So the property under test is untouched.
-    // ⚠ THIS CASE DIES IN COMMIT 5, NOT HERE, AND DELETING IT NOW WOULD DROP REAL COVERAGE
-    // A COMMIT EARLY. When the clause moves onto `assigned_at` its subject genuinely stops
-    // existing — no row can be dateless — and it is removed openly then, with a NOT NULL
-    // fence put in its place so the property that supersedes it is observed rather than
-    // assumed.
+  // ── REMOVED IN 3d PHASE 1b COMMIT 5, OPENLY, AND REPLACED BY THE FENCE BELOW ──────
+  //
+  // ⚠ IT READ: *"a row with NO assignment date is in `all` and in NO window"* — that
+  // `NULL >= x` is NULL, so an undated row falls out of every window while staying in
+  // `all`, which is why `all` is the ABSENCE of a predicate rather than a sentinel date.
+  // Its own comment ended *"the schema requires neither date column"*.
+  //
+  // ⚠ ITS SUBJECT NO LONGER EXISTS. `timeframeClause` now reads `cra.assigned_at`, which is
+  // NOT NULL from Commit 4, so **no row can be undated** and the case could only ever assert
+  // something about a state with no instances. Under the characterization rule that is a
+  // deliberate behaviour change, so it is removed in the open with its reason rather than
+  // quietly adjusted until it passed.
+  //
+  // ⚠ IT SURVIVED COMMIT 4 ON PURPOSE, AND THAT IS THE PART WORTH KEEPING. Commit 4 made
+  // `assigned_at` NOT NULL but left the clause reading
+  // `COALESCE(sticky_set_at, provisional_set_at)` — both of which are STILL nullable — so
+  // the property was still live for one more commit. Only the fixture had broken. Deleting
+  // it there would have dropped real coverage a commit early.
+  //
+  // ⚠ AND `all` IS STILL THE ABSENCE OF A PREDICATE. That reasoning never depended on NULLs
+  // — a sentinel date would be a second thing to keep in step with the column — so it is
+  // recorded in `timeframeClause` rather than lost with this case.
+  it('⚠ THE FENCE THAT REPLACES THE UNDATED-ROW CASE: assigned_at cannot be NULL', async () => {
+    // ⚠ A PROPERTY THAT SUPERSEDES A TEST HAS TO BE OBSERVED, NOT ASSUMED. Without this the
+    // removal above would leave a hole exactly where the old case used to sit, and the next
+    // reader would have only a comment saying the state is impossible.
+    await assert.rejects(
+      () => pool.query(
+        `INSERT INTO client_rep_assignments
+           (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at)
+         VALUES ($1, 'tf-undated', $2, 'manual', NULL, NOW())`,
+        [TENANT, repId]
+      ),
+      /assigned_at/,
+      'the undated row this suite used to seed can no longer be created'
+    );
+
+    // The paired positive: the same row WITH a date inserts, and lands in `all`. Without it
+    // the rejection above is satisfied by any broken INSERT.
     await pool.query(
       `INSERT INTO client_rep_assignments
          (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, assigned_at)
-       VALUES ($1, 'tf-undated', $2, 'manual', NULL, NOW(), NOW())`,
+       VALUES ($1, 'tf-dated', $2, 'manual', NULL, NOW(), NOW())`,
       [TENANT, repId]
     );
     const all = await request('/api/rep/clients?timeframe=all', TOKEN);
-    assert.ok(all.body.clients.some((c) => c.jobberClientId === 'tf-undated'), 'an undated row must appear in `all`');
-
-    const year = await request('/api/rep/clients?timeframe=year', TOKEN);
-    assert.ok(!year.body.clients.some((c) => c.jobberClientId === 'tf-undated'), 'an undated row cannot be claimed to be inside a window');
+    assert.ok(all.body.clients.some((c) => c.jobberClientId === 'tf-dated'),
+      'and a dated row still appears in `all`');
   });
 });

@@ -15,8 +15,8 @@ import { elevationVar, fontVar } from '../../constants/elevationTheme';
 // and others do not is confusing unless it is visually obvious which is which."*
 //
 // **Ruled: every stat under this bar responds to it. None is exempt.** The window
-// is applied to the date the ASSIGNMENT was made — `COALESCE(sticky_set_at,
-// provisional_set_at)` — and, for conversions, to the conversion's own date.
+// is applied to the date the ASSIGNMENT was made — `client_rep_assignments.assigned_at`
+// — and, for conversions, to the conversion's own date.
 //
 // ⚠ THE ALTERNATIVE WAS REJECTED ON THE BRIEF'S OWN REASONING RATHER THAN ON
 // TASTE. A mixed grid — CLIENTS a running total beside CONVERSIONS a windowed

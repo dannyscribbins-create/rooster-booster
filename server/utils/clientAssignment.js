@@ -46,9 +46,9 @@ const SOURCE_LABELS = {
 async function getClientAssignment(db, contractorId, jobberClientId) {
   if (!contractorId || !jobberClientId) return null;
   const { rows } = await db.query(
-    `SELECT cra.sticky_rep_id, cra.sticky_source, cra.sticky_set_at,
-            cra.provisional_rep_id, cra.provisional_source, cra.provisional_set_at,
-            cra.written_by,
+    `SELECT cra.sticky_rep_id, cra.sticky_source,
+            cra.provisional_rep_id, cra.provisional_source,
+            cra.assigned_at, cra.written_by,
             tm.full_name, tm.email, tm.active
        FROM client_rep_assignments cra
        LEFT JOIN team_members tm ON tm.id = COALESCE(cra.sticky_rep_id, cra.provisional_rep_id)
@@ -70,7 +70,14 @@ async function getClientAssignment(db, contractorId, jobberClientId) {
     state:        locked ? 'locked' : 'provisional',
     source,
     source_label: SOURCE_LABELS[source] || source || null,
-    set_at:       locked ? row.sticky_set_at : row.provisional_set_at,
+    // ⚠ ONE COLUMN, AND THIS CLOSES THE LAST DIVERGENT READER IN THE PHASE. It read
+    // `locked ? row.sticky_set_at : row.provisional_set_at` — branching on the REP-ID
+    // column while every other reader branched on which DATE was non-null. A row with a
+    // sticky rep and a NULL sticky_set_at made the admin card and the rep surfaces
+    // disagree, and source could not prove that shape unreachable. With one stored date
+    // there is nothing left to branch on, so the divergence cannot exist.
+    // ⚠ The serialised NAME stays `set_at`, so AssignedRepCard.jsx is unchanged.
+    set_at:       row.assigned_at,
     written_by:   row.written_by || null,
   };
 }
