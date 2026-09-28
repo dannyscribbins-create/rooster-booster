@@ -424,8 +424,39 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2056 server tests across 341 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the Phase 1b Commit 5 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2056 · suites 341 · pass 2056 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 5 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2065 server tests across 344 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the Phase 1b Commit 6 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2065 · suites 344 · pass 2065 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 6 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2056 → 2065 is **+9**, all APPENDED to the EXISTING `assignmentPreview.test.js`;
+  suites 341 → 344 is **+3**, the three new top-level describes in that same file. ⚠ **A file
+  count that does not move while the suite count does is the expected shape here** — no new
+  test file arrived. React did not move — no `src/` file was touched — and was re-measured.
+  ⚠ **A GUARD-PROOF CAME BACK GREEN AND FOUND A COVERAGE HOLE THAT MATTERED, WHICH IS WHY THE
+  COUNT MOVED 8 → 9 MID-BUILD.** Making `ownerWouldChange` return TRUE for every transition
+  changed nothing: **no case drove a preview writer with the same rep ALREADY IN PLACE.** Every
+  other date fixture either has both halves cleared first (so the before-owner is null and the
+  date *should* move) or is never visited by the replay at all (so no writer runs). **The
+  same-rep branch — the one R5f is entirely about — was untested from the preview's side.**
+  ⚠ **THE SHAPE THAT REACHES IT IS WORTH WRITING DOWN, BECAUSE IT IS NOT OBVIOUS:**
+  `written_by = 'live'` so the discard SPARES the row, plus a request fact naming the mapped
+  rep so the client is RECREATABLE and the replay still visits it. The writer is then called
+  with the rep already there. The new case asserts `recreatable`, `requestsReplayed > 0` and
+  the resulting rep as preconditions, so it cannot quietly stop reaching the branch.
+  ⚠ **THE FOUR WIDTHS:** (i) the recording writers ignoring the `fact` argument — the exact
+  pre-Commit-6 state, a stub silently dropping a 7th positional parameter → **3**; (ii) the JS
+  twin disagreeing with the SQL on the same-rep transition → **exactly 1**, naming the new
+  case; (iii) `simulateDiscard` dropping `assigned_at` → **4**; (iv) the preview reaching the
+  REAL writers → **13**. Every revert an inverse patch in a `finally`, byte-identical by
+  sha256, anchors unique in BOTH directions, empty-string replacements refused outright.
+  ⚠ **AND THE DATE SUMMARY EXISTS BECAUSE THE REP SUMMARY CAN READ AS "NOTHING HAPPENS" WHILE
+  EVERY DATE MOVES.** Measured on the demo fixture: **`would change 0`** for the rep and
+  **`date would change 3`** in the same run. An operator reading only the old three lines
+  would have approved a run that rewrote every date in the book.
+  ⚠ **A SHELL HEREDOC ATE THE ESCAPES FOUR TIMES IN THIS ONE COMMIT** — appending a test block,
+  then three separate attempts to patch a harness. Each time the fix was the same: write the
+  content to a FILE with an editor and let a script read it. The rule is in this file; the
+  habit is what costs the time.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 5 COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2056 / 341 / 1358 / 82**.
   Server 2045 → 2056 is **+11**, one new file (`assignedAtReaders.test.js`); suites 337 → 341
   is that file's **four** top-level describes. React did not move — the only `src/` edit is a
   COMMENT in an existing file — and was re-measured. ⚠ **THE +11 NETS A DELETION: one case was

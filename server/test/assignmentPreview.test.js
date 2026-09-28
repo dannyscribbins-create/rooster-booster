@@ -52,10 +52,16 @@ const seedAssignment = async (contractorId, clientId, row) => {
   await pool.query(
     `INSERT INTO client_rep_assignments
        (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at,
-        sticky_rep_id, sticky_source, sticky_set_at, written_by, assigned_at)
-     VALUES ($1, $2, $3, $4, NOW(), $5, $6, NOW(), $7, NOW())`,
+        sticky_rep_id, sticky_source, sticky_set_at, written_by,
+        assigned_at, assigned_fact_kind, assigned_fact_id, assigned_fact_at)
+     VALUES ($1, $2, $3, $4, NOW(), $5, $6, NOW(), $7,
+             COALESCE($8::timestamptz, NOW()), $9, $10, $8::timestamptz)`,
     [contractorId, clientId, row.provisionalRepId || null, row.provisionalSource || null,
-      row.stickyRepId || null, row.stickySource || null, row.writtenBy || null]
+      row.stickyRepId || null, row.stickySource || null, row.writtenBy || null,
+      // ⚠ `assignedAt` IS SETTABLE BECAUSE THE DATE CASES NEED THE TWO SIDES TO DIFFER.
+      // Left at NOW() — which every pre-Commit-6 caller does — a "the date would change"
+      // assertion could be satisfied by a preview that reported today's date for everything.
+      row.assignedAt || null, row.factKind || null, row.factId || null]
   );
 };
 
@@ -626,5 +632,286 @@ describe('The preview — tenancy, and the fences that keep it read-only', () =>
     assert.ok(lines[1].includes('"Smith, Rep ""Bo"""'));
     assert.equal(lines[1].split('","').length, preview.CSV_COLUMNS.length,
       'every column is present and none was shifted');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('The preview reports the DATE, not only the rep (3d Phase 1b Commit 6)', () => {
+
+  // ⚠ THE DATE-RESTORING RUN IS WHAT THESE CASES EXIST FOR. The gate is "preview, Danny's
+  // review, one run", and until Commit 6 the preview reported rep and state changes
+  // correctly and said NOTHING about assigned_at — so a preview run was not a review of the
+  // one thing that run is for. The recording writers took five positional parameters and
+  // silently dropped the seventh.
+
+  const REQ_AT = '2026-03-11T09:15:00.000Z';
+
+  // A client the rebuild will clear and the replay will re-create from one stored request.
+  // Its stored date is TODAY (the shape the 2026-09-27 rebuild left behind); the request's
+  // own createdAt is months earlier, so the two genuinely differ.
+  const seedRestorable = async (clientId) => {
+    const rep = await seedRep(TENANT, { jobberUserId: 'ju-d', name: 'Dee' });
+    await pool.query(
+      `INSERT INTO contractor_crm_settings (contractor_id, attribution_source)
+       VALUES ($1, 'assessment_assigned_users') ON CONFLICT (contractor_id) DO NOTHING`, [TENANT]);
+    await seedRequestFact(TENANT, {
+      clientId, requestId: 'req-restore', assignedUserIds: ['ju-d'], createdAt: REQ_AT,
+    });
+    await seedAssignment(TENANT, clientId, {
+      provisionalRepId: rep, provisionalSource: 'mode_a', writtenBy: 'replay',
+      assignedAt: new Date().toISOString(),
+    });
+    return rep;
+  };
+
+  it('⚠ REPORTS THE DATE CHANGE — before, after, the shift, and the fact that justifies it', async () => {
+    const rep = await seedRestorable('c-restore');
+    const result = await preview.previewAssignments(pool, { contractorId: TENANT });
+    const row = rowFor(result, 'c-restore');
+
+    assert.ok(row, 'harness: the client must be a candidate at all');
+    assert.ok(rep, 'harness: a rep was seeded');
+    assert.equal(row.newRep, 'Dee', 'harness: the replay reaches the same rep');
+
+    // ⚠ THE FIXTURE'S OWN PRECONDITION: the two dates must differ, or "it reports the
+    // change" is satisfied by a preview that reports the same date twice.
+    assert.notEqual(new Date(row.currentAssignedAt).toISOString(), REQ_AT,
+      'harness: the stored date must NOT already be the fact date');
+
+    assert.equal(new Date(row.newAssignedAt).toISOString(), REQ_AT,
+      'the new date is the REQUEST own createdAt');
+    assert.ok(row.assignedAtShift < 0, `the date moves EARLIER (shift ${row.assignedAtShift})`);
+    assert.equal(row.newFactKind, 'request');
+    assert.equal(row.newFactId, 'req-restore');
+  });
+
+  it('a client whose rep does NOT change keeps its date, and the shift is 0', async () => {
+    // The paired negative. Without it, "the date moved" above is satisfied by a preview that
+    // moves every date.
+    const rep = await seedRep(TENANT, { jobberUserId: 'ju-keep', name: 'Kay' });
+    const old = '2026-01-02T03:04:05.000Z';
+    // ⚠ NOT RECREATABLE — no request fact names this user — so the rebuild spares the row
+    // entirely and nothing is re-derived.
+    await seedAssignment(TENANT, 'c-keep', {
+      stickyRepId: rep, stickySource: 'manual', writtenBy: 'manual', assignedAt: old,
+    });
+
+    const result = await preview.previewAssignments(pool, { contractorId: TENANT });
+    const row = rowFor(result, 'c-keep');
+    assert.equal(new Date(row.currentAssignedAt).toISOString(), old);
+    assert.equal(new Date(row.newAssignedAt).toISOString(), old, 'the date held');
+    assert.equal(row.assignedAtShift, 0);
+  });
+
+  it('⚠ A SPARED ROW THE REPLAY STILL RE-ATTRIBUTES KEEPS ITS DATE — the same-rep branch', async () => {
+    // ⚠ THIS CASE EXISTS BECAUSE A GUARD-PROOF CAME BACK GREEN, AND THE HOLE IT FOUND IS THE
+    // ONE THAT MATTERS MOST HERE. Making ownerWouldChange return TRUE for every transition
+    // changed nothing, because **no case drove a writer with the same rep already in place**:
+    // every other date fixture is either cleared to nothing first (so the before-owner is
+    // null and the date SHOULD move) or never visited by the replay at all (so no writer
+    // runs). The same-rep branch — the one R5f is entirely about — was untested from the
+    // preview's side.
+    //
+    // THE SHAPE THAT REACHES IT: `written_by = 'live'`, so the discard SPARES the row (the
+    // marker does not match), while a request fact naming the mapped rep makes the client
+    // recreatable, so the replay VISITS it and calls writeProvisional with the rep already
+    // there. The owner does not change, so the date must hold.
+    const rep = await seedRep(TENANT, { jobberUserId: 'ju-same', name: 'Sam' });
+    const OLD = '2026-01-15T10:00:00.000Z';
+    await pool.query(
+      `INSERT INTO contractor_crm_settings (contractor_id, attribution_source)
+       VALUES ($1, 'assessment_assigned_users') ON CONFLICT (contractor_id) DO NOTHING`, [TENANT]);
+    await seedRequestFact(TENANT, {
+      clientId: 'c-same', requestId: 'rq-same', assignedUserIds: ['ju-same'], createdAt: REQ_AT,
+    });
+    await seedAssignment(TENANT, 'c-same', {
+      provisionalRepId: rep, provisionalSource: 'mode_a', writtenBy: 'live',
+      assignedAt: OLD, factKind: 'request', factId: 'rq-older',
+    });
+
+    const result = await preview.previewAssignments(pool, { contractorId: TENANT });
+    const row = rowFor(result, 'c-same');
+
+    // ⚠ THE PRECONDITIONS, ASSERTED, BECAUSE EACH ONE IS WHAT MAKES THE CASE REACH THE
+    // BRANCH — and if any stops holding, the case goes quietly vacuous again.
+    assert.ok(row, 'harness: the client is a candidate');
+    assert.equal(row.recreatable, 'yes', 'harness: recreatable, so the replay VISITS it');
+    assert.ok(row.requestsReplayed > 0, 'harness: a writer really was called');
+    assert.equal(row.newRep, 'Sam', 'harness: and it reached the SAME rep');
+
+    assert.equal(new Date(row.newAssignedAt).toISOString(), OLD,
+      'the owner did not change, so the date must hold');
+    assert.equal(row.assignedAtShift, 0);
+    assert.notEqual(new Date(row.newAssignedAt).toISOString(), REQ_AT,
+      'and it is NOT the fact date, which a same-rep write must not reach for');
+  });
+
+  it('⚠ simulateDiscard carries the date and the R5h triple through UNCHANGED', async () => {
+    // ⚠ MIRRORS THE REBUILD, WHICH DOES NOT NAME assigned_at. A discard that nulled the date
+    // would make every spared row report a date change it will not get.
+    const before = {
+      sticky_rep_id: 7, sticky_source: 'mode_a_at_close',
+      provisional_rep_id: null, provisional_source: null, written_by: 'replay',
+      assigned_at: new Date(REQ_AT), assigned_fact_kind: 'request',
+      assigned_fact_id: 'req-x', assigned_fact_at: new Date(REQ_AT),
+    };
+    const after = preview.simulateDiscard(before, { recreatable: true, treatNullAsReplay: true });
+
+    assert.equal(after.sticky_rep_id, null, 'harness: the rep half really was cleared');
+    assert.equal(new Date(after.assigned_at).toISOString(), REQ_AT, 'the date survives the discard');
+    assert.equal(after.assigned_fact_kind, 'request');
+    assert.equal(after.assigned_fact_id, 'req-x');
+  });
+
+  it('the CSV carries the new columns, and the retired one is gone', async () => {
+    await seedRestorable('c-csv');
+    const result = await preview.previewAssignments(pool, { contractorId: TENANT });
+    const csv = preview.toCsv(result.rows);
+    const header = csv.split('\n')[0];
+
+    for (const col of ['current_assigned_at', 'new_assigned_at', 'assigned_at_shift',
+      'new_fact_kind', 'new_fact_id']) {
+      assert.ok(header.includes(`"${col}"`), `the header must carry ${col}`);
+    }
+    // ⚠ THE RETIRED COLUMN IS GONE, not merely unused: an operator sorting a CSV by a stale
+    // header would be reading a date no surface shows.
+    assert.ok(!header.includes('"current_set_at"'), 'current_set_at is retired');
+  });
+
+  it('⚠ the date summary buckets by MAGNITUDE and reports DIRECTION separately', async () => {
+    // Direction is the tell: the restoring run moves dates BACKWARDS, so anything moving
+    // later is worth opening the CSV over.
+    const rows = [
+      { currentAssignedAt: '2026-09-27T00:00:00Z', newAssignedAt: '2026-09-27T00:00:00Z', assignedAtShift: 0 },
+      { currentAssignedAt: '2026-09-27T00:00:00Z', newAssignedAt: '2026-09-25T00:00:00Z', assignedAtShift: -2 },
+      { currentAssignedAt: '2026-09-27T00:00:00Z', newAssignedAt: '2026-09-07T00:00:00Z', assignedAtShift: -20 },
+      { currentAssignedAt: '2026-09-27T00:00:00Z', newAssignedAt: '2026-03-01T00:00:00Z', assignedAtShift: -210 },
+      { currentAssignedAt: '2026-09-27T00:00:00Z', newAssignedAt: '2026-10-05T00:00:00Z', assignedAtShift: 8 },
+      { currentAssignedAt: '', newAssignedAt: '', assignedAtShift: '' },
+    ];
+    const s = preview.summariseDates(rows);
+
+    assert.equal(s.unchanged, 1);
+    assert.equal(s.changed, 4);
+    assert.equal(s.no_date_either_side, 1, 'counted apart from unchanged, never folded in');
+    assert.equal(s.earlier, 3);
+    assert.equal(s.later, 1);
+    assert.equal(s.shift_under_7_days, 1);
+    assert.equal(s.shift_7_to_30_days, 2, '20 days and 8 days both land here');
+    assert.equal(s.shift_over_30_days, 1);
+  });
+
+  it('shiftDays truncates toward zero and is signed', async () => {
+    assert.equal(preview.shiftDays('2026-09-10T00:00:00Z', '2026-09-03T00:00:00Z'), -7);
+    assert.equal(preview.shiftDays('2026-09-10T00:00:00Z', '2026-09-17T00:00:00Z'), 7);
+    // 6.9 days earlier reads as -6 and lands under 7, rather than straddling the boundary.
+    assert.equal(preview.shiftDays('2026-09-10T00:00:00Z', '2026-09-03T02:00:00Z'), -6);
+    assert.equal(preview.shiftDays(null, '2026-09-03T00:00:00Z'), '');
+    assert.equal(preview.shiftDays('2026-09-03T00:00:00Z', null), '');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('The preview prediction matches what the real writers produce', () => {
+
+  // ⚠ THE FENCE THAT MAKES TWO FORMS OF ONE RULE ACCEPTABLE. assignedAt.js holds the date
+  // rule as SQL (for the writers) and as JS (for this write-free pass); neither can use the
+  // other's form. So each transition is driven BOTH ways over the same data and the two
+  // answers must agree — the preview PREDICTS a date, then the real rebuild is allowed to
+  // write one, and they are compared by name.
+  // ⚠ WITHOUT THIS, THE PREVIEW CAN CONFIDENTLY REPORT "no date change" ABOUT A PRODUCTION
+  // WRITE THAT MOVES THE DATE, which is worse than having no preview at all.
+
+  const REQ_AT = '2026-05-06T07:08:09.000Z';
+
+  it('every transition: the predicted assigned_at equals the one a real rebuild writes', async () => {
+    const rep = await seedRep(TENANT, { jobberUserId: 'ju-p', name: 'Pat' });
+    await pool.query(
+      `INSERT INTO contractor_crm_settings (contractor_id, attribution_source)
+       VALUES ($1, 'assessment_assigned_users') ON CONFLICT (contractor_id) DO NOTHING`, [TENANT]);
+
+    // cmp-0 — recreatable: the rebuild clears it and the replay re-creates it from the fact.
+    await seedRequestFact(TENANT, {
+      clientId: 'cmp-0', requestId: 'rq-cmp-0', assignedUserIds: ['ju-p'], createdAt: REQ_AT,
+    });
+    await seedAssignment(TENANT, 'cmp-0', {
+      provisionalRepId: rep, provisionalSource: 'mode_a', writtenBy: 'replay',
+      assignedAt: new Date().toISOString(),
+    });
+    // cmp-1 — a manual sticky: spared by source, so nothing is re-derived and the date holds.
+    await seedAssignment(TENANT, 'cmp-1', {
+      stickyRepId: rep, stickySource: 'manual', writtenBy: 'manual',
+      assignedAt: '2026-02-02T02:02:02.000Z',
+    });
+
+    // 1. What the preview PREDICTS.
+    const result = await preview.previewAssignments(pool, { contractorId: TENANT });
+    const predicted = new Map(result.rows.map((r) => [r.jobberClientId, r.newAssignedAt]));
+    assert.ok(predicted.has('cmp-0') && predicted.has('cmp-1'),
+      'harness: both clients must be candidates, or this compares nothing');
+
+    // ⚠ THE FIXTURE MUST PREDICT A CHANGE SOMEWHERE, or "they agree" is satisfied by a
+    // preview and a rebuild that both do nothing.
+    assert.equal(new Date(predicted.get('cmp-0')).toISOString(), REQ_AT,
+      'harness: cmp-0 is predicted to move to the fact date');
+    assert.equal(new Date(predicted.get('cmp-1')).toISOString(), '2026-02-02T02:02:02.000Z',
+      'harness: cmp-1 is predicted to hold its date');
+
+    // 2. What the REAL thing produces. The rebuild is discard-then-replay; run it for real.
+    const rebuild = require('../jobs/repAssignmentRebuild');
+    const outcome = await rebuild.runAssignmentRebuild(pool, { contractorId: TENANT });
+    assert.ok(!outcome.refused, `harness: the rebuild must actually run — ${outcome.refused || ''}`);
+
+    // 3. Compare, per client, by name.
+    for (const clientId of ['cmp-0', 'cmp-1']) {
+      const { rows } = await pool.query(
+        `SELECT assigned_at FROM client_rep_assignments
+          WHERE contractor_id = $1 AND jobber_client_id = $2`, [TENANT, clientId]
+      );
+      const actual = rows[0] ? new Date(rows[0].assigned_at).toISOString() : null;
+      const pred = predicted.get(clientId);
+      const predIso = pred ? new Date(pred).toISOString() : null;
+      assert.equal(predIso, actual,
+        `${clientId}: the preview predicted ${predIso} and the rebuild wrote ${actual}`);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+describe('The preview writes nothing — re-proven on a client with NO assignment row', () => {
+
+  it('⚠ A CLIENT WITH NO ROW IS THE ONLY FIXTURE THAT CAN CATCH A REAL INSERT', async () => {
+    // ⚠ COMMIT 7c RECORDED THAT EXISTING-WINS MASKED THIS EXACT CHECK ONCE. Its "writes
+    // nothing" case had a fixture that already carried a sticky, so writeSticky's
+    // `WHERE sticky_rep_id IS NULL` made a real write a NO-OP — the case was protected by
+    // existing-wins, not by write-freedom, and it passed while driving the REAL writers.
+    // A client with no row at all is INSERTed by a real writer, so it cannot be masked.
+    const rep = await seedRep(TENANT, { jobberUserId: 'ju-wf', name: 'Wes' });
+    assert.ok(rep, 'harness: a mapped rep, or the replay visits nobody');
+    await pool.query(
+      `INSERT INTO contractor_crm_settings (contractor_id, attribution_source)
+       VALUES ($1, 'assessment_assigned_users') ON CONFLICT (contractor_id) DO NOTHING`, [TENANT]);
+    await seedRequestFact(TENANT, {
+      clientId: 'c-norow', requestId: 'rq-norow', assignedUserIds: ['ju-wf'],
+      createdAt: '2026-04-04T04:04:04.000Z',
+    });
+
+    const { rows: before } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM client_rep_assignments WHERE contractor_id = $1`, [TENANT]);
+    assert.equal(before[0].n, 0, 'precondition: NO assignment row exists for this contractor');
+
+    const result = await preview.previewAssignments(pool, { contractorId: TENANT });
+
+    // The preview must SAY it would assign this client — otherwise "nothing was written" is
+    // satisfied by a pass that did nothing at all.
+    const row = rowFor(result, 'c-norow');
+    assert.ok(row, 'harness: the client must be a candidate');
+    assert.equal(row.newRep, 'Wes', 'and the preview must predict an assignment');
+    assert.equal(new Date(row.newAssignedAt).toISOString(), '2026-04-04T04:04:04.000Z');
+
+    const { rows: after } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM client_rep_assignments WHERE contractor_id = $1`, [TENANT]);
+    assert.equal(after[0].n, 0, '⚠ and STILL no row — a real writer would have INSERTed one');
+    assert.equal(result.stats.refused, 0, 'and the SELECT-only proxy refused nothing along the way');
   });
 });

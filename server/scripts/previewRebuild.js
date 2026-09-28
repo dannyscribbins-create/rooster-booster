@@ -87,6 +87,33 @@ async function main() {
   process.stderr.write(`[previewRebuild]   unchanged ................ ${totals.unchanged}\n`);
   process.stderr.write(`[previewRebuild]   would change ............. ${totals.would_change}\n`);
   process.stderr.write(`[previewRebuild]   unassigned or flagged .... ${totals.unassigned_or_flagged}\n`);
+
+  // ── THE DATE SUMMARY (3d Phase 1b Commit 6) ────────────────────────────────────
+  // ⚠ IT IS HERE SO THE DATE-RESTORING RUN CAN BE JUDGED AT A GLANCE. The gate is "preview,
+  // Danny's review, one run", and a review that needs 400 rows of spreadsheet scrolling to
+  // find out whether anything alarming happened is a review that stops being done.
+  // ⚠ DIRECTION IS PRINTED BESIDE MAGNITUDE BECAUSE DIRECTION IS THE TELL. The restoring run
+  // moves dates BACKWARDS, from the rebuild day to each fact's own time, so `earlier` should
+  // account for essentially all of the movement. A row moving LATER is not what this run is
+  // for and is worth opening the CSV over.
+  const d = result.dateTotals;
+  process.stderr.write('[previewRebuild]   ── assigned_at ──\n');
+  process.stderr.write(`[previewRebuild]   date would change ........ ${d.changed}\n`);
+  process.stderr.write(`[previewRebuild]   date unchanged ........... ${d.unchanged}\n`);
+  if (d.no_date_either_side > 0) {
+    // ⚠ COUNTED SEPARATELY, NEVER FOLDED INTO "unchanged". A client with no date before and
+    // none after has not kept its date; it has none, and hiding that inside a reassuring
+    // number is how a population of lost rows goes unnoticed.
+    process.stderr.write(`[previewRebuild]   no date either side ...... ${d.no_date_either_side}\n`);
+  }
+  process.stderr.write(`[previewRebuild]     moving EARLIER ......... ${d.earlier}\n`);
+  process.stderr.write(`[previewRebuild]     moving LATER ........... ${d.later}`
+    + `${d.later > 0 ? '   ⚠ not what the restoring run is for — check these' : ''}\n`);
+  process.stderr.write(`[previewRebuild]     shift: same day ........ ${d.shift_same_day}\n`);
+  process.stderr.write(`[previewRebuild]     shift: under 7 days .... ${d.shift_under_7_days}\n`);
+  process.stderr.write(`[previewRebuild]     shift: 7–30 days ....... ${d.shift_7_to_30_days}\n`);
+  process.stderr.write(`[previewRebuild]     shift: over 30 days .... ${d.shift_over_30_days}\n`);
+
   // ⚠ THE QUERY COUNT IS REPORTED BECAUSE THE RUN'S COST IS THE THING NOBODY CAN PREDICT FROM
   // HERE. It is also the only evidence in the output that the read cache did its job.
   process.stderr.write(`[previewRebuild]   queries issued ${result.stats.issued}, `

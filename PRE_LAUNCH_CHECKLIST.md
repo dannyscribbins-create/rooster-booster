@@ -378,12 +378,40 @@ preview — in that order, and **the order is load-bearing**: §6 records that t
 - [x] **Commit 2 — the one same-rep expression and the six engine writes. SHIPPED locally
       2026-09-28, NOT PUSHED.** `server/utils/assignedAt.js` holds the rule in two forms (SQL
       for the writers, JS for the preview) with a case-table fence holding them together.
-      ⚠ **THE PREVIEW STILL IGNORES THE DATE UNTIL COMMIT 6.** `assignmentPreview.js`'s four
-      recording writers take their arguments positionally and silently drop the new `fact`
-      parameter, so a preview run today reports rep and state changes correctly and **reports
-      nothing about `assigned_at`**. That is expected between Commits 2 and 6 — but it means
-      **a preview run in that window is NOT a review of the date-restoring rebuild**, and the
-      gate's precondition is not met by one.
+      ⚠ **THE PREVIEW IGNORED THE DATE UNTIL COMMIT 6** — its four recording writers took
+      their arguments positionally and silently dropped the new `fact` parameter. **CLOSED by
+      Commit 6**, below.
+
+- [x] **Commit 6 — THE PREVIEW REPORTS THE DATE. SHIPPED locally 2026-09-28, NOT PUSHED.**
+      The CSV gains `current_assigned_at` (replacing the state-branching `current_set_at`),
+      `new_assigned_at`, `assigned_at_shift`, `new_fact_kind` and `new_fact_id`; the console
+      summary gains a date block — how many dates would change, the direction, and the shift
+      bucketed 0 / under 7 / 7–30 / over 30 days.
+      ⚠ **THE SUMMARY EXISTS BECAUSE THE REP SUMMARY CAN READ AS "NOTHING HAPPENS" WHILE EVERY
+      DATE MOVES.** Measured on a demo fixture: `would change 0` for the rep and
+      `date would change 3` in the same run. **An operator reading only the old three lines
+      would approve a run that rewrote every date in the book.**
+      ⚠ **DIRECTION IS PRINTED BESIDE MAGNITUDE BECAUSE DIRECTION IS THE TELL.** The restoring
+      run moves dates BACKWARDS, so `moving LATER` should be 0. Anything there is worth opening
+      the CSV over, and the line says so when it is non-zero.
+      ⚠ **THE PREVIEW'S PREDICTION IS NOW FENCED AGAINST A REAL REBUILD.** The date rule exists
+      in two forms — SQL for the writers, JS for this write-free pass — and neither can use the
+      other's. A case drives the same transitions both ways and requires the same
+      `assigned_at`. **Without it the preview can confidently report "no date change" about a
+      production write that moves the date, which is worse than having no preview.**
+
+- [ ] **🔴🔴 THE DATE-RESTORING REBUILD IS NOW UNBLOCKED — RUN IT.** Every precondition Commit 6
+      was waiting on is in place. The procedure is unchanged and is in
+      `REP_ASSIGNMENT_REBUILD_SOP.md`: **back up → run the preview and read the date summary →
+      Danny reviews the changed rows → set `REP_ASSIGNMENT_REBUILD`, restart, read the log,
+      REMOVE THE VAR, redeploy → re-run the preview and confirm it reports no change.**
+      ⚠ **THE CLEARANCE COVERS ONE RUN.** It is not standing.
+      ⚠ **EXPECTED SHAPE, FROM THE 2026-09-28 MEASUREMENT:** 409 of rep 5's 422 rows carry the
+      2026-09-27 rebuild date, so the date summary should show roughly that many moving
+      EARLIER, most of them in the over-30-days bucket, and **`moving LATER` at 0**.
+      ⚠ **A NON-ZERO "would change" ON THE REP COLUMN IS A STOP**, not a footnote — the
+      442/442-unchanged parity was measured on 2026-09-27 and is not evidence about the tree
+      after 1b.
 
 - [x] **Commit 3 — one shared `writeManualSticky`. SHIPPED locally 2026-09-28, NOT PUSHED.**
       Both admin routes (the flagged-assignment resolve and the client-record correction)

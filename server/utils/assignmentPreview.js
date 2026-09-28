@@ -43,6 +43,11 @@ const {
   ENGINE_PROVISIONAL_SOURCES,
 } = require('../jobs/repAssignmentRebuild');
 const { SOURCE_LABELS } = require('./clientAssignment');
+// ⚠ THE DATE RULE IS IMPORTED, NEVER RE-IMPLEMENTED HERE (3d Phase 1b Commit 6). The
+// writers apply it as SQL; this pass has to apply the SAME rule in memory, because it must
+// not touch the database. assignedAt.js holds both forms side by side for exactly this, and
+// `previewMatchesRealWrites` in assignmentPreview.test.js is what stops them drifting.
+const { ownerWouldChange, normaliseFact } = require('./assignedAt');
 
 // The three groups, as the totals and the CSV name them.
 const GROUP_UNCHANGED = 'unchanged';
@@ -157,7 +162,10 @@ function selectOnlyDb(pool) {
  */
 function simulateDiscard(row, { recreatable, treatNullAsReplay }) {
   if (!row) {
-    return { sticky_rep_id: null, sticky_source: null, provisional_rep_id: null, provisional_source: null };
+    return {
+      sticky_rep_id: null, sticky_source: null, provisional_rep_id: null, provisional_source: null,
+      assigned_at: null, assigned_fact_kind: null, assigned_fact_id: null, assigned_fact_at: null,
+    };
   }
   // The rebuild's markerClause, at this row.
   const markerMatches = row.written_by === 'replay' || (treatNullAsReplay && row.written_by == null);
@@ -168,7 +176,33 @@ function simulateDiscard(row, { recreatable, treatNullAsReplay }) {
     sticky_source: clearSticky ? null : row.sticky_source,
     provisional_rep_id: clearProvisional ? null : row.provisional_rep_id,
     provisional_source: clearProvisional ? null : row.provisional_source,
+    // ⚠ THE DATE AND THE R5h TRIPLE PASS THROUGH UNTOUCHED, WHICH IS WHAT THE REBUILD DOES
+    // (3d Phase 1b Commit 6). discardEngineAssignments nulls the rep, the source and the
+    // old *_set_at columns — it does NOT name assigned_at, deliberately: a rebuild is a
+    // RE-RUN, not an ownership change, so a row that keeps its rep keeps its tenure date.
+    // ⚠ A ROW WHOSE HALVES ARE BOTH CLEARED IS DELETED by the real thing, taking the date
+    // with it, and the replay then re-inserts with a re-derived fact date. Here that shows
+    // up as a before-owner of null, which ownerWouldChange reads as a change — so the
+    // simulation reaches the same answer by the same route.
+    assigned_at: row.assigned_at,
+    assigned_fact_kind: row.assigned_fact_kind,
+    assigned_fact_id: row.assigned_fact_id,
+    assigned_fact_at: row.assigned_fact_at,
   };
+}
+
+// The shift between two dates, in WHOLE DAYS, signed, or '' when either side is absent.
+// ⚠ WHOLE DAYS RATHER THAN AN INTERVAL STRING, BECAUSE THE COLUMN IS SORTED AND BUCKETED.
+// An operator opens the CSV and sorts by "how much did this move"; a Postgres interval or an
+// ISO duration does not sort numerically in a spreadsheet, and the bucket summary below has
+// to agree with whatever the column says.
+function shiftDays(fromDate, toDate) {
+  if (!fromDate || !toDate) return '';
+  const ms = new Date(toDate).getTime() - new Date(fromDate).getTime();
+  if (!Number.isFinite(ms)) return '';
+  // Truncated toward zero so "moved 6.9 days earlier" reads as -6 and lands in the
+  // under-7-days bucket rather than straddling it.
+  return Math.trunc(ms / 86400000);
 }
 
 // Who a row resolves to, by the same COALESCE(sticky, provisional) rule every read uses.
@@ -190,7 +224,8 @@ function resolve(row) {
  * Returns the row the CSV and the totals are built from.
  */
 async function previewClient(db, {
-  contractorId, jobberClientId, beforeRow, recreatable, treatNullAsReplay, repNames, clientNames, logError,
+  contractorId, jobberClientId, beforeRow, recreatable, treatNullAsReplay, repNames, clientNames,
+  logError, runAt,
 }) {
   // Derived first, and deliberately: it populates this client's read cache, so the replay's own
   // call to decideFromFacts below is served from it rather than re-querying. The status is also
@@ -206,9 +241,34 @@ async function previewClient(db, {
   // iterations of the per-request loop must find the sticky already set and do nothing. A writer
   // that simply overwrote would report the LAST request's answer where production reports the
   // first one's, on exactly the multi-request clients the operator is worried about.
+  // ⚠ THE DATE RULE, APPLIED IN MEMORY — AND THE ORDER OF THE TWO LINES IS THE WHOLE TRAP.
+  // ownerWouldChange must be asked BEFORE `after` is mutated, or the before-state it needs is
+  // already gone and it compares the new rep against itself: every write would then look like
+  // a same-rep write and the preview would report "no date change" for every client.
+  const applyDate = (half, repId, fact) => {
+    const moves = ownerWouldChange(after, half, repId);
+    if (!moves) return;
+    const f = normaliseFact(fact);
+    // ⚠ ONE `runAt` FOR THE WHOLE PASS, NOT `new Date()` PER WRITE. The real writers take
+    // their fallback from a single statement's NOW(); here a per-write clock would make two
+    // clients written a second apart differ for no reason, and the CSV would not be stable
+    // across a re-run. It is only ever reached by the write_time arm, which no live path
+    // produces today.
+    after.assigned_at = f.at ? new Date(f.at) : runAt;
+    after.assigned_fact_kind = f.kind;
+    after.assigned_fact_id = f.id;
+    after.assigned_fact_at = f.at ? new Date(f.at) : null;
+  };
+
   const writers = {
-    writeSticky: async (_db, _cid, _clid, repId, source) => {
+    // ⚠ `fact` IS THE SEVENTH ARGUMENT AND DROPPING IT IS SILENT. Until Commit 6 these four
+    // stubs took five parameters and ignored the rest, so the preview reported rep and state
+    // changes correctly and said NOTHING about assigned_at — while production wrote it. No
+    // language feature would have caught that; the fence that does is
+    // "reports the date change" in assignmentPreview.test.js.
+    writeSticky: async (_db, _cid, _clid, repId, source, _writtenBy, fact) => {
       if (after.sticky_rep_id == null) {
+        applyDate('sticky', repId, fact);
         after.sticky_rep_id = repId;
         after.sticky_source = source;
         actions.push({ type: 'sticky', repId, source });
@@ -216,7 +276,8 @@ async function previewClient(db, {
         actions.push({ type: 'sticky_noop', repId, source });
       }
     },
-    writeProvisional: async (_db, _cid, _clid, repId, source) => {
+    writeProvisional: async (_db, _cid, _clid, repId, source, _writtenBy, fact) => {
+      applyDate('provisional', repId, fact);
       after.provisional_rep_id = repId;
       after.provisional_source = source;
       actions.push({ type: 'provisional', repId, source });
@@ -264,9 +325,20 @@ async function previewClient(db, {
     currentRep: before.repId ? (repNames.get(before.repId) || `#${before.repId}`) : '',
     currentState: before.state || '',
     currentSource: before.source || '',
-    currentSetAt: beforeRow
-      ? (before.state === 'locked' ? beforeRow.sticky_set_at : beforeRow.provisional_set_at) || ''
-      : '',
+    // ⚠ ONE COLUMN, REPLACING `current_set_at` (Commit 6). That read
+    // `before.state === 'locked' ? sticky_set_at : provisional_set_at` — the same
+    // branch-on-the-rep-id-column that getClientAssignment carried, and the same divergence.
+    // With one stored date there is nothing to branch on.
+    currentAssignedAt: beforeRow ? beforeRow.assigned_at || '' : '',
+    newAssignedAt: after.assigned_at || '',
+    // ⚠ WHOLE DAYS, SIGNED, AND THE SIGN IS THE USEFUL HALF. The date-restoring run moves
+    // dates BACKWARDS — from the rebuild day to the fact's real time — so a negative shift is
+    // the expected outcome and a positive one is worth a second look.
+    assignedAtShift: shiftDays(beforeRow ? beforeRow.assigned_at : null, after.assigned_at),
+    // R5h: what would justify the new date. A date change with no provenance beside it is
+    // visible but not reviewable, which is the difference this column makes.
+    newFactKind: after.assigned_fact_kind || '',
+    newFactId: after.assigned_fact_id || '',
     newRep: now.repId ? (repNames.get(now.repId) || `#${now.repId}`) : '',
     newState: now.state || '',
     newSource: now.source || '',
@@ -352,9 +424,13 @@ async function previewAssignments(pool, {
     : await db.query(recreatableClientsSql('$1', '$2'), [contractorId, mappedUserIds]);
   const recreatableSet = new Set(recreatableRows.map((r) => r.jobber_client_id));
 
+  // ⚠ THE RETIRED *_set_at COLUMNS ARE NO LONGER SELECTED (Commit 6). They are still
+  // WRITTEN — the batch ruling keeps them as history — so they look alive, and a preview
+  // that read them would report a date nothing on any surface shows.
   const { rows: assignmentRows } = await db.query(
-    `SELECT jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at,
-            provisional_rep_id, provisional_source, provisional_set_at, written_by
+    `SELECT jobber_client_id, sticky_rep_id, sticky_source,
+            provisional_rep_id, provisional_source, written_by,
+            assigned_at, assigned_fact_kind, assigned_fact_id, assigned_fact_at
        FROM client_rep_assignments
       WHERE contractor_id = $1
       ORDER BY jobber_client_id`,
@@ -384,6 +460,11 @@ async function previewAssignments(pool, {
   const rows = [];
   const totals = { [GROUP_UNCHANGED]: 0, [GROUP_CHANGED]: 0, [GROUP_LOST]: 0 };
 
+  // ⚠ ONE CLOCK FOR THE WHOLE PASS — see applyDate. Only the write_time arm reads it, and
+  // no live path produces that today, but a per-client clock would make the CSV differ
+  // between two runs over identical data.
+  const runAt = new Date();
+
   for (let i = 0; i < candidates.length; i += 1) {
     const jobberClientId = candidates[i];
     db.beginClient();
@@ -396,6 +477,7 @@ async function previewAssignments(pool, {
       repNames,
       clientNames,
       logError: previewLogError,
+      runAt,
     });
     rows.push(row);
     totals[row.group] += 1;
@@ -403,15 +485,67 @@ async function previewAssignments(pool, {
   }
   if (onProgress) onProgress({ done: candidates.length, total: candidates.length });
 
-  return { totals, rows, stats: db.stats, mappedUserIds, candidates: candidates.length };
+  return {
+    totals, rows, stats: db.stats, mappedUserIds, candidates: candidates.length,
+    dateTotals: summariseDates(rows),
+  };
+}
+
+// ── THE DATE SUMMARY (3d Phase 1b Commit 6) ──────────────────────────────────
+//
+// ⚠ IT EXISTS SO THE DATE-RESTORING RUN CAN BE JUDGED WITHOUT OPENING THE CSV. The gate on
+// REP_ASSIGNMENT_REBUILD is "preview, Danny's review, one run", and a review that requires
+// scrolling 400 rows in a spreadsheet to find out whether anything alarming happened is a
+// review people stop doing. Four buckets and two directions fit on one screen.
+//
+// ⚠ THE BUCKETS ARE ON THE MAGNITUDE AND THE DIRECTION IS REPORTED SEPARATELY, BECAUSE THE
+// DIRECTION IS THE TELL. The restoring run moves dates BACKWARDS — from the 2026-09-27
+// rebuild day to each fact's own time — so `earlier` should account for essentially all of
+// the movement. A row moving LATER means its stored date is older than the fact the replay
+// would date it from, which is not what this run is for and is worth looking at.
+//
+// ⚠ AND `no_date_either_side` IS COUNTED RATHER THAN FOLDED INTO "unchanged". A client with
+// no row before and none after has not "kept its date"; it has no date, and lumping the two
+// together would let a population of lost rows hide inside a reassuring number.
+function summariseDates(rows) {
+  const out = {
+    changed: 0,
+    unchanged: 0,
+    no_date_either_side: 0,
+    earlier: 0,
+    later: 0,
+    shift_same_day: 0,
+    shift_under_7_days: 0,
+    shift_7_to_30_days: 0,
+    shift_over_30_days: 0,
+  };
+  for (const r of rows) {
+    const from = r.currentAssignedAt;
+    const to = r.newAssignedAt;
+    if (!from && !to) { out.no_date_either_side += 1; continue; }
+    const shift = r.assignedAtShift;
+    // A date that appeared or vanished is a change even though no day-count spans it.
+    if (shift === '') { out.changed += 1; continue; }
+    const days = Math.abs(shift);
+    const sameInstant = new Date(from).getTime() === new Date(to).getTime();
+    if (sameInstant) { out.unchanged += 1; continue; }
+    out.changed += 1;
+    if (shift < 0) out.earlier += 1; else out.later += 1;
+    if (days === 0) out.shift_same_day += 1;
+    else if (days < 7) out.shift_under_7_days += 1;
+    else if (days <= 30) out.shift_7_to_30_days += 1;
+    else out.shift_over_30_days += 1;
+  }
+  return out;
 }
 
 // ── CSV ───────────────────────────────────────────────────────────────────────
 
 const CSV_COLUMNS = Object.freeze([
   'jobber_client_id', 'client_name', 'group',
-  'current_rep', 'current_state', 'current_source', 'current_set_at',
-  'new_rep', 'new_state', 'new_source', 'would_flag',
+  'current_rep', 'current_state', 'current_source', 'current_assigned_at',
+  'new_rep', 'new_state', 'new_source', 'new_assigned_at', 'assigned_at_shift',
+  'new_fact_kind', 'new_fact_id', 'would_flag',
   'reason', 'recreatable', 'derived_status', 'requests_replayed',
 ]);
 
@@ -423,14 +557,21 @@ function csvCell(value) {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
+// node-postgres hands back a Date for a timestamptz; a fixture may hand back a string. One
+// helper so both render identically rather than one column carrying two formats.
+function iso(v) {
+  if (!v) return '';
+  return v instanceof Date ? v.toISOString() : String(v);
+}
+
 function toCsv(rows) {
   const lines = [CSV_COLUMNS.map(csvCell).join(',')];
   for (const r of rows) {
     lines.push([
       r.jobberClientId, r.clientName, r.group,
-      r.currentRep, r.currentState, r.currentSource,
-      r.currentSetAt instanceof Date ? r.currentSetAt.toISOString() : r.currentSetAt,
-      r.newRep, r.newState, r.newSource, r.wouldFlag,
+      r.currentRep, r.currentState, r.currentSource, iso(r.currentAssignedAt),
+      r.newRep, r.newState, r.newSource, iso(r.newAssignedAt), r.assignedAtShift,
+      r.newFactKind, r.newFactId, r.wouldFlag,
       r.reason, r.recreatable, r.derivedStatus, r.requestsReplayed,
     ].map(csvCell).join(','));
   }
@@ -444,6 +585,8 @@ module.exports = {
   selectOnlyDb,
   assertSelectOnly,
   simulateDiscard,
+  summariseDates,
+  shiftDays,
   GROUP_UNCHANGED,
   GROUP_CHANGED,
   GROUP_LOST,
