@@ -367,86 +367,37 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
 // live via a GraphiQL argumentNotAccepted error, and confirmed in Jobber's Client type docs
 // (args: after/before/first/last only; sibling connections like contacts/jobs/notes DO take
 // sort, but requests and quotes are plain). The top-level Query.requests field, by contrast,
-// takes filter: RequestFilterAttributes (which includes clientId) AND sort: [RequestsSortInput!]
-// (the key/direction shape — REQUESTED_AT is the field it actually belongs to). Verified live
-// in GraphiQL on 2026-07-06 against a production client: no errors, requests returned
-// newest-first, requestedQueryCost sane. first: 25 with server-side newest-first ordering means
-// the referral-era request is effectively always in-window regardless of client history length
-// — this resolves the "10+ requests could miss the relevant one" limitation from the earlier
-// nested-connection attempt.
-// (Also confirmed in docs but NOT verified live — do not build against without a GraphiQL check
-// first: QuoteFilterAttributes on the top-level `quotes` query includes clientId AND
-// salespersonId; RequestFilterAttributes includes assignedTo, "the user assigned to the
-// request's assessment".)
-const ATTRIBUTION_QUERY = `
-  query GetClientAttributionData($id: EncodedId!) {
-    requests(first: 25, filter: { clientId: $id }, sort: [{ key: REQUESTED_AT, direction: DESCENDING }]) {
-      nodes {
-        id
-        createdAt
-        salesperson { id }
-        assessment {
-          id
-          assignedUsers { nodes { id } }
-        }
-      }
-    }
-  }
-`;
-
-// Fetches requests and assessments for the attribution engine.
-// _httpPost is injected in tests; production uses axios.post.
-async function fetchAttributionData(clientId, token, _httpPost = null) {
-  const post = _httpPost || axios.post;
-
-  const response = await retryWithBackoff(
-    () => post(
-      'https://api.getjobber.com/api/graphql',
-      { query: ATTRIBUTION_QUERY, variables: { id: clientId } },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12',
-          'Content-Type': 'application/json',
-        },
-      }
-    ),
-    { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
-  );
-
-  if (response.data.errors) {
-    const diagnosticDetails = {
-      errors: (response.data.errors).slice(0, 5),
-      connectionSlice: response.data?.data?.requests?.nodes?.slice(0, 2),
-    };
-    console.error('[fetchAttributionData] GraphQL error response:', JSON.stringify(diagnosticDetails)); // diagnostic log — intentional
-    const err = new Error(`fetchAttributionData: GraphQL errors for client ${clientId}`);
-    await logError({ req: null, error: err, source: 'fetchAttributionData' });
-    throw err;
-  }
-
-  if (!response.data?.data?.requests) {
-    const err = new Error(`fetchAttributionData: null requests response for client ${clientId}`);
-    await logError({ req: null, error: err, source: 'fetchAttributionData' });
-    throw err;
-  }
-
-  const requestNodes = response.data.data.requests.nodes;
-  // Belt-and-suspenders — server-side sort on the query is by REQUESTED_AT (primary; no
-  // CREATED_AT key exists in RequestsSortKey), not createdAt, so this local sort covers the
-  // distinction between the two timestamps (see ATTRIBUTION_QUERY comment).
-  const sorted = [...requestNodes].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  const assessments = sorted.filter(r => r.assessment != null).map(r => r.assessment);
-
-  return { requests: sorted, assessments };
-}
+// ── THE LIVE ATTRIBUTION FETCH WAS HERE, AND IT IS DELETED (3d Phase 1a Commit 7b) ──
+//
+// `ATTRIBUTION_QUERY` and `fetchAttributionData(clientId, token)` fetched a client's requests
+// from Jobber so runAttributionEngine could choose the rep. Every live door now reads that list
+// from crm_request_facts instead (server/utils/requestFacts.js), captured in the same locked
+// transaction the decision is taken in, so live and replay choose from the same rows with the
+// same code (R5i).
+//
+// ⚠ DELETED RATHER THAN LEFT UNUSED, AND THAT IS THE POINT. An exported fetcher sitting here is
+// what a future door reaches for when it needs "the requests for this client" — the name is
+// right there and it looks like the sanctioned way. With it gone, reintroducing a live fetch
+// into attribution takes writing a new query, which is a decision somebody makes on purpose.
+//
+// ⚠ AND TWO OF ITS PROPERTIES WERE DEFECTS THAT THE FACT READER DOES NOT INHERIT, RECORDED SO
+// NOBODY RESTORES IT FROM GIT THINKING IT WAS MERELY REDUNDANT:
+//   · it selected `assignedUsers { nodes { id } }` with NO pageInfo, so the 7a-2 truncation
+//     guard could never fire on a live door — a six-person assessment was written as a
+//     single-match STICKY, which is existing-wins and uncorrectable;
+//   · it stable-sorted Jobber's REQUESTED_AT-descending page by createdAt, so an equal-createdAt
+//     tie resolved to whatever Jobber returned first — not the ruled higher-numeric-id winner,
+//     which only the replay implemented.
 
 // ── REQUEST-DRIVEN ATTRIBUTION (Canvass-3.7, ruling R1) ──────────────────────
 // ⚠ WHAT IS PROVEN AT OUR PINNED VERSION AND WHAT IS NOT — READ BEFORE WIDENING EITHER
 // QUERY BELOW. The top-level `Query.requests` field, `RequestFilterAttributes`,
 // `RequestsSortInput`, and the selection `id createdAt salesperson { id } assessment { id
-// assignedUsers { nodes { id } } }` were ALL proven at 2026-02-17 — ATTRIBUTION_QUERY above
-// uses every one of them in production and was verified live in GraphiQL on 2026-07-06.
+// assignedUsers { nodes { id } } }` were ALL proven at 2026-02-17 by the live attribution query
+// that stood above until 7b, which used every one of them in production and was verified live
+// in GraphiQL on 2026-07-06. ⚠ THAT QUERY IS DELETED AND THE PROOF STILL STANDS — it is a fact
+// about the Jobber schema at our pinned version, not about our code. The two queries below
+// still rely on it.
 // ⚠ THE PIN MOVED TO 2026-05-12 IN THE 2-pre BUMP, AND THAT PROOF CARRIES FORWARD: the five
 // intervening versions (2026-03-10 · 04-13 · 04-16 · 04-22 · 05-12) are ADDITIVE ONLY — six
 // added enum values, nothing removed and nothing retyped, per Jobber's changelog.
@@ -503,9 +454,11 @@ async function fetchAttributionData(clientId, token, _httpPost = null) {
 // Input:  requestId (Jobber EncodedId, the webhook's itemId), token
 // Output: { id, createdAt, client: { id } } — or throws.
 // ⚠ DELIBERATELY MINIMAL. salesperson and assessment are NOT selected here even though the
-// attribution needs them: they arrive through fetchAttributionData(), which is the proven
-// client-scoped query. Selecting them twice would put two unproven fields beside three
-// proven ones in the same query and make a failure impossible to attribute to a field.
+// attribution needs them. ⚠ WHERE THEY COME FROM CHANGED IN 7b: they used to arrive through
+// fetchAttributionData's live client-scoped query, and they now come from crm_request_facts,
+// written by the capture this webhook performs before it decides. The reason for keeping this
+// query minimal is unchanged — selecting them here would put two unproven fields beside three
+// proven ones and make a failure impossible to attribute to a field.
 const REQUEST_BY_ID_QUERY = `
   query GetRequestById($id: EncodedId!) {
     request(id: $id) {
@@ -555,7 +508,10 @@ async function fetchRequestById(requestId, token, _httpPost = null) {
 // Fetches one page of requests updated since `since`, for the backfill sweep.
 // Input:  since (ISO8601 string), token, cursor (String|null)
 // Output: { nodes: [{ id, createdAt, updatedAt, client: { id } }], hasNextPage, endCursor }
-// Sorted newest-first by REQUESTED_AT, matching ATTRIBUTION_QUERY's proven sort shape.
+// Sorted newest-first by REQUESTED_AT — the sort shape proven at 2026-02-17 and described in
+// the block above. ⚠ This query orders the SWEEP's walk through requests; it does not order the
+// engine's request list, which requestsFromFacts owns (server/utils/requestFacts.js) and which
+// carries the numeric-id tie-break this sort has never implemented.
 const REQUESTS_UPDATED_SINCE_QUERY = `
   query GetRequestsUpdatedSince($since: ISO8601DateTime!, $after: String) {
     requests(
@@ -612,4 +568,4 @@ async function fetchRequestsUpdatedSince(since, token, cursor = null, _httpPost 
   };
 }
 
-module.exports = { refreshTokenIfNeeded, getContractorAccessToken, getFreshContractorAccessToken, fetchPipelineForReferrer, discoverJobberFields, fetchAttributionData, fetchRequestById, fetchRequestsUpdatedSince };
+module.exports = { refreshTokenIfNeeded, getContractorAccessToken, getFreshContractorAccessToken, fetchPipelineForReferrer, discoverJobberFields, fetchRequestById, fetchRequestsUpdatedSince };

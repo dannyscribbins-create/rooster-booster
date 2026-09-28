@@ -11,8 +11,9 @@ const {
   _resetAttributionEngine,
   _setPipelineSyncEmailsForTest,
   _resetPipelineSyncEmails,
+  _setPipelineSyncFetchForTest,
+  _resetPipelineSyncFetch,
 } = require('../crm/pipelineSync');
-const { fetchAttributionData } = require('../crm/jobber');
 const { seedContractor } = require('./helpers');
 
 const CID = 'accent-roofing';
@@ -28,6 +29,22 @@ function makeReferredClient(id) {
     customFields: [{ label: 'Referred by', valueText: 'Jane Referrer' }],
     quotes: { nodes: [] },
     jobs: { nodes: [] },
+  };
+}
+
+// ⚠ WHAT syncSingleClient NOW CAPTURES FROM, AND WHY THE FIXTURE ABOVE IS NOT IT (7b).
+// makeReferredClient mirrors the SYNC's own `clients(first: 25)` query, which selects no requests
+// connection, no `client { id }` on quotes and no top-level invoices — so it cannot be captured.
+// That is the whole finding of 7b item 4: capturing it would write ZERO quote facts and job facts
+// with a NULL client id. syncSingleClient therefore obtains a capture-shape client of its own,
+// through the seam this returns, and every case below installs one.
+function makeCaptureClient(id) {
+  return {
+    id,
+    quotes: { nodes: [] },
+    jobs: { nodes: [] },
+    invoices: { nodes: [] },
+    requests: { nodes: [] },
   };
 }
 
@@ -80,10 +97,18 @@ describe('syncSingleClient — attribution engine wiring', () => {
       adminNotification: async () => {},
       email: async () => ({ data: null, error: null }),
     });
+
+    // ⚠ THE CAPTURE FETCH IS SEAMED FOR THE WHOLE FILE (7b). Without it syncSingleClient calls
+    // the REAL fetchFullClient, which reaches Jobber, throws, and is swallowed by the
+    // attribution try/catch — so the engine is never called and every case below fails with
+    // `engine called exactly once: 0 !== 1`, which reads like a wiring regression rather than a
+    // missing stub.
+    _setPipelineSyncFetchForTest(async (clientId) => makeCaptureClient(clientId));
   });
 
   after(async () => {
     _resetPipelineSyncEmails();
+    _resetPipelineSyncFetch();
     await pool.end();
   });
 
@@ -93,6 +118,15 @@ describe('syncSingleClient — attribution engine wiring', () => {
       `DELETE FROM pipeline_cache WHERE contractor_id = $1 OR contractor_id = ''`,
       [CID]
     );
+    // ⚠ THE FACT TABLES JOINED THIS RESET IN 7b, AND THE 6c FENCE IS WHAT FOUND IT. syncSingleClient
+    // now CAPTURES before it decides, so this suite writes rows it never used to — and the fence
+    // failed naming `attributionWiring.test.js touches crm_request_facts but never clears it`,
+    // which is exactly the leak it was built for: a row surviving into the next case reads as a
+    // successful write by whatever runs next.
+    for (const t of ['crm_invoice_job_links', 'crm_invoice_facts', 'crm_job_facts',
+      'crm_quote_facts', 'crm_request_facts', 'client_rep_assignments']) {
+      await pool.query(`DELETE FROM ${t} WHERE contractor_id = $1 OR contractor_id = ''`, [CID]);
+    }
     _resetAttributionEngine();
   });
 
@@ -100,7 +134,13 @@ describe('syncSingleClient — attribution engine wiring', () => {
     _resetAttributionEngine();
   });
 
-  it('(a) invokes the engine after the pipeline_cache upsert with the correct contractorId, jobberClientId, currentStatus, client object, real fetchAttributionData import, and the token passed into syncSingleClient', async () => {
+  // ⚠ INVERTED IN 7b, AND THE OLD TITLE IS QUOTED BECAUSE IT NAMED THE DEFECT AS A REQUIREMENT.
+  // It read "… real fetchAttributionData import, and the token passed into syncSingleClient", and
+  // asserted `opts.fetchAttributionData === fetchAttributionData` — a fence holding this door on
+  // a LIVE Jobber fetch for the rep choice, which is exactly what R5i forbids and what 7b removes.
+  // It also asserted `opts.client` was the sync's own live object, by reference. Both are now the
+  // opposite: the client comes from decideFromFacts and the requests from crm_request_facts.
+  it('(a) invokes the engine after the pipeline_cache upsert, deciding from SAVED FACTS — never from the live object or a Jobber fetch', async () => {
     const spy = makeSpy();
     _setAttributionEngineForTest(spy.fn);
     const client = makeReferredClient('attr-wire-a');
@@ -111,15 +151,29 @@ describe('syncSingleClient — attribution engine wiring', () => {
     const opts = spy.lastCallOptions;
     assert.equal(opts.contractorId, CID, 'contractorId is the sync contractorId');
     assert.equal(opts.jobberClientId, 'attr-wire-a', 'jobberClientId equals client.id');
-    assert.equal(opts.currentStatus, 'lead', 'currentStatus is the classified pipeline status');
-    assert.strictEqual(opts.client, client, 'client object passed by reference');
-    assert.strictEqual(
-      opts.fetchAttributionData,
-      fetchAttributionData,
-      'fetchAttributionData is the real production import, not undefined'
-    );
-    assert.equal(opts.token, 'test-token-abc', 'token is the value passed into syncSingleClient');
+    assert.equal(opts.currentStatus, 'lead', 'currentStatus is derived by decideFromFacts');
     assert.ok(opts.referralAnchor, 'referralAnchor must be passed to the engine');
+
+    // ⚠ NOT THE LIVE OBJECT. decideFromFacts builds its own client from stored rows, so a
+    // reference match here would mean the door had gone back to deciding from the fetch.
+    assert.notStrictEqual(opts.client, client,
+      'the engine must receive the FACT-derived client, not the live sync object');
+    assert.ok(opts.client && opts.client.quotes && Array.isArray(opts.client.quotes.nodes),
+      'the fact-derived client carries the connection shape the engine reads');
+
+    // ⚠ NO TOKEN REACHES THE ENGINE, AND THAT IS THE STRUCTURAL HALF. The engine has no token
+    // parameter since 7b; asserting its absence is what stops a caller reintroducing one for a
+    // reader that would then be able to authenticate a Jobber call.
+    assert.equal(opts.token, undefined, 'no Jobber token may reach the engine');
+    assert.equal(opts.fetchAttributionData, undefined,
+      'the deleted live fetcher must not be passed under its old name');
+    assert.equal(typeof opts.readRequests, 'function',
+      'the engine receives a fact-backed request reader');
+
+    // And it reads FACTS: with none stored for this client the reader answers empty, from the DB.
+    const read = await opts.readRequests('attr-wire-a');
+    assert.deepEqual(read, { requests: [] },
+      'the reader answers from crm_request_facts — empty, because nothing was captured for it');
   });
 
   it('(a2) referralAnchor is the pipeline_cache row\'s own created_at, not last_synced_at/updated_at, and is preserved (not reset) on re-sync', async () => {

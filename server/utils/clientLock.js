@@ -37,9 +37,19 @@
 // tie up a pool slot for the length of an external request, and a slow Jobber would exhaust the
 // pool rather than merely delay one client. Commit 3's `updated_at` staleness guard is what keeps
 // the FACTS correct when two fetches race; this lock only makes write-then-decide atomic.
-// ⚠ runAttributionEngine MUST ALSO STAY OUTSIDE IT. The engine calls `fetchAttributionData`,
-// which is a Jobber fetch — so wrapping the engine in the lock would reintroduce exactly the
-// pool-starvation shape the paragraph above forbids, by a longer route.
+// ⚠ runAttributionEngine IS NOW INSIDE IT, AND THIS PARAGRAPH SAID THE OPPOSITE UNTIL 7b.
+// It read: *"runAttributionEngine MUST ALSO STAY OUTSIDE IT. The engine calls
+// `fetchAttributionData`, which is a Jobber fetch — so wrapping the engine in the lock would
+// reintroduce exactly the pool-starvation shape the paragraph above forbids, by a longer route."*
+// That was correct when written and is now INVERTED rather than merely stale: it instructs
+// against the change that is correct. The engine no longer calls Jobber at all — its request list
+// comes from crm_request_facts via server/utils/requestFacts.js — so the premise the rule rested
+// on is gone, and the rule went with it. The RULE ABOVE IS UNCHANGED: no network call inside the
+// lock, ever. Only the question of whether the engine makes one has a different answer.
+// ⚠ AND THE REASON TO MOVE IT IN WAS NOT SYMMETRY. Outside the lock, the client_rep_assignments
+// write was not protected by it: two events for one client could each capture, decide, and then
+// write, with the SLOWER one — holding an answer computed from OLDER facts — landing last. A lost
+// update on the assignment, durable and silent. Atomicity with the capture is the fix.
 
 // ── HOW LONG THE LOCK IS HELD, MEASURED RATHER THAN ESTIMATED ────────────────
 // Measured 2026-09-25 against local Postgres, 7 runs, for a realistic worst case: a FULL page of

@@ -392,8 +392,54 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1970 server tests across 323 suites, and 1358 React tests across 82 files** (measured 2026-09-27 by the 3d Phase 1a Commit 7c rebuild-preview commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1970 · suites 323 · pass 1970 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE COMMIT 7c PREVIEW COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1984 server tests across 324 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the 3d Phase 1a Commit 7b one-engine commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1984 · suites 324 · pass 1984 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE COMMIT 7b ONE-ENGINE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1970 → 1984 is **+14 = +19 − 5**, and it is the first entry in this arc where a test file
+  was DELETED: one new file (`oneEngineFromFacts.test.js`, 19 cases) against the removal of
+  `attributionFetcher.test.js` (5), whose entire subject was `fetchAttributionData` — the live
+  Jobber request fetch this commit deletes. Suites 323 → 324 is the same arithmetic: **+2** for the
+  new file's two top-level describes, **−1** for the deleted file's one. React did not move — no
+  `src/` file touched — and was re-measured. **All four predicted before the run and matched.**
+  ⚠ **A DELETED TEST FILE IS THE ONE EVENT THIS TRIPWIRE IS BUILT TO CATCH, SO IT IS SPELLED OUT
+  RATHER THAN NETTED.** The rule above says a drop means tests were deleted and to stop — here
+  tests WERE deleted, on purpose, because the function they exercised no longer exists. Reporting
+  only "+14" would hide that under a rise. **When a figure nets a deletion against an addition,
+  write both numbers.**
+  ⚠ **COUNTED WITH AN ANCHORED `^\s*it\(` (19), AND THE FILE'S ELEVEN `for` LOOPS WERE EACH
+  CHECKED FOR POSITION:** one sits in `beforeEach`, the other ten inside `it()` bodies — the
+  source-reading fences iterate files, needles and brace-matching indices — so **none wraps a
+  case** and 19 is exact rather than 19 × anything.
+  ⚠ **THE GATE WENT RED FIRST, AND IT WAS THE 6c RESET-COVERAGE FENCE WORKING EXACTLY AS BUILT.**
+  `attributionWiring.test.js touches crm_request_facts but never clears it` — because 7b made
+  `syncSingleClient` CAPTURE before it decides, so a suite that had never written a fact table
+  suddenly did. A leaked row reads as a successful write by the case that follows, which is the
+  vacuity family wearing a fixture. Repaired by adding the six tables to that suite's reset in
+  FK order, never by widening `KNOWN_GAPS`. **The counts were identical on both runs (1984/324),
+  which is the expected shape for a reset fix: it changes what rows exist, not how many cases.**
+  ⚠ **AND TWO OF THE SEVEN GUARD-PROOFS WERE INVALID ON FIRST WRITING, BOTH READING GREEN.**
+  (iii) was written as `if (false) await runAttributionEngine(tx, {` — which DISABLES the engine
+  without MOVING it, so the structural fence (which checks the call's position inside the
+  `withClientLock` extent) correctly did not fire; rewritten to actually relocate the call onto
+  the pool after the lock, it reds **exactly 1**. And the narrow parity injection pointed the
+  replay's anchor at `new Date(0)` — the EPOCH — which does not break the eligibility window but
+  makes it maximally PERMISSIVE, so the replay reached the same rep by a wider route and the pair
+  stayed green; pointed a year into the FUTURE instead, it reds **exactly 2**. ⚠ **An injection
+  that loosens a constraint tests nothing, because the correct answer is still reachable — the
+  direction is the whole content of the injection, not the line it edits.**
+  ⚠ **THE OTHER FIVE, WITH THEIR WIDTHS:** (i) a door reaching for a live Jobber fetcher again →
+  **14** red across two files; (ii) the reader bound to the wrong client → **9**; (iv) the numeric
+  tie-break reversed → **2**; (v) the referral door deciding after a swallowed capture failure →
+  **exactly 1**; (vi) `axios` added to the engine, which now runs inside the lock → **exactly 1**.
+  Every revert was an inverse patch in a `finally`, proven byte-identical by sha256, and each
+  patch was recomputed from the file as read from disk so three edits to one file could not
+  degrade into the last one only.
+  ⚠ **AND THE HARNESS ITSELF WAS BITTEN TWICE BY THE HEREDOC ESCAPE TRAP THIS FILE RECORDS.** A
+  `\b` written inside a quoted heredoc reached Python as a literal **backspace byte** (`\x08`)
+  inside a regex, and a `\n` collapsed into a real newline mid-string-literal — the first produced
+  a summary parser that silently returned `-1` for every count, the second a `SyntaxError`. **The
+  lucky variant and the unlucky variant, in one session.** Regex- and escape-bearing code goes in
+  a FILE, written with an editor, never through a shell heredoc.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE COMMIT 7c PREVIEW COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
   Server 1951 → 1970 is **+19**, one new file (`assignmentPreview.test.js`); suites 319 → 323 is
   that file's **four** top-level describes. React did not move — no `src/` file touched — and was
   re-measured. **All four predicted before the run and matched.** Counted with an anchored

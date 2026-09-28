@@ -2269,6 +2269,16 @@ check — which is why this is a named build rather than a checklist line.
       the only repair that does not come back. → §10
       ⚠ **SIZED PROPERLY IN THE ENTRY DIRECTLY BELOW. The 177 above is `--changed-files` output
       for ONE commit, not the population** — read that one before scoping any of this.
+      ⚠ **`server/crm/pipelineSync.js` JOINED THE HOT-FILE LIST ON 2026-09-28** (3d Phase 1a
+      Commit 7b), and it is noted HERE rather than as its own entry because it is the same
+      population and the same repair. That commit inserted ~94 lines mid-file and
+      `--changed-files` then reported **43 LIKELY ROTTED**, of which 14 are in
+      `PRE_LAUNCH_CHECKLIST.md` itself and 10 in `docs/GROUND_TRUTH_2026-08-21.md`.
+      ⚠ **NONE WAS REPAIRED, DELIBERATELY, AND THE TEN IN GROUND_TRUTH MUST NEVER BE SHIFTED** —
+      that file is a dated snapshot that QUOTES what it cites, so renumbering it would make it
+      claim its quotes come from lines that now hold something else. The other 33 need the same
+      read-at-the-old-line-in-the-old-revision treatment as the rest of this entry's population,
+      and the repair is role-based citations, not new numbers.
 
 - [ ] **🟠 THE CITATION REPAIR — SIZED, DEFERRED, AND NOW ENFORCEABLE WITHOUT BEING DONE.**
       *(Measured C/DL-3c citation-repair Phase 0, 2026-08-31. The tripwire shipped the same day;
@@ -6156,6 +6166,37 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       client the display calls sold can have its sticky gate skipped. **Before Commit 5 this
       affects the REPLAY and the REBUILD only** — the live doors still derive status from a live
       fetch and are deliberately untouched.
+      ⚠ **AND 7b ADDS A THIRD DERIVATION TO THE SAME IDEA, WHICH IS WHY THIS ENTRY GREW RATHER
+      THAN A NEW ONE BEING FILED** (2026-09-28). `pipeline_cache.pipeline_status` — the REFERRAL
+      display, and the column `paid_at` cadence keys off — is still written by
+      `syncSingleClient` from `classifyPipelineStatus(client)` on the LIVE Jobber object, while
+      the attribution decision on that same door now comes from `decideFromFacts`. So one
+      referred client can carry a referral status, a rep-surface stage and a decision status
+      derived three different ways. **Moving `pipeline_cache` onto facts was deliberately NOT
+      done in 7b**: it feeds bonus timing and the referrer-facing pipeline, which is a money
+      surface with its own blast radius, and changing a display column in the same commit as the
+      decision path would have made neither reviewable. **It belongs with Q6's follow-up, and
+      whoever does that must treat all three together** — repairing two of three leaves exactly
+      the kind of "right in the copies you were looking at" state this repo has already paid for.
+
+- [ ] ⚠ **7b ADDED A PER-REFERRED-CLIENT JOBBER FETCH TO THE 30-MINUTE SYNC, AND THE COST IS
+      RECORDED RATHER THAN MEASURED** (raised 2026-09-28 by 3d Phase 1a Commit 7b).
+      `syncSingleClient` must now CAPTURE before it decides, and it cannot capture from the
+      object it is handed: `runFullSync` and `runIncrementalSync` build their clients from a
+      `clients(first: 25)` query that selects **no `requests` connection at all**, no
+      `client { id }` on quotes, and no top-level `invoices`. So the door fetches a
+      capture-shape client of its own via `fetchFullClient`.
+      **It is bounded by the `if (!referredBy) return` guard**, which runs first — so the added
+      call is one per REFERRED client per tick, not one per client — and the two client webhooks
+      pass the `fetchFullClient` result they already hold, so they add nothing. A fence in
+      `server/test/oneEngineFromFacts.test.js` pins both halves (one fetch for a referred client,
+      none for an unreferred one, none when a caller supplies one).
+      ⚠ **WHAT IS NOT KNOWN: the referred-client count per tick on a real account.** The figure
+      that would size this is `SELECT COUNT(*) FROM pipeline_cache WHERE contractor_id = ...`
+      against the clients an incremental window actually touches, and it has not been measured.
+      **Measure it before the referral programme is promoted to a second contractor**, and if it
+      is large the fix is widening the sync's own query rather than a per-client fetch — which is
+      a bigger change and is why it was not attempted here. → §10
 
 - [ ] ⚠ **THE CAPTURE PATH HAS NO COST-BASED PACING, AND 3a-2 ROUGHLY DOUBLED ITS QUERY COST**
       (raised 2026-09-25 in Commit 3a-2). `repImportScope.js` reads `requestedQueryCost` /

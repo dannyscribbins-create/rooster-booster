@@ -540,7 +540,7 @@ describe('Flagged Assignments queue — migration, routes, engine wiring', () =>
 
       await runAttributionEngine(pool, {
         contractorId: CID_A, jobberClientId: clientId, currentStatus: 'sold',
-        client, fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+        client, readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
       });
 
       const { rows: flagRows } = await pool.query(
@@ -559,7 +559,7 @@ describe('Flagged Assignments queue — migration, routes, engine wiring', () =>
       // Second conflicting event on the same already-flagged client — dedup no-op, no second message
       await runAttributionEngine(pool, {
         contractorId: CID_A, jobberClientId: clientId, currentStatus: 'sold',
-        client, fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+        client, readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
       });
       const { rows: msgRowsAfter } = await pool.query(
         `SELECT * FROM admin_messages WHERE contractor_id = $1 AND message_type = 'flagged_assignment' AND reference_id = $2`,
@@ -574,7 +574,7 @@ describe('Flagged Assignments queue — migration, routes, engine wiring', () =>
 
       await runAttributionEngine(pool, {
         contractorId: CID_A, jobberClientId: clientId, currentStatus: 'sold',
-        client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+        client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
       });
 
       const { rows: flagRows } = await pool.query(
@@ -605,7 +605,7 @@ describe('Flagged Assignments queue — migration, routes, engine wiring', () =>
 
       await runAttributionEngine(pool, {
         contractorId: CID_A, jobberClientId: clientId, currentStatus: 'sold',
-        client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+        client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
       });
 
       const { rows: cra } = await pool.query(
@@ -633,7 +633,7 @@ describe('Flagged Assignments queue — migration, routes, engine wiring', () =>
       const client = makeClient(clientId, [quote]);
       await runAttributionEngine(pool, {
         contractorId: CID_A, jobberClientId: clientId, currentStatus: 'sold',
-        client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+        client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
       });
 
       const token = await makeSession(pool, { contractorId: CID_A, teamMemberId: owner });

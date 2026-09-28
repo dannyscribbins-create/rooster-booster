@@ -547,7 +547,7 @@ describe('The writer marker — a replay may not downgrade a live or manual writ
       jobberClientId,
       currentStatus: 'lead',          // in GATE_EXCLUSIONS — straight to the provisional step
       client: { quotes: { nodes: [] } },
-      fetchAttributionData: async () => ({
+      readRequests: async () => ({
         requests: [{
           id: 'r-1',
           createdAt: new Date().toISOString(),

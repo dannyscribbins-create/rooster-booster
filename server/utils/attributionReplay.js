@@ -42,6 +42,15 @@
 
 const { runAttributionEngine } = require('./attributionEngine');
 const { decideFromFacts, toEngineQuote } = require('./attributionDecide');
+// ⚠ THE REQUEST MAPPER AND THE TIE-BREAK MOVED OUT IN 7b, AND THEY ARE IMPORTED BACK RATHER THAN
+// KEPT. They now serve the LIVE doors too, so a copy here would be the replay and the live path
+// each holding their own spelling of the ruled order — the divergence this arc exists to close,
+// reappearing inside the file whose header promises "a second door to the same engine, never a
+// second engine". See server/utils/requestFacts.js for why that module requires nothing.
+const {
+  toEngineRequest, jobberIdNumber, compareRequestsOldestFirst,
+  REQUEST_FACT_COLUMNS,
+} = require('./requestFacts');
 const { logError: realLogError } = require('../middleware/errorLogger');
 
 // ── STATUS, FOR THE ADMIN ──────────────────────────────────────────────────────
@@ -60,85 +69,6 @@ function getReplayStatus(contractorId) {
 // status object, so a later trigger waits for the earlier one.
 const chains = new Map();
 
-// ── THE TIE-BREAK (Danny, 2026-09-27 — amended; 3d Phase 1a Commit 7c) ────────
-//
-// Most recent eligible request wins. ⚠ WHEN TWO ELIGIBLE REQUESTS SHARE A createdAt, THE ONE
-// JOBBER CREATED LATER WINS, AND THAT IS THE HIGHER NUMERIC ID INSIDE THE EncodedId — decoded,
-// and compared AS A NUMBER.
-//
-// ⚠ BASE64 TEXT ORDER IS NOT NUMERIC ORDER, AND THAT IS THE WHOLE REASON THIS FUNCTION EXISTS.
-// Request 341664448 and request 99999999 decode to strings whose lexical order puts the '9'
-// first, so a text comparison ranks the OLDER request as later. The ids are 9-and-8-digit
-// neighbours in real data, so this is the common shape rather than a contrived one.
-//
-// ⚠ WHAT THIS CORRECTS: until 7c the replay's tie order was `jobber_request_id ASC` followed by
-// a STABLE descending sort, so `eligible[0]` on a tie was the LOWEST id — the opposite of the
-// ruling wherever ids ascend with creation. No column and no Jobber field was added; the number
-// was already inside the id we store.
-//
-// Returns null for any id that is not a decodable Jobber gid. ⚠ A NULL IS NOT AN ERROR AND MUST
-// NOT BECOME ONE: test fixtures and any pre-gid row carry plain ids, and the comparator falls
-// back to raw string order for them so ordering stays deterministic instead of throwing.
-function jobberIdNumber(encodedId) {
-  if (typeof encodedId !== 'string' || encodedId === '') return null;
-  let decoded;
-  try {
-    decoded = Buffer.from(encodedId, 'base64').toString('utf8');
-  } catch {
-    return null;
-  }
-  // ⚠ ANCHORED ON THE WHOLE gid SHAPE, NOT ON "ends with digits". Buffer.from(…, 'base64') is
-  // LENIENT — it silently drops characters it does not recognise — so a plain id like 'r-12'
-  // decodes to mojibake that a bare /(\d+)$/ could still match, inventing a number from noise.
-  const m = /^gid:\/\/Jobber\/[A-Za-z]+\/(\d+)$/.exec(decoded);
-  if (!m) return null;
-  const n = Number(m[1]);
-  return Number.isSafeInteger(n) ? n : null;
-}
-
-// Orders two engine-shaped requests OLDEST FIRST. Negative when `a` is older.
-// ⚠ ONE COMPARATOR FOR BOTH THE ORDERING AND THE "AT OR BEFORE" CUT BELOW, DELIBERATELY. The cut
-// is what stops a replayed request seeing requests that did not exist yet, and under this ruling
-// "did not exist yet" includes a same-instant request with a HIGHER id — so a cut written as
-// `createdAt <= trigger` and an ordering written on the id would disagree with each other about
-// which of two tied requests came first. Two spellings of one rule is how they drift.
-function compareRequestsOldestFirst(a, b) {
-  const byTime = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-  if (byTime !== 0) return byTime;
-  const an = jobberIdNumber(a.id);
-  const bn = jobberIdNumber(b.id);
-  if (an !== null && bn !== null) return an - bn;
-  // Neither decodes, or only one does: raw string order, which is deterministic and is the
-  // pre-7c behaviour. A decodable id sorts after an undecodable one so the two sets never
-  // interleave unpredictably.
-  if (an !== null) return 1;
-  if (bn !== null) return -1;
-  return String(a.id) < String(b.id) ? -1 : (String(a.id) > String(b.id) ? 1 : 0);
-}
-
-function toEngineRequest(row) {
-  const ids = Array.isArray(row.assigned_jobber_user_ids) ? row.assigned_jobber_user_ids : [];
-  return {
-    id: row.jobber_request_id,
-    createdAt: new Date(row.created_at).toISOString(),
-    salesperson: row.salesperson_jobber_user_id ? { id: row.salesperson_jobber_user_id } : null,
-    // ⚠ pageInfo IS CARRIED FROM THE STORED COLUMN (7a-2), NOT OMITTED. resolveModeAMatch reads
-    // assignedUsers.pageInfo.hasNextPage to refuse a truncated assessment as a single match.
-    // Leaving it off here would make the REPLAY resolve a truncated assessment that the LIVE path
-    // flags — the two sides disagreeing on the same saved row, which is the divergence this arc
-    // exists to close.
-    assessment: row.assessment_id
-      ? {
-        id: row.assessment_id,
-        assignedUsers: {
-          nodes: ids.map((id) => ({ id })),
-          pageInfo: { hasNextPage: row.assigned_users_truncated === true },
-        },
-      }
-      : null,
-  };
-}
-
 /**
  * Replay one client's stored history through the engine.
  * Returns the number of stored requests replayed (0 = nothing to replay).
@@ -153,9 +83,11 @@ async function replayClientAttribution(db, {
   // anchor and the "at or before" cut to drift from what production does.
   writers, readAssignmentRow,
 }) {
+  // ⚠ THE COLUMN LIST IS IMPORTED, NOT SPELLED OUT (7b). toEngineRequest reads every one of
+  // them, and it now lives in requestFacts.js beside the list — so a column added to the mapper
+  // cannot be missing from this SELECT, which is this repo's recorded reads-vs-selects defect.
   const { rows: reqRows } = await db.query(
-    `SELECT jobber_request_id, created_at, salesperson_jobber_user_id, assessment_id,
-            assigned_jobber_user_ids, assigned_users_truncated
+    `SELECT ${REQUEST_FACT_COLUMNS}
        FROM crm_request_facts
       WHERE contractor_id = $1 AND jobber_client_id = $2
       ORDER BY created_at ASC, jobber_request_id ASC`,
@@ -191,12 +123,12 @@ async function replayClientAttribution(db, {
       jobberClientId,
       currentStatus,
       client,
-      // Same return shape as crm/jobber.js's fetchAttributionData, built from rows.
-      fetchAttributionData: async () => ({
-        requests: asOf,
-        assessments: asOf.filter((r) => r.assessment != null).map((r) => r.assessment),
-      }),
-      token: null,
+      // ⚠ THE REPLAY KEEPS ITS OWN READER RATHER THAN USING requestFacts' makeRequestReader, AND
+      // THE REASON IS THE `asOf` CUT. The live doors read every stored request; this loop must
+      // hand the engine only the history that existed AS OF the triggering request, which is a
+      // slice no generic reader can compute. Same mapper, same comparator, same order — only the
+      // set differs, and it differs on purpose.
+      readRequests: async () => ({ requests: asOf }),
       referralAnchor: trigger.createdAt,
       writeOrphanOnMiss: false,
       notifyAdminOnFlag: false,
@@ -391,6 +323,10 @@ module.exports = {
   recreatableClientsSql,
   namesUsersSql,
   getReplayStatus,
+  // ⚠ RE-EXPORTED, NOT REDEFINED (7b). The three moved to server/utils/requestFacts.js so the
+  // live doors could share them; they stay on this module's surface because callers and tests
+  // already import them from here, and re-exporting the ONE definition is the opposite of
+  // keeping a second copy. New callers should require requestFacts directly.
   toEngineRequest,
   jobberIdNumber,
   compareRequestsOldestFirst,

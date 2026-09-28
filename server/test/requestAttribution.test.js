@@ -59,6 +59,13 @@ function soldClient(overrides = {}) {
     quotes: { nodes: [] },
     jobs: { nodes: [{ id: 'job-1', jobStatus: 'active', invoices: { nodes: [] }, client: OWNER }] },
     invoices: { nodes: [] },
+    // ⚠ THE requests CONNECTION IS PART OF THE FIXTURE SINCE 7b, AND IT IS THE WHOLE POINT
+    // OF THIS COMMIT. The engine's request list used to be INJECTED into the door through
+    // fetchAttributionData; it now comes from crm_request_facts, which this object is
+    // captured into. A test that hands the door its requests directly cannot discover that
+    // nothing upstream supplies them — which is exactly the defect class CLAUDE.md records,
+    // and it is why every case below seeds the request HERE and lets capture write it.
+    requests: { nodes: [] },
     ...overrides,
   };
 }
@@ -77,16 +84,30 @@ function triggerRequest(overrides = {}) {
 // assessment. ⚠ THIS IS ACCENT'S NORMAL CASE, NOT AN EDGE CASE (finding 4, measured
 // live 2026-09-18): their salesperson field auto-fills with whoever CREATED the request
 // — an office person — and the rep is attached through the assessment.
-function modeAData(jobberUserIds, createdAt = new Date('2026-09-18T15:41:20Z').toISOString()) {
-  return async () => ({
-    requests: [{
+// ⚠ IT RETURNS A CONNECTION FOR THE CLIENT FIXTURE, NOT A FETCHER (7b). It used to be
+// `modeAData`, an async function handed to the door as fetchAttributionData. The door no longer
+// takes one: this node is CAPTURED into crm_request_facts and read back by requestsFromFacts, so
+// the test exercises the real producer instead of standing in for it.
+// ⚠ `client: OWNER` IS LOAD-BEARING — writeRequestFacts filters on `n.client?.id`, so a node
+// without it is silently dropped and the whole capture reports success having written nothing.
+// ⚠ AND pageInfo IS SELECTED BY THE REAL QUERY, so it is here: hasNextPage false means "we saw
+// the whole assignee list", which is what keeps these cases out of the 7a-2 truncation branch.
+function modeARequests(jobberUserIds, createdAt = new Date('2026-09-18T15:41:20Z').toISOString()) {
+  return {
+    nodes: [{
       id: REQ,
       createdAt,
       salesperson: null,
-      assessment: { id: 'assess-1', assignedUsers: { nodes: jobberUserIds.map(id => ({ id })) } },
+      client: OWNER,
+      assessment: {
+        id: 'assess-1',
+        assignedUsers: {
+          nodes: jobberUserIds.map(id => ({ id })),
+          pageInfo: { hasNextPage: false },
+        },
+      },
     }],
-    assessments: [],
-  });
+  };
 }
 
 // ⚠ is_field_rep MUST BE TRUE HERE, AND IT IS A CONSTRAINT RATHER THAN A PREFERENCE.
@@ -194,8 +215,7 @@ describe('Canvass-3.7 — REQUEST_CREATE / REQUEST_UPDATE attribution (R1, R2)',
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => triggerRequest(),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-1']),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-1']) }),
     });
 
     const resp = await post('/webhooks/jobber/request-create', envelope({ topic: 'REQUEST_CREATE' }));
@@ -216,11 +236,13 @@ describe('Canvass-3.7 — REQUEST_CREATE / REQUEST_UPDATE attribution (R1, R2)',
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => triggerRequest(),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: async (...args) => {
-        const data = await modeAData(['ju-null-sp'])(...args);
-        sawNullSalesperson = data.requests[0].salesperson === null;
-        return data;
+      fetchFullClient: async () => {
+        const c = soldClient({ requests: modeARequests(['ju-null-sp']) });
+        // ⚠ OBSERVED ON THE FIXTURE THE DOOR CAPTURES, NOT ON A FETCHER WRAPPER (7b). There is no
+        // fetcher to wrap any more; this is the object whose salesperson column reaches
+        // crm_request_facts, so asserting on it here is asserting on what the engine will read.
+        sawNullSalesperson = c.requests.nodes[0].salesperson === null;
+        return c;
       },
     });
 
@@ -240,8 +262,7 @@ describe('Canvass-3.7 — REQUEST_CREATE / REQUEST_UPDATE attribution (R1, R2)',
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => triggerRequest({ createdAt: '2026-09-18T15:41:20Z' }),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-anchor'], '2026-09-18T15:41:20Z'),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-anchor'], '2026-09-18T15:41:20Z') }),
     });
 
     await post('/webhooks/jobber/request-create', envelope({ topic: 'REQUEST_CREATE' }));
@@ -273,9 +294,11 @@ describe('Canvass-3.7 — REQUEST_CREATE / REQUEST_UPDATE attribution (R1, R2)',
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => triggerRequest({ createdAt: ANCHOR_TRIGGER_AT }),
-      fetchFullClient: async () => soldClient({ createdAt: ANCHOR_CLIENT_CREATED }),
       // 2026-07-01: inside option B's window, outside option A's.
-      fetchAttributionData: modeAData(['ju-optionb'], '2026-07-01T00:00:00Z'),
+      fetchFullClient: async () => soldClient({
+        createdAt: ANCHOR_CLIENT_CREATED,
+        requests: modeARequests(['ju-optionb'], '2026-07-01T00:00:00Z'),
+      }),
     });
 
     await post('/webhooks/jobber/request-create', envelope({ topic: 'REQUEST_CREATE' }));
@@ -295,8 +318,10 @@ describe('Canvass-3.7 — REQUEST_CREATE / REQUEST_UPDATE attribution (R1, R2)',
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => triggerRequest({ createdAt: ANCHOR_TRIGGER_AT }),
-      fetchFullClient: async () => soldClient({ createdAt: ANCHOR_CLIENT_CREATED }),
-      fetchAttributionData: modeAData(['ju-optiona'], '2026-09-15T00:00:00Z'),
+      fetchFullClient: async () => soldClient({
+        createdAt: ANCHOR_CLIENT_CREATED,
+        requests: modeARequests(['ju-optiona'], '2026-09-15T00:00:00Z'),
+      }),
     });
 
     await post('/webhooks/jobber/request-create', envelope({ topic: 'REQUEST_CREATE' }));
@@ -310,8 +335,7 @@ describe('Canvass-3.7 — REQUEST_CREATE / REQUEST_UPDATE attribution (R1, R2)',
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => triggerRequest(),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData([]),   // no assigned users yet
+      fetchFullClient: async () => soldClient({ requests: modeARequests([]) }),   // no assigned users yet
     });
     await post('/webhooks/jobber/request-create', envelope({ topic: 'REQUEST_CREATE' }));
     await new Promise(r => setTimeout(r, 400));
@@ -321,7 +345,11 @@ describe('Canvass-3.7 — REQUEST_CREATE / REQUEST_UPDATE attribution (R1, R2)',
     // A rep is now mapped and assigned via the assessment; the request's updatedAt
     // moved (measured 15:41:20Z -> 20:05:17Z) and REQUEST_UPDATE fires.
     const repId = await seedRep('ju-later');
-    _setTestOverrides({ fetchAttributionData: modeAData(['ju-later']) });
+    // ⚠ THE SAME REQUEST, RE-CAPTURED (7b). The second delivery re-fetches the client and
+    // re-captures its requests; writeRequestFacts is an UPSERT on (contractor, request id), so
+    // the assignee list the assessment now carries REPLACES the empty one written above. That
+    // is the production path for "a rep was assigned after the request was created".
+    _setTestOverrides({ fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-later']) }) });
 
     await post('/webhooks/jobber/request-update', envelope({ topic: 'REQUEST_UPDATE', occurredAt: '2026-09-18T20:05:17Z' }));
     await waitFor(async () => (await assignmentsFor()).length > 0);
@@ -341,8 +369,8 @@ describe('Canvass-3.7 — REQUEST_CREATE / REQUEST_UPDATE attribution (R1, R2)',
           lastTransitioned: { approvedAt: '2026-09-18T16:00:00Z' },
           salesperson: { id: 'ju-quote' },
         }] },
+        requests: modeARequests(['ju-request']),
       }),
-      fetchAttributionData: modeAData(['ju-request']),
     });
 
     await post('/webhooks/jobber/request-create', envelope({ topic: 'REQUEST_CREATE' }));
@@ -359,8 +387,7 @@ describe('Canvass-3.7 — REQUEST_CREATE / REQUEST_UPDATE attribution (R1, R2)',
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => triggerRequest(),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-good', 'ju-bad']),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-good', 'ju-bad']) }),
     });
 
     await post('/webhooks/jobber/request-create', envelope({ topic: 'REQUEST_CREATE' }));
@@ -375,8 +402,7 @@ describe('Canvass-3.7 — REQUEST_CREATE / REQUEST_UPDATE attribution (R1, R2)',
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => triggerRequest(),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-a', 'ju-b']),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-a', 'ju-b']) }),
     });
 
     await post('/webhooks/jobber/request-create', envelope({ topic: 'REQUEST_CREATE' }));
@@ -400,8 +426,7 @@ describe('Canvass-3.7 — R3: an unresolved client records NOTHING', () => {
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => triggerRequest(),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-unmapped']),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-unmapped']) }),
     });
 
     await post('/webhooks/jobber/request-create', envelope({ topic: 'REQUEST_CREATE' }));
@@ -423,8 +448,11 @@ describe('Canvass-3.7 — R3: an unresolved client records NOTHING', () => {
       jobberClientId: CLIENT,
       currentStatus: 'sold',
       client: soldClient(),
-      fetchAttributionData: modeAData(['ju-unmapped']),
-      token: 'tok',
+      // ⚠ A DIRECT ENGINE CALL, SO THE READER IS SUPPLIED INLINE RATHER THAN READ FROM FACTS.
+      // This case is about writeOrphanOnMiss, not about where requests come from; the fact-backed
+      // reader is exercised by every door case above. `readRequests` replaced
+      // `fetchAttributionData` in 7b — same contract, a name that cannot reach Jobber.
+      readRequests: async () => ({ requests: modeARequests(['ju-unmapped']).nodes }),
       referralAnchor: '2026-09-18T15:41:20Z',
       // writeOrphanOnMiss deliberately NOT passed — the referral path's default.
     });
@@ -452,8 +480,8 @@ describe('Canvass-3.7 — THE FENCE: widening attribution must not widen outreac
       fetchRequestById: async () => triggerRequest(),
       fetchFullClient: async () => soldClient({
         customFields: [{ label: 'Referred by', valueText: 'Someone Who Referred' }],
+        requests: modeARequests(['ju-fence']),
       }),
-      fetchAttributionData: modeAData(['ju-fence']),
       sendEmail: async () => { emailsSent += 1; return { data: { id: 'x' } }; },
     });
 
@@ -508,8 +536,7 @@ describe('Canvass-3.7 — THE FENCE: widening attribution must not widen outreac
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => triggerRequest(),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-nocreate']),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-nocreate']) }),
     });
 
     // NO jobber_clients row is seeded for CLIENT here — that is the whole point.
@@ -555,8 +582,7 @@ describe('Canvass-3.7 — delivery, tenancy and signature', () => {
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => { fetches += 1; return triggerRequest(); },
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-dupe']),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-dupe']) }),
     });
 
     const env = envelope({ topic: 'REQUEST_CREATE', occurredAt: '2026-09-18T15:41:20Z' });
@@ -579,8 +605,7 @@ describe('Canvass-3.7 — delivery, tenancy and signature', () => {
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => { fetches += 1; return triggerRequest(); },
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData([]),
+      fetchFullClient: async () => soldClient({ requests: modeARequests([]) }),
     });
 
     await post('/webhooks/jobber/request-update', envelope({ topic: 'REQUEST_UPDATE', occurredAt: '2026-09-18T15:41:20Z' }));
@@ -598,8 +623,7 @@ describe('Canvass-3.7 — delivery, tenancy and signature', () => {
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => { fetches += 1; return triggerRequest(); },
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData([]),
+      fetchFullClient: async () => soldClient({ requests: modeARequests([]) }),
     });
 
     const env = envelope({ topic: 'REQUEST_CREATE', occurredAt: '2026-09-18T15:41:20Z', spelling: 'occuredAt' });
@@ -618,8 +642,7 @@ describe('Canvass-3.7 — delivery, tenancy and signature', () => {
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => { fetches += 1; return triggerRequest(); },
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-1']),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-1']) }),
     });
 
     const resp = await post('/webhooks/jobber/request-create', envelope({ topic: 'REQUEST_CREATE', accountId: 'JACCT_NOBODY' }));
@@ -674,8 +697,7 @@ describe('Canvass-3.7 — delivery, tenancy and signature', () => {
     _setTestOverrides({
       getFreshContractorAccessToken: async () => 'tok',
       fetchRequestById: async () => { await new Promise(r => setTimeout(r, BLOCK_MS)); return triggerRequest(); },
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-slow']),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-slow']) }),
     });
 
     const startedAt = Date.now();
@@ -709,8 +731,7 @@ describe('Canvass-3.7 — the backfill sweep and its watermark', () => {
         nodes: [{ id: REQ, createdAt: '2026-09-18T15:41:20Z', updatedAt: '2026-09-18T20:05:17Z', client: { id: CLIENT } }],
         hasNextPage: false, endCursor: null,
       }),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-sweep']),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-sweep']) }),
     });
 
     const result = await sweep.sweepContractor(TENANT);
@@ -746,12 +767,17 @@ describe('Canvass-3.7 — the backfill sweep and its watermark', () => {
     );
     sweep._setTestOverrides({
       getToken: async () => 'tok',
+      // ⚠ THE INJECTION CHANGED IN 7b AND THE SUBJECT DID NOT. This used to make
+      // fetchAttributionData throw; there is no such dependency any more, and an engine throw is
+      // now raised INSIDE withClientLock, so the door reports it as 'capture_failed' rather than
+      // letting it out. 'attribute_failed' is still reachable and still matters — it is what a
+      // THROW out of attributeFromRequest produces — so the case drives the shape that still
+      // throws: a page node carrying no request id, which the door rejects outright.
+      fetchFullClient: async () => soldClient(),
       fetchRequestsUpdatedSince: async () => ({
-        nodes: [{ id: REQ, createdAt: '2026-09-18T15:41:20Z', updatedAt: '2026-09-18T20:05:17Z', client: { id: CLIENT } }],
+        nodes: [{ createdAt: '2026-09-18T15:41:20Z', updatedAt: '2026-09-18T20:05:17Z', client: { id: CLIENT } }],
         hasNextPage: false, endCursor: null,
       }),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: async () => { throw new Error('attribution blew up'); },
     });
 
     const result = await sweep.sweepContractor(TENANT);
@@ -789,8 +815,8 @@ describe('Canvass-3.7 — the backfill sweep and its watermark', () => {
           jobs: { nodes: [], pageInfo: { hasNextPage: true } },
           archivedJobs: { nodes: [], pageInfo: { hasNextPage: false } },
         }] },
+        requests: modeARequests(['ju-sweep']),
       }),
-      fetchAttributionData: modeAData(['ju-sweep']),
     });
   }
 
@@ -864,8 +890,7 @@ describe('Canvass-3.7 — the backfill sweep and its watermark', () => {
         nodes: [{ id: REQ, createdAt: '2026-09-18T15:41:20Z', updatedAt: '2026-09-18T20:05:17Z', client: { id: CLIENT } }],
         hasNextPage: false, endCursor: null,
       }),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-sweep']),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-sweep']) }),
     });
     const ok = await sweep.sweepContractor(TENANT);
 
@@ -884,8 +909,7 @@ describe('Canvass-3.7 — the backfill sweep and its watermark', () => {
         nodes: [{ id: REQ, createdAt: '2026-09-18T15:41:20Z', updatedAt: '2026-09-18T20:05:17Z', client: { id: CLIENT } }],
         hasNextPage: false, endCursor: null,
       }),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-sweep']),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-sweep']) }),
     });
 
     const result = await sweep.sweepContractor(TENANT);
@@ -914,8 +938,7 @@ describe('Canvass-3.7 — the backfill sweep and its watermark', () => {
         nodes: [{ id: REQ, createdAt: '2026-09-18T15:41:20Z', updatedAt: '2026-09-18T20:05:17Z', client: { id: CLIENT } }],
         hasNextPage: false, endCursor: null,
       }),
-      fetchFullClient: async () => soldClient(),
-      fetchAttributionData: modeAData(['ju-nobody']),
+      fetchFullClient: async () => soldClient({ requests: modeARequests(['ju-nobody']) }),
     });
 
     const result = await sweep.sweepContractor(TENANT);

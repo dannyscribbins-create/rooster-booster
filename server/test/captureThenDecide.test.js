@@ -120,7 +120,7 @@ const installStage = (relatedData, { clientId = CLIENT } = {}) => _setTestOverri
   getFreshContractorAccessToken: async () => 'tok',
   fetchStageSubjectClient: async () => clientId,
   fetchClientRelatedData: async () => relatedData,
-  fetchAttributionData: async () => ({ requests: [], assessments: [] }),
+  readRequests: async () => ({ requests: [], assessments: [] }),
 });
 
 const stageOf = async (id = CLIENT) => (await pool.query(
@@ -491,7 +491,7 @@ describe('Commit 5 — parity, and paging under the smaller page size', () => {
         // not the fixture's shape.
         requests: { nodes: [requestNode()] },
       }),
-      fetchAttributionData: async () => ({ requests: [], assessments: [] }),
+      readRequests: async () => ({ requests: [], assessments: [] }),
       token: 'tok',
     });
 
@@ -517,7 +517,7 @@ describe('Commit 5 — parity, and paging under the smaller page size', () => {
         quotes: { nodes: [] }, jobs: { nodes: [job()] }, invoices: { nodes: [] },
         requests: { nodes: [requestNode()] },
       }),
-      fetchAttributionData: async () => ({ requests: [], assessments: [] }),
+      readRequests: async () => ({ requests: [], assessments: [] }),
       token: 'tok',
     });
     assert.equal(outcome, 'attributed');
@@ -553,7 +553,7 @@ describe('Commit 5 — parity, and paging under the smaller page size', () => {
         quotes: { nodes: [] }, jobs: { nodes: [job()] }, invoices: { nodes: [] },
         requests: { nodes: [requestNode({ truncated: true })] },
       }),
-      fetchAttributionData: async () => ({ requests: [], assessments: [] }),
+      readRequests: async () => ({ requests: [], assessments: [] }),
       token: 'tok',
     });
 
@@ -579,7 +579,7 @@ describe('Commit 5 — parity, and paging under the smaller page size', () => {
         quotes: { nodes: [] }, jobs: { nodes: [job()] }, invoices: { nodes: [] },
         requests: { nodes: [{ ...requestNode(), client: undefined }] },
       }),
-      fetchAttributionData: async () => ({ requests: [], assessments: [] }),
+      readRequests: async () => ({ requests: [], assessments: [] }),
       token: 'tok',
     });
     assert.equal(await countFacts('crm_request_facts'), 0,
@@ -603,7 +603,7 @@ describe('Commit 5 — parity, and paging under the smaller page size', () => {
           archivedJobs: { nodes: [], pageInfo: { hasNextPage: false } },
         }] },
       }),
-      fetchAttributionData: async () => ({ requests: [], assessments: [] }),
+      readRequests: async () => ({ requests: [], assessments: [] }),
       token: 'tok',
     });
 

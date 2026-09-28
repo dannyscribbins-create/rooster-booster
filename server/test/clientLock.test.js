@@ -396,9 +396,18 @@ describe('Commit 6 — the lock is never held across a Jobber fetch', () => {
     // REAL doors put their fetches, so on its own it would let a fetch move inside a locked
     // section in production and still pass. This reads the three real doors, extracts the body of
     // every withClientLock callback by brace matching, and fails if one names a fetch.
-    // ⚠ runAttributionEngine COUNTS AS A FETCH, and that is the non-obvious half: it calls
-    // fetchAttributionData internally, so wrapping it in the lock would hold a pooled connection
-    // across a Jobber round trip by a longer route.
+    // ⚠ runAttributionEngine USED TO COUNT AS A FETCH AND NO LONGER DOES (7b), AND THAT CHANGE
+    // IS RECORDED RATHER THAN MADE QUIETLY. This comment read: *"runAttributionEngine COUNTS AS A
+    // FETCH, and that is the non-obvious half: it calls fetchAttributionData internally, so
+    // wrapping it in the lock would hold a pooled connection across a Jobber round trip by a
+    // longer route."* True until 7b, and now inverted: the engine's request list comes from
+    // crm_request_facts, it has no token parameter and no network call, and it runs INSIDE the
+    // lock on every door so the assignment write is atomic with the capture it was decided from.
+    // ⚠ THE PROPERTY IS UNCHANGED AND SO IS THIS FENCE'S JOB: no Jobber fetch inside a locked
+    // section. Removing the engine's NAME from the list below would leave that property
+    // unguarded at its new position, so the case beneath this one reads the ENGINE'S OWN SOURCE
+    // and requires that it names no fetcher either. Name removed here, property picked up there
+    // — never dropped.
     //
     // ⚠ AND THIS FENCE IS NAME-ONLY. IT DOES NOT FOLLOW THE CALL GRAPH. Recorded here rather than
     // left for someone to assume otherwise, because the assumption is the dangerous one: it does a
@@ -420,10 +429,14 @@ describe('Commit 6 — the lock is never held across a Jobber fetch', () => {
     const DOORS = [
       path.join(__dirname, '..', 'utils', 'requestAttribution.js'),
       path.join(__dirname, '..', 'routes', 'webhooks', 'jobber.js'),
+      // ⚠ ADDED IN 7b. The referral door became capture-then-decide under the lock in the same
+      // commit; leaving it off this list would have fenced three doors and exempted the fourth,
+      // which is this repo's recorded "a negative finding is only as wide as the scope it names".
+      path.join(__dirname, '..', 'crm', 'pipelineSync.js'),
     ];
     // Assembled from pieces so this file is not its own offender.
     const FETCHERS = ['fetch' + 'FullClient', 'fetch' + 'ClientRelatedData',
-      'fetch' + 'AttributionData', 'capture' + 'Post', 'run' + 'AttributionEngine'];
+      'fetch' + 'AttributionData', 'capture' + 'Post'];
 
     let sectionsChecked = 0;
     const offenders = [];
@@ -452,8 +465,8 @@ describe('Commit 6 — the lock is never held across a Jobber fetch', () => {
     // ⚠ THE NON-VACUITY CHECK. If the extraction ever finds no sections — a rename, a refactor,
     // a brace-matcher that silently returns nothing — the assertion below passes against an empty
     // set, which is the failure mode of this whole class of test.
-    assert.ok(sectionsChecked >= 3,
-      `only ${sectionsChecked} locked sections found — expected at least 3 (two webhook doors and the request door)`);
+    assert.ok(sectionsChecked >= 4,
+      `only ${sectionsChecked} locked sections found — expected at least 4 (two webhook doors, the request door and the referral door)`);
     assert.deepEqual(offenders, [],
       'a Jobber fetch inside a locked section holds a pooled connection across a network call: '
       + offenders.join(' | '));

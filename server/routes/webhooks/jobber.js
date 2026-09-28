@@ -27,7 +27,7 @@ const { isEmailSuppressed } = require('../../utils/emailSuppression');
 const { applyTag } = require('../../utils/tags');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
-const { refreshTokenIfNeeded, getFreshContractorAccessToken, fetchRequestById, fetchAttributionData } = require('../../crm/jobber');
+const { refreshTokenIfNeeded, getFreshContractorAccessToken, fetchRequestById } = require('../../crm/jobber');
 const { attributeFromRequest } = require('../../utils/requestAttribution');
 // ── CAPTURE-THEN-DECIDE (3d Phase 1a Commit 5) ───────────────────────────────
 // ⚠ classifyPipelineStatus IS STILL IMPORTED ABOVE AND IS NO LONGER A DECISION INPUT HERE.
@@ -38,6 +38,10 @@ const { captureClientFacts } = require('../../utils/factCapture');
 const { decideFromFacts } = require('../../utils/attributionDecide');
 const { runAttributionEngine } = require('../../utils/attributionEngine');
 const { withClientLock } = require('../../utils/clientLock');
+// ⚠ THE ENGINE'S REQUEST LIST, FROM SAVED FACTS (7b). fetchAttributionData — a live Jobber
+// call — used to be imported here and handed to the engine. It is gone from this file and from
+// crm/jobber.js entirely, so no door can reach for it by habit.
+const { makeRequestReader } = require('../../utils/requestFacts');
 const { isInvoicePaid, PAID_STATUS } = require('../../utils/invoicePaid');
 const {
   fetchFullClient,
@@ -415,7 +419,6 @@ let _fetchClientJobsForJobUpdate  = fetchClientJobsForJobUpdate;
 let _refreshTokenIfNeeded         = refreshTokenIfNeeded;
 let _getFreshContractorAccessToken = getFreshContractorAccessToken;
 let _fetchRequestById             = fetchRequestById;
-let _fetchAttributionData         = fetchAttributionData;
 // Canvass-stage. Declared HERE with its siblings, not beside its function at the foot of
 // the file: a `let` initialised down there would be in the TDZ for any caller that ran
 // first, and this file's seam note is explicit that load-order is a timing argument and
@@ -433,7 +436,6 @@ function _setTestOverrides({
   refreshTokenIfNeeded: f,
   getFreshContractorAccessToken: g,
   fetchRequestById: h,
-  fetchAttributionData: i,
   fetchStageSubjectClient: j,
 } = {}) {
   if (a !== undefined) _fetchInvoiceWithJobs        = a;
@@ -444,7 +446,6 @@ function _setTestOverrides({
   if (f !== undefined) _refreshTokenIfNeeded         = f;
   if (g !== undefined) _getFreshContractorAccessToken = g;
   if (h !== undefined) _fetchRequestById             = h;
-  if (i !== undefined) _fetchAttributionData         = i;
   if (j !== undefined) _fetchStageSubjectClient      = j;
 }
 
@@ -457,7 +458,6 @@ function _resetTestOverrides() {
   _refreshTokenIfNeeded        = refreshTokenIfNeeded;
   _getFreshContractorAccessToken = getFreshContractorAccessToken;
   _fetchRequestById            = fetchRequestById;
-  _fetchAttributionData        = fetchAttributionData;
   _fetchStageSubjectClient     = fetchStageSubjectClient;
   _sendEmail                   = (...args) => resend.emails.send(...args);
 }
@@ -849,7 +849,11 @@ router.post('/jobber/client-create', async (req, res) => {
         return;
       }
 
-      await syncSingleClient(contractorId, fullClient, referralStartDate, [], token);
+      // ⚠ `captureClient` IS THE SAME OBJECT, PASSED SO THE REFERRAL DOOR CAPTURES WITHOUT A
+      // SECOND FETCH (7b). fetchFullClient's result is already the connection shape
+      // captureClientFacts needs; omitting it here would make syncSingleClient fetch this
+      // very client again.
+      await syncSingleClient(contractorId, fullClient, referralStartDate, [], token, { captureClient: fullClient });
       console.log(`[jobber-webhook] client-create sync complete for client: ${clientId}`);
 
       // Upsert into jobber_clients and derive tags. The former 'if (token)' guard
@@ -1005,7 +1009,11 @@ router.post('/jobber/client-update', async (req, res) => {
         return;
       }
 
-      await syncSingleClient(contractorId, fullClient, referralStartDate, [], token);
+      // ⚠ `captureClient` IS THE SAME OBJECT, PASSED SO THE REFERRAL DOOR CAPTURES WITHOUT A
+      // SECOND FETCH (7b). fetchFullClient's result is already the connection shape
+      // captureClientFacts needs; omitting it here would make syncSingleClient fetch this
+      // very client again.
+      await syncSingleClient(contractorId, fullClient, referralStartDate, [], token, { captureClient: fullClient });
       console.log(`[jobber-webhook] client-update sync complete for client: ${clientId}`);
 
       // Upsert into jobber_clients and derive tags. The former 'if (token)' guard
@@ -1845,7 +1853,6 @@ async function handleRequestWebhook(req, topic) {
       contractorId,
       request,
       fetchFullClient: _fetchFullClient,
-      fetchAttributionData: _fetchAttributionData,
       token,
     });
     console.log(`[${topic}] request ${itemId} -> ${outcome} (contractor: ${contractorId})`);
@@ -1969,6 +1976,58 @@ async function fetchStageSubjectClient(topic, itemId, token) {
 
 // Shared body for the three stage topics. Mirrors handleRequestWebhook's shape exactly:
 // parse, resolve tenancy, claim the delivery, fetch, act, log — never throwing out.
+// ── R5j — AN APPROVAL RUNS THE ENGINE, NOT ONLY THE STAGE ────────────────────
+//
+// ⚠ QUOTE_APPROVED WAS STAGE-ONLY UNTIL COMMIT 5, AND THAT WAS THE GAP. An approved quote is the
+// strongest signal a client has a salesperson, and until then it moved a display column and
+// nothing else — the sticky was written only when a REQUEST happened to fire.
+//
+// ⚠ THE ANCHOR IS THE QUOTE'S OWN approved_at, READ BACK FROM THE FACTS JUST CAPTURED. Not NOW(),
+// which would drift with delivery lag, and not the client's createdAt — the request path anchors
+// on the triggering request's createdAt (R2) and this is the same rule applied to the triggering
+// quote.
+//
+// ⚠ IT TAKES `tx` AND EVERY READ AND WRITE USES IT (7b). Called with the pool, the anchor read
+// would miss the capture in this very transaction — the quote fact whose approved_at it is
+// looking for — and the engine's writes would land outside the lock. Both would look right.
+//
+// ⚠ IT SWALLOWS ITS OWN FAILURE, AND THAT IS R5j'S "ISOLATED" RULING SURVIVING THE MOVE INSIDE
+// THE LOCK. The ruling is that an engine failure leaves the stage standing. While the engine ran
+// on the pool, position gave that for free; inside one transaction a throw would roll the stage
+// back with it, so the catch is what preserves the ruling now. It is deliberately NOT a rethrow.
+async function runApprovalEngine(tx, { req, contractorId, jobberClientId, itemId, topic, currentStatus, client }) {
+  try {
+    const { rows: qRows } = await tx.query(
+      `SELECT approved_at FROM crm_quote_facts
+        WHERE contractor_id = $1 AND jobber_quote_id = $2`,
+      [contractorId, itemId]
+    );
+    const referralAnchor = qRows[0]?.approved_at || null;
+    await runAttributionEngine(tx, {
+      contractorId,
+      jobberClientId,
+      currentStatus,
+      client,
+      // ⚠ BOUND TO `tx` — see server/utils/requestFacts.js. A pool-bound reader would not see
+      // the request facts captured moments ago in this transaction.
+      readRequests: makeRequestReader(tx, contractorId),
+      referralAnchor,
+      // R3, as on the request path — an unresolved client records NOTHING.
+      writeOrphanOnMiss: false,
+      logError,
+    });
+    console.log(`[${topic}] engine ran for client ${jobberClientId} (anchor ${referralAnchor || 'none'})`);
+  } catch (engErr) {
+    await logError({
+      req,
+      contractorId,
+      error: new Error(`[${topic}] stage written but attribution engine failed for client ${jobberClientId}: ${engErr.message}`),
+      source: `POST /webhooks/jobber/${topic} — attribution engine`,
+      alert: false,
+    });
+  }
+}
+
 async function handleStageWebhook(req, topic) {
   let payload;
   try {
@@ -2049,11 +2108,21 @@ async function handleStageWebhook(req, topic) {
     // (contractor, client). Unlike upsertAndTagClient there is nothing here that is not part of
     // the decision, so the UPDATE goes inside the lock too — which is what makes a concurrent
     // event unable to observe facts written but not yet decided from.
-    // ⚠ THE JOBBER FETCHES ARE ABOVE, OUTSIDE THE LOCK, and the engine below is outside it too
-    // because it calls fetchAttributionData. See server/utils/clientLock.js.
-    let stage, factClient, result;
+    // ⚠ THE JOBBER FETCHES ARE ABOVE AND STAY OUTSIDE THE LOCK. See server/utils/clientLock.js.
+    // ⚠ AND ON quote-approved THE ENGINE IS NOW INSIDE IT (7b), WHERE IT USED TO RUN BELOW ON THE
+    // POOL. The engine called fetchAttributionData — a Jobber round trip — which is the only
+    // reason it had to stay out; its request list now comes from the facts captured two lines
+    // above, in this same transaction. That makes the client_rep_assignments write atomic with
+    // the capture and the stage, so a concurrent event cannot decide from facts this one has
+    // written but not yet acted on.
+    // ⚠ R5j'S "ISOLATED" RULING IS PRESERVED BY THE INNER try/catch, NOT BY POSITION. It said an
+    // engine failure must leave the stage standing rather than rolling the handler into its
+    // catch. Inside one transaction, a throw would roll back the stage too — so the engine call
+    // catches its own failure, records it, and lets the transaction commit the capture and the
+    // stage. The ruling is about what survives an engine failure, and that is unchanged.
+    let stage, result;
     try {
-      ({ stage, factClient, result } = await withClientLock(pool, { contractorId, jobberClientId, door: topic }, async (tx) => {
+      ({ stage, result } = await withClientLock(pool, { contractorId, jobberClientId, door: topic }, async (tx) => {
         await captureClientFacts(tx, { contractorId, client: relatedData });
         const decided = await decideFromFacts(tx, { contractorId, jobberClientId });
         // ⚠ UPDATE ONLY. See the block at the top of this section: a zero-row result is the
@@ -2064,7 +2133,13 @@ async function handleStageWebhook(req, topic) {
             WHERE contractor_id = $1 AND jobber_client_id = $2`,
           [contractorId, jobberClientId, decided.currentStatus]
         );
-        return { stage: decided.currentStatus, factClient: decided.client, result: upd };
+        if (topic === 'quote-approved') {
+          await runApprovalEngine(tx, {
+            req, contractorId, jobberClientId, itemId, topic,
+            currentStatus: decided.currentStatus, client: decided.client,
+          });
+        }
+        return { stage: decided.currentStatus, result: upd };
       }));
     } catch (capErr) {
       await logError({
@@ -2089,51 +2164,6 @@ async function handleStageWebhook(req, topic) {
     // already committed by the time this runs; a paging failure must leave that
     // standing rather than rolling the handler into its catch. The nightly sync is the
     // backstop, and the failure is recorded.
-    // ── R5j — AN APPROVAL RUNS THE ENGINE, NOT ONLY THE STAGE ──────────────
-    //
-    // ⚠ QUOTE_APPROVED WAS STAGE-ONLY UNTIL COMMIT 5, AND THAT WAS THE GAP. An approved quote
-    // is the strongest signal a client has a salesperson, and until now it moved a display
-    // column and nothing else — the sticky was written only when a REQUEST happened to fire.
-    //
-    // ⚠ THE ANCHOR IS THE QUOTE'S OWN approved_at, READ BACK FROM THE FACTS WE JUST CAPTURED.
-    // Not NOW(), which would drift with delivery lag, and not the client's createdAt — the
-    // request path anchors on the triggering request's createdAt (R2) and this is the same
-    // rule applied to the triggering quote.
-    //
-    // ⚠ ISOLATED, LIKE THE SALES RECOMPUTE BELOW. The stage is already committed; an engine
-    // failure must leave it standing rather than rolling this handler into its catch.
-    if (topic === 'quote-approved') {
-      try {
-        const { rows: qRows } = await pool.query(
-          `SELECT approved_at FROM crm_quote_facts
-            WHERE contractor_id = $1 AND jobber_quote_id = $2`,
-          [contractorId, itemId]
-        );
-        const referralAnchor = qRows[0]?.approved_at || null;
-        await runAttributionEngine(pool, {
-          contractorId,
-          jobberClientId,
-          currentStatus: stage,
-          client: factClient,
-          fetchAttributionData: _fetchAttributionData,
-          token,
-          referralAnchor,
-          // R3, as on the request path — an unresolved client records NOTHING.
-          writeOrphanOnMiss: false,
-          logError,
-        });
-        console.log(`[${topic}] engine ran for client ${jobberClientId} (anchor ${referralAnchor || 'none'})`);
-      } catch (engErr) {
-        await logError({
-          req,
-          contractorId,
-          error: new Error(`[${topic}] stage written but attribution engine failed for client ${jobberClientId}: ${engErr.message}`),
-          source: `POST /webhooks/jobber/${topic} — attribution engine`,
-          alert: false,
-        });
-      }
-    }
-
     if (topic === 'job-create') {
       try {
         const counts = await refreshClientSales(pool, { contractorId, jobberClientId, token });

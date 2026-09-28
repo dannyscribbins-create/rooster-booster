@@ -1,6 +1,6 @@
 const axios = require('axios');
 const { pool } = require('../db');
-const { refreshTokenIfNeeded, fetchAttributionData } = require('./jobber');
+const { refreshTokenIfNeeded } = require('./jobber');
 const { logError } = require('../middleware/errorLogger');
 const { isInvoicePaid } = require('../utils/invoicePaid');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
@@ -11,11 +11,26 @@ const { sendAdminNotification, resolveNotificationRecipient } = require('../util
 const { isEmailSuppressed } = require('../utils/emailSuppression');
 const { applyTag } = require('../utils/tags');
 const { runAttributionEngine } = require('../utils/attributionEngine');
+// ── 7b: THE REFERRAL DOOR BECOMES CAPTURE-THEN-DECIDE, LIKE EVERY OTHER DOOR ──
+// ⚠ THESE FOUR REQUIRES ARE WHY classifyPipelineStatus HAD TO STAY IN THIS FILE. attributionDecide
+// requires it from here, so this file must NEVER require attributionDecide — that is a cycle. The
+// request reader lives in its own module (server/utils/requestFacts.js) for exactly this reason,
+// and decideFromFacts is reached through a lazy require inside the function below rather than at
+// module load. Same problem, same fix, as server/utils/invoicePaid.js.
+const { captureClientFacts } = require('../utils/factCapture');
+const { makeRequestReader } = require('../utils/requestFacts');
+const { withClientLock } = require('../utils/clientLock');
+const { fetchFullClient } = require('../utils/jobberClientFetch');
 
 // test seam — inert in production, never called outside server/test/
 let _runAttributionEngine = runAttributionEngine;
 function _setAttributionEngineForTest(fn) { _runAttributionEngine = fn; }
 function _resetAttributionEngine() { _runAttributionEngine = runAttributionEngine; }
+
+// test seam — inert in production, never called outside server/test/
+let _psFetchFullClient = fetchFullClient;
+function _setPipelineSyncFetchForTest(fn) { _psFetchFullClient = fn; }
+function _resetPipelineSyncFetch() { _psFetchFullClient = fetchFullClient; }
 
 // Reassignables for test email suppression — production always uses the real implementations.
 let _sendAdminNotification = sendAdminNotification;
@@ -142,13 +157,74 @@ function getReferredByValue(client) {
   return value || null;
 }
 
+/**
+ * Captures a referred client's facts and runs the engine from them, inside the per-client lock.
+ * Inputs: the contractor, the Jobber client id, the referral anchor, an optional capture-shape
+ *         client, and a token used only if one must be fetched.
+ * Output: nothing. Throws on a capture failure, which the caller records and swallows.
+ *
+ * ⚠ THE FETCH IS OUTSIDE THE LOCK AND MUST STAY THERE. Holding a pooled connection across a
+ * Jobber round trip is the one thing server/utils/clientLock.js forbids outright: a slow Jobber
+ * would exhaust the pool rather than delay one client.
+ *
+ * ⚠ A FAILED CAPTURE MEANS NO DECISION (Commit 5, rule 2), AND ON THIS DOOR THAT MATTERS MORE
+ * THAN ON THE OTHERS. This is the only path whose writeOrphanOnMiss is TRUE, so a decision taken
+ * from a partial fact set would not merely be wrong — it would raise an orphan flag and ring the
+ * admin bell about a referral that is fine. Throwing here leaves the pipeline_cache row, the
+ * notifications and the rest of the sync untouched; the next 30-minute tick retries.
+ *
+ * ⚠ decideFromFacts IS REQUIRED LAZILY, AND IT IS NOT A STYLE CHOICE. attributionDecide requires
+ * classifyPipelineStatus from THIS file, so a top-level require here is a cycle — under which
+ * Node hands out a half-initialised module and the symbol is `undefined` at call time, with no
+ * error until something invokes it. The lazy require resolves after both modules are loaded.
+ */
+async function attributeReferredClient({ contractorId, jobberClientId, referralAnchor, captureClient, token }) {
+  const { decideFromFacts } = require('../utils/attributionDecide');
+
+  const forCapture = captureClient || await _psFetchFullClient(jobberClientId, token, {
+    door: 'pipeline-sync', contractorId,
+  });
+
+  await withClientLock(pool, { contractorId, jobberClientId, door: 'pipeline-sync' }, async (tx) => {
+    await captureClientFacts(tx, { contractorId, client: forCapture });
+    // `tx`, not `pool` — a read on another connection would sit outside the lock and could miss
+    // the capture on the line above.
+    const decided = await decideFromFacts(tx, { contractorId, jobberClientId });
+    await _runAttributionEngine(tx, {
+      contractorId,
+      jobberClientId,
+      // ⚠ FROM THE FACTS, NOT FROM classifyPipelineStatus(client) AS IT WAS BEFORE 7b.
+      // ⚠ AND IT CAN NOW DIFFER FROM pipeline_cache.pipeline_status, WHICH IS STILL CLASSIFIED
+      // FROM THE LIVE OBJECT A FEW LINES UP. That is deliberate and scoped: pipeline_cache is the
+      // REFERRAL display and drives bonus timing, and moving it onto facts is a separate change
+      // with its own blast radius. The DECISION is what R5i governs. Same accepted, temporary
+      // split Commit 4 recorded for jobber_clients.pipeline_stage, filed with it.
+      currentStatus: decided.currentStatus,
+      client: decided.client,
+      readRequests: makeRequestReader(tx, contractorId),
+      referralAnchor,
+      // ⚠ NO writeOrphanOnMiss HERE, SO IT DEFAULTS TO TRUE — and that is the referral pipeline's
+      // ruling (R3 is scoped to the request path ONLY). A referral resolving to no rep is a money
+      // question and an incident. Do not add `false` for symmetry with the other doors.
+    });
+  });
+}
+
 // ── SYNC SINGLE CLIENT ────────────────────────────────────────────────────────
 // Input: contractorId string, Jobber client object, referralStartDate Date object
 // Upserts a referred client into pipeline_cache.
 // Pre-start-date clients: written to pipeline_cache with pre_start_date=true
 // and inserted into flagged_referrals if initial_sync is still running.
 // Pre-start-date clients never trigger bonus logic (checked upstream by hard gate).
-async function syncSingleClient(contractorId, client, referralStartDate, allClients = [], token = null) {
+// ⚠ `captureClient` IS THE SIXTH PARAMETER AND IT IS NOT OPTIONAL IN SPIRIT (7b). It is the
+// CONNECTION-shape client captureClientFacts requires — quotes/jobs/invoices/requests each with
+// `.nodes`, and `client { id }` on the quote and job nodes. A caller that already holds one (both
+// client webhooks do: they fetch it immediately above) MUST pass it, or this function pays for a
+// second identical Jobber fetch. A caller that does not — runFullSync and runIncrementalSync,
+// whose own query cannot produce one — omits it and one is fetched, for referred clients only.
+// ⚠ DO NOT PASS THE SYNC'S OWN NODE HERE TO "SAVE A FETCH". It is the wrong shape and capturing
+// it corrupts crm_job_facts; the block at the attribution call below says exactly how.
+async function syncSingleClient(contractorId, client, referralStartDate, allClients = [], token = null, { captureClient = null } = {}) {
   const referredBy = getReferredByValue(client);
   if (!referredBy) return; // not a referred client — do nothing
 
@@ -232,18 +308,36 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
     console.error('[pipelineSync] app_user_ placeholder cleanup failed:', cleanupErr.message);
   }
 
-  // ── ATTRIBUTION ENGINE ────────────────────────────────────────────────────────
+  // ── ATTRIBUTION ENGINE — CAPTURE, THEN DECIDE, UNDER THE LOCK (7b) ───────────
+  //
+  // ⚠ THIS DOOR WAS ENTIRELY LIVE UNTIL 7b, AND IT WAS THE LAST ONE. Commit 5 moved the webhook
+  // and sweep doors onto saved facts and did not touch this one, so the referral pipeline went on
+  // passing the LIVE client object, a currentStatus classified from that live object, and
+  // fetchAttributionData — three inputs the replay took from stored rows. Same client, same
+  // moment, two different answers available depending on which door happened to fire.
+  //
+  // ⚠ IT COULD NOT SIMPLY BE HANDED THE FACT READER, AND THE REASON IS WORTH THE LINES. This
+  // function's `client` comes from two very different places: the client webhooks pass a
+  // fetchFullClient result (every connection, paged to exhaustion), while runFullSync and
+  // runIncrementalSync pass a node from their own `clients(first: 25)` query — which selects NO
+  // requests connection at all, no `client { id }` on quotes, and no top-level invoices. Passing
+  // the fact reader without capturing would have read an EMPTY request set for those clients,
+  // resolved nobody, and — because this path defaults writeOrphanOnMiss to TRUE, unlike the
+  // request path — written an orphan flag and an admin bell for every referred client on every
+  // sync. A flood, from a change that reads like a simplification.
+  // ⚠ AND CAPTURING THE SYNC'S OWN NODE WOULD HAVE BEEN WORSE THAN USELESS: writeQuoteFacts
+  // filters on `n.client?.id` and would have silently dropped every quote, while writeJobFacts
+  // filters on `n?.id` alone and would have written job facts with a NULL jobber_client_id —
+  // orphaning real rows from decideFromFacts' client-scoped read. A capture that corrupts.
+  // So a capture-capable client is FETCHED when the caller did not supply one, and only ever for
+  // a REFERRED client: the `if (!referredBy) return` above has already sent everyone else home,
+  // so the added Jobber cost is one fetch per referred client per sync, not per client.
+  //
   // Fail-safe: an attribution error must never abort the sync or block notifications.
   try {
     if (contractorId) {
-      await _runAttributionEngine(pool, {
-        contractorId,
-        jobberClientId: client.id,
-        currentStatus: status,
-        client,
-        fetchAttributionData,
-        token,
-        referralAnchor,
+      await attributeReferredClient({
+        contractorId, jobberClientId: client.id, referralAnchor, captureClient, token,
       });
     }
   } catch (err) {
@@ -939,4 +1033,4 @@ async function runScheduledSync() {
   }
 }
 
-module.exports = { classifyPipelineStatus, getReferredByValue, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync, getScheduledSyncDiscoveryRows, isThrottledError, computeThrottlePaceDelayMs, _setAttributionEngineForTest, _resetAttributionEngine, _setPipelineSyncEmailsForTest, _resetPipelineSyncEmails, _setPipelineSyncHttpForTest, _resetPipelineSyncHttp };
+module.exports = { classifyPipelineStatus, getReferredByValue, syncSingleClient, runFullSync, runIncrementalSync, runScheduledSync, getScheduledSyncDiscoveryRows, isThrottledError, computeThrottlePaceDelayMs, _setAttributionEngineForTest, _resetAttributionEngine, _setPipelineSyncEmailsForTest, _resetPipelineSyncEmails, _setPipelineSyncHttpForTest, _resetPipelineSyncHttp, _setPipelineSyncFetchForTest, _resetPipelineSyncFetch };

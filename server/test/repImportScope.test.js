@@ -502,7 +502,7 @@ describe('Ruling 7 — THE FENCE: the rep steps and the replay send and create n
     const [a, b] = [await seedRep('ju-pa'), await seedRep('ju-pb')];
     await runAttributionEngine(pool, {
       contractorId: TENANT, jobberClientId: 'pc-probe', currentStatus: 'lead', client: { quotes: { nodes: [] } },
-      fetchAttributionData: async () => ({ requests: [{ id: 'r', createdAt: ago(1), salesperson: null,
+      readRequests: async () => ({ requests: [{ id: 'r', createdAt: ago(1), salesperson: null,
         assessment: { id: 'as', assignedUsers: { nodes: [{ id: 'ju-pa' }, { id: 'ju-pb' }] } } }] }),
       token: null, referralAnchor: ago(1),
     });

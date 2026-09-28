@@ -27,7 +27,6 @@ const { logError } = require('../../middleware/errorLogger');
 const {
   getFreshContractorAccessToken,
   fetchRequestsUpdatedSince,
-  fetchAttributionData,
 } = require('../../crm/jobber');
 const { attributeFromRequest } = require('../../utils/requestAttribution');
 const { fetchFullClient } = require('../../utils/jobberClientFetch');
@@ -69,21 +68,18 @@ const POISON_PILL_RUNS = 3;
 // inert in production, never called outside server/test/
 let _fetchRequestsUpdatedSince = fetchRequestsUpdatedSince;
 let _fetchFullClient           = fetchFullClient;
-let _fetchAttributionData      = fetchAttributionData;
 let _getToken                  = getFreshContractorAccessToken;
 
 // test seam — inert in production, never called outside server/test/
-function _setTestOverrides({ fetchRequestsUpdatedSince: a, fetchFullClient: b, fetchAttributionData: c, getToken: d } = {}) {
+function _setTestOverrides({ fetchRequestsUpdatedSince: a, fetchFullClient: b, getToken: d } = {}) {
   if (a !== undefined) _fetchRequestsUpdatedSince = a;
   if (b !== undefined) _fetchFullClient           = b;
-  if (c !== undefined) _fetchAttributionData      = c;
   if (d !== undefined) _getToken                  = d;
 }
 // test seam — inert in production, never called outside server/test/
 function _resetTestOverrides() {
   _fetchRequestsUpdatedSince = fetchRequestsUpdatedSince;
   _fetchFullClient           = fetchFullClient;
-  _fetchAttributionData      = fetchAttributionData;
   _getToken                  = getFreshContractorAccessToken;
 }
 
@@ -226,7 +222,6 @@ async function sweepContractor(contractorId) {
           contractorId,
           request,
           fetchFullClient: _fetchFullClient,
-          fetchAttributionData: _fetchAttributionData,
           token,
         });
 

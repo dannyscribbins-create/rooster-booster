@@ -46,7 +46,8 @@ async function getAttributionSource(pool, contractorId) {
 
 // Resolves Mode A's match from in-grace requests-with-assessment (anchor filtering happens
 // BEFORE match-counting, so an excluded pre-anchor rep can never contribute to a co-assignment
-// flag). requests must already be sorted newest-first (fetchAttributionData's contract).
+// flag). requests must already be sorted newest-first (readRequests' contract, enforced by
+// requestsFromFacts in server/utils/requestFacts.js).
 // Returns { type: 'none' } | { type: 'single', repId, assessmentId } | { type: 'multiple', repIds, assessmentId }.
 async function resolveModeAMatch(pool, contractorId, requests, referralAnchor) {
   const eligible = (requests || []).filter(r => r.assessment != null && isRequestEligible(r, referralAnchor));
@@ -271,10 +272,20 @@ const DEFAULT_WRITERS = Object.freeze({
 //   currentStatus     — pipeline status from classifyPipelineStatus
 //   client            — Jobber client object; must include quotes.nodes with quoteStatus,
 //                       salesperson.id, and lastTransitioned { approvedAt }
-//   fetchAttributionData — async (jobberClientId, token) => { assessments, requests }
-//                          REQUIRED in production; omit only in tests that don't reach
-//                          the provisional step
-//   token             — Jobber access token passed to fetchAttributionData
+//   readRequests      — async (jobberClientId) => { requests }, NEWEST FIRST.
+//                       REQUIRED in production; omit only in tests that don't reach
+//                       the provisional step.
+//                       ⚠ IT WAS CALLED `fetchAttributionData` AND IT TOOK A TOKEN, UNTIL 7b.
+//                       That name and that parameter are gone TOGETHER and deliberately: this
+//                       argument must never reach Jobber, and a parameter named for a fetch —
+//                       with a token beside it to make the fetch with — is an invitation to
+//                       hand it one. CLAUDE.md's "sweep for the SHAPE, not the NAME" records
+//                       what a name asserting a property it lacks costs. Every production
+//                       caller now passes makeRequestReader (server/utils/requestFacts.js),
+//                       which reads crm_request_facts and cannot make a network call.
+//                       ⚠ THIS IS WHAT LETS THE ENGINE RUN INSIDE withClientLock. The Jobber
+//                       call in here was the sole reason it had to stay outside — see
+//                       server/utils/clientLock.js.
 //   referralAnchor    — timestamp (Date or ISO string) the eligibility window centres on.
 //                       REFERRAL path: pipeline_cache.created_at (first seen as referred).
 //                       REQUEST path: the triggering request's own createdAt (ruling R2,
@@ -315,8 +326,7 @@ async function runAttributionEngine(pool, {
   jobberClientId,
   currentStatus,
   client,
-  fetchAttributionData,
-  token,
+  readRequests,
   referralAnchor,
   writeOrphanOnMiss = true,
   notifyAdminOnFlag = true,
@@ -365,10 +375,10 @@ async function runAttributionEngine(pool, {
   // 4. Early missing-fetcher check — log once and mark provisional as skipped;
   // the sticky gate reads only from the client object and runs regardless.
   let skipProvisional = false;
-  if (!fetchAttributionData) {
+  if (!readRequests) {
     await logError({
       req: null,
-      error: new Error('runAttributionEngine: fetchAttributionData is required in production'),
+      error: new Error('runAttributionEngine: readRequests is required in production'),
       source: 'attributionEngine/provisional',
     });
     skipProvisional = true;
@@ -451,7 +461,7 @@ async function runAttributionEngine(pool, {
     }
 
     const attributionSource = await getAttributionSource(pool, contractorId);
-    const { requests } = await fetchAttributionData(jobberClientId, token);
+    const { requests } = await readRequests(jobberClientId);
 
     // ⚠ THE ONE PLACE THE CONFIDENCE RULE LANDS. The MATCH is unchanged — same mode, same
     // eligibility, same single/multiple/none — only the WRITE differs: provisional when
@@ -502,7 +512,7 @@ async function runAttributionEngine(pool, {
   if (skipProvisional) return;
 
   const attributionSource = await getAttributionSource(pool, contractorId);
-  const { requests } = await fetchAttributionData(jobberClientId, token);
+  const { requests } = await readRequests(jobberClientId);
 
   if (attributionSource === 'assessment_assigned_users') {
     const match = await resolveModeAMatch(pool, contractorId, requests, referralAnchor);

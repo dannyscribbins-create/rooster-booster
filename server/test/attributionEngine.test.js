@@ -178,7 +178,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
   it('Mode A: no assessments returned → benign skip, no row written', async () => {
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -196,7 +196,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-B']); // rep2Id is NOT attributable
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -214,7 +214,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A', 'jobber-user-B']); // only A is attributable
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -235,7 +235,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A']); // repId IS attributable
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -253,7 +253,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A', 'jobber-user-C'], 'assess-co');
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows: assignments } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -276,7 +276,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A', 'jobber-user-C'], 'assess-co2');
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows: flags } = await pool.query(
       'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
@@ -292,7 +292,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeBFetcher('jobber-user-A'); // repId is attributable
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -309,7 +309,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeBFetcher(null);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -323,7 +323,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeBFetcher('jobber-user-B'); // rep2Id is NOT attributable
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -332,20 +332,30 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     assert.equal(rows.length, 0, 'non-attributable salesperson must not set provisional');
   });
 
-  it('Mode B: engine invokes the injected fetchAttributionData with correct arguments', async () => {
+  // ⚠ INVERTED IN 7b, NOT UPDATED. It read "Mode B: engine invokes the injected
+  // fetchAttributionData with correct arguments" and asserted `fetcher receives token`. That
+  // assertion was correct while the engine's reader was a Jobber fetch that needed a bearer
+  // token; it is now a FENCE AROUND THE DEFECT — the engine must not hand its reader anything
+  // it could authenticate a Jobber call with, because the reader reads saved rows. The token
+  // parameter is gone from the engine entirely, so the case asserts the opposite: the client id
+  // arrives, and nothing else does.
+  it('7b — the engine hands its reader the client id and NOTHING that could reach Jobber', async () => {
     await seedCrmSettings(pool, { contractorId: CID, attributionSource: 'request_salesperson' });
-    let fetcherCalledWith = null;
-    const trackingFetcher = async (clientId, token) => {
-      fetcherCalledWith = { clientId, token };
-      return { assessments: [], requests: [] };
+    let readerArgs = null;
+    const trackingReader = async (...args) => {
+      readerArgs = args;
+      return { requests: [] };
     };
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: trackingFetcher, token: 'test-token', referralAnchor: DEFAULT_ANCHOR,
+      // `token` is passed deliberately and must be IGNORED: a caller left over from before 7b
+      // supplying one must not be able to get it to the reader.
+      client: makeClient(), readRequests: trackingReader, token: 'test-token', referralAnchor: DEFAULT_ANCHOR,
     });
-    assert.ok(fetcherCalledWith !== null, 'fetchAttributionData must be called');
-    assert.equal(fetcherCalledWith.clientId, CLIENT_ID, 'fetcher receives jobberClientId');
-    assert.equal(fetcherCalledWith.token, 'test-token', 'fetcher receives token');
+    assert.ok(readerArgs !== null, 'readRequests must be called');
+    assert.equal(readerArgs[0], CLIENT_ID, 'the reader receives jobberClientId');
+    assert.equal(readerArgs.length, 1,
+      `the reader must receive exactly one argument; got ${readerArgs.length}: ${JSON.stringify(readerArgs)}`);
   });
 
   // ── PRECEDENCE PROTECTION ─────────────────────────────────────────────────────
@@ -359,7 +369,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A']); // would normally match repId
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -379,7 +389,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeBFetcher('jobber-user-A'); // would normally match repId
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -399,7 +409,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
       client: makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]),
-      fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -422,7 +432,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -437,7 +447,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'paid',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -451,7 +461,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -464,7 +474,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'inspection',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -477,7 +487,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'not_sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -491,7 +501,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'pending_completion_whatever',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -516,7 +526,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-B' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -536,7 +546,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: null })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -552,7 +562,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ id: 'q-orphan', salespersonId: 'jobber-user-B' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows: flags } = await pool.query(
       'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
@@ -572,7 +582,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ id: 'q-orphan2', salespersonId: 'jobber-user-B' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows: flags } = await pool.query(
       'SELECT * FROM flagged_assignments WHERE contractor_id=$1 AND jobber_client_id=$2 AND flag_reason=$3',
@@ -589,7 +599,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     ]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -610,7 +620,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'paid',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -639,7 +649,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A']);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
 
     // contractor-a should have its provisional set.
@@ -662,13 +672,13 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
 
   // Proves the provisional skip at a pre-gate status (lead).
   // A separate test below verifies the sticky gate still fires when the fetcher is missing.
-  it('missing fetchAttributionData: logError called once, provisional skipped, no DB writes at pre-gate status', async () => {
+  it('missing readRequests: logError called once, provisional skipped, no DB writes at pre-gate status', async () => {
     const errors = [];
     const mockLogError = async (params) => { errors.push(params); };
 
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: undefined, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client: makeClient(), readRequests: undefined, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
       logError: mockLogError,
     });
 
@@ -697,7 +707,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: undefined, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: undefined, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
       logError: mockLogError,
     });
 
@@ -722,7 +732,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ id: 'q-nofetcher', salespersonId: 'jobber-user-B' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: undefined, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: undefined, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
       logError: mockLogError,
     });
 
@@ -753,7 +763,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
 
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: fetcher, token: 'tok', referralAnchor: anchor,
+      client, readRequests: fetcher, token: 'tok', referralAnchor: anchor,
     });
 
     const { rows } = await pool.query(
@@ -779,7 +789,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     ]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -800,7 +810,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A']);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -821,7 +831,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A'], 'assess-trunc', '2026-05-01T00:00:00Z', true);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
 
     const { rows } = await pool.query(
@@ -850,7 +860,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const fetcher = modeAFetcher(['jobber-user-A'], 'assess-trunc', '2026-05-01T00:00:00Z', false);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: fetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -864,7 +874,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ id: 'q-noanchor', salespersonId: 'jobber-user-A' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: null,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: null,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -894,7 +904,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     // considered — if the archived-but-later quote had wrongly won, sticky would be repId.
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -918,7 +928,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const anchor = new Date('2026-05-15T00:00:00Z');
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: anchor,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: anchor,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -942,7 +952,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     ]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: emptyFetcher, token: 'tok', referralAnchor: anchor,
+      client, readRequests: emptyFetcher, token: 'tok', referralAnchor: anchor,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -969,7 +979,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     });
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'lead',
-      client: makeClient(), fetchAttributionData: fetcher, token: 'tok', referralAnchor: anchor,
+      client: makeClient(), readRequests: fetcher, token: 'tok', referralAnchor: anchor,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -993,7 +1003,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: fetcher, token: 'tok', referralAnchor: anchor,
+      client, readRequests: fetcher, token: 'tok', referralAnchor: anchor,
     });
     const { rows } = await pool.query(
       'SELECT * FROM client_rep_assignments WHERE contractor_id=$1 AND jobber_client_id=$2',
@@ -1022,7 +1032,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-C' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      client, readRequests: modeAFetcher(['jobber-user-A']), token: 'tok',
       referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
@@ -1046,7 +1056,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-G' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      client, readRequests: modeAFetcher(['jobber-user-A']), token: 'tok',
       referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
@@ -1064,7 +1074,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      client, readRequests: modeAFetcher(['jobber-user-A']), token: 'tok',
       referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
@@ -1081,7 +1091,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-C', quoteStatus: 'archived' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      client, readRequests: modeAFetcher(['jobber-user-A']), token: 'tok',
       referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
@@ -1096,7 +1106,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-C' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: modeBFetcher('jobber-user-A'), token: 'tok',
+      client, readRequests: modeBFetcher('jobber-user-A'), token: 'tok',
       referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
@@ -1117,7 +1127,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-C' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: modeAFetcher(['jobber-user-A', 'jobber-user-D']), token: 'tok',
+      client, readRequests: modeAFetcher(['jobber-user-A', 'jobber-user-D']), token: 'tok',
       referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows: flags } = await pool.query(
@@ -1136,7 +1146,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([makeApprovedQuote({ salespersonId: 'jobber-user-C' })]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      client, readRequests: modeAFetcher(['jobber-user-A']), token: 'tok',
       referralAnchor: DEFAULT_ANCHOR,
     });
     const { rows } = await pool.query(
@@ -1153,7 +1163,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     const client = makeClient([]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      client, readRequests: modeAFetcher(['jobber-user-A']), token: 'tok',
       referralAnchor: DEFAULT_ANCHOR,
     });
     let { rows } = await pool.query(
@@ -1165,7 +1175,7 @@ describe('runAttributionEngine — provisional assignment engine + sticky gate',
     await pool.query('DELETE FROM client_rep_assignments WHERE contractor_id=$1', [CID]);
     await runAttributionEngine(pool, {
       contractorId: CID, jobberClientId: CLIENT_ID, currentStatus: 'sold',
-      client, fetchAttributionData: modeAFetcher(['jobber-user-A']), token: 'tok',
+      client, readRequests: modeAFetcher(['jobber-user-A']), token: 'tok',
       referralAnchor: DEFAULT_ANCHOR, writtenBy: 'replay',
     });
     ({ rows } = await pool.query(

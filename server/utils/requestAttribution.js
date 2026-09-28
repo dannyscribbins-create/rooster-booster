@@ -41,6 +41,11 @@ const { runAttributionEngine } = require('./attributionEngine');
 // would reintroduce a second definition of "what stage is this client".
 const { captureClientFacts } = require('./factCapture');
 const { decideFromFacts } = require('./attributionDecide');
+// ⚠ THE REQUEST HALF OF THE DECISION, FROM SAVED FACTS (7b). Commit 5 moved the quote half and
+// currentStatus onto facts and left the REP CHOICE on a live Jobber fetch, so live and replay
+// could still name different reps from the same rows. This reader closes that, and removing the
+// Jobber call is what lets the engine run inside the lock below.
+const { makeRequestReader } = require('./requestFacts');
 const { withClientLock } = require('./clientLock');
 const { logError: realLogError } = require('../middleware/errorLogger');
 
@@ -62,7 +67,11 @@ const { logError: realLogError } = require('../middleware/errorLogger');
 //   pool           — pg Pool
 //   contractorId   — resolved tenant; every write below is scoped to it
 //   request        — { id, createdAt, client: { id } } from fetchRequestById or the sweep
-//   deps           — { fetchFullClient, fetchAttributionData, token, logError }
+//   deps           — { fetchFullClient, token, logError }
+//                    ⚠ `fetchAttributionData` WAS HERE AND IS GONE (7b). The engine's request
+//                    list now comes from crm_request_facts, captured microseconds earlier in the
+//                    same transaction, so this door makes exactly ONE Jobber call — the client
+//                    fetch above — where it used to make two.
 //
 // Output: a typed outcome string, for the caller's log line and for tests:
 //   'attributed'     — the engine ran to completion
@@ -73,7 +82,7 @@ const { logError: realLogError } = require('../middleware/errorLogger');
 // resolving to nobody writes nothing and is indistinguishable here from one that wrote
 // a sticky — which is correct: an ordinary client with no identifiable rep is not an
 // incident, and the caller must not log it as one.
-async function attributeFromRequest(pool, { contractorId, request, fetchFullClient, fetchAttributionData, token, logError = realLogError }) {
+async function attributeFromRequest(pool, { contractorId, request, fetchFullClient, token, logError = realLogError }) {
   if (!contractorId) throw new Error('attributeFromRequest: contractorId is required');
   if (!request || !request.id) throw new Error('attributeFromRequest: request with an id is required');
 
@@ -128,18 +137,57 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
   // lock rather than an in-process queue.
   // ⚠ THE JOBBER FETCH IS ABOVE THIS BLOCK AND STAYS THERE. Holding a pooled connection across a
   // network call to Jobber would exhaust the pool on a slow Jobber rather than delaying one
-  // client, and runAttributionEngine below calls fetchAttributionData — which is a Jobber fetch,
-  // so the engine stays OUTSIDE the lock for the same reason.
-  let currentStatus, factClient;
+  // client.
+  //
+  // ── AND THE ENGINE IS NOW INSIDE IT (7b) ────────────────────────────────────
+  // ⚠ IT USED TO RUN BELOW THIS BLOCK, ON THE POOL, AND THE REASON IT COULD NOT MOVE IS GONE.
+  // The engine called fetchAttributionData — a Jobber round trip — so wrapping it would have
+  // held a pooled connection across the network by a longer route. With the request list coming
+  // from crm_request_facts the engine makes no network call at all, so the one objection that
+  // kept it outside no longer applies.
+  // ⚠ WHAT MOVING IT BUYS IS A LOST-UPDATE FIX, NOT TIDINESS. Outside the lock, two events for
+  // one client could interleave like this: event A captures and decides, event B captures newer
+  // facts and decides and writes its assignment, then A — still holding the answer it computed
+  // from the OLDER facts — writes over it. The assignment is durable and wrong, and the next
+  // event finds a stored answer and has no reason to look. Inside the lock, A's whole
+  // capture-decide-assign is atomic with respect to B's.
+  // ⚠ THE FAILURE MODE CHANGES WITH IT, AND THAT IS ACCEPTED RATHER THAN OVERLOOKED. An engine
+  // throw now rolls back the capture and the stage write too, where before it left them
+  // standing. All-or-nothing is the correct reading — a fact set committed beside a decision
+  // that failed is exactly the half-state the lock exists to prevent — and the retry path is
+  // unchanged: this returns 'capture_failed', the sweep HOLDS its watermark on that (6b), and
+  // the next REQUEST_UPDATE re-runs the whole unit.
   try {
-    ({ currentStatus, factClient } = await withClientLock(pool, { contractorId, jobberClientId, door: 'request-attribution' }, async (tx) => {
+    await withClientLock(pool, { contractorId, jobberClientId, door: 'request-attribution' }, async (tx) => {
       await captureClientFacts(tx, { contractorId, client: fullClient });
       // ⚠ `tx`, NOT `pool`. Passing the pool here would run the read on a DIFFERENT connection,
       // outside the transaction and outside the lock — it would look serialised and not be.
       const decided = await decideFromFacts(tx, { contractorId, jobberClientId });
       await writeStage(tx, contractorId, jobberClientId, decided.currentStatus);
-      return { currentStatus: decided.currentStatus, factClient: decided.client };
-    }));
+
+      await runAttributionEngine(tx, {
+        contractorId,
+        jobberClientId,
+        currentStatus: decided.currentStatus,
+        client: decided.client,
+        // ⚠ BOUND TO `tx`, AND THIS IS THE ARGUMENT NOBODY WOULD THINK TO CHECK. A reader built
+        // on the pool would read crm_request_facts on another connection — outside this
+        // transaction, so it would miss the capture two lines above and could observe another
+        // event's partial write. It would look serialised and would not be.
+        readRequests: makeRequestReader(tx, contractorId),
+        // R2 — the triggering request's own createdAt, never pipeline_cache.created_at.
+        referralAnchor: request.createdAt,
+        // R3 — an unresolved client records NOTHING: no assignment, no flagged_assignments
+        // row, no admin_messages bell. When a rep is assigned later, REQUEST_UPDATE fires and
+        // it attributes then (finding 3: assigning a rep DOES bump the request's updatedAt,
+        // measured 15:41:20Z -> 20:05:17Z).
+        // ⚠ Scoped to THIS path. The referral pipeline's orphan flag is unchanged — that flag
+        // exists because a referral's credit is a money question.
+        writeOrphanOnMiss: false,
+        logError,
+      });
+
+    });
   } catch (capErr) {
     await logError({
       req: null,
@@ -151,12 +199,12 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
     return 'capture_failed';
   }
 
-  // ⚠ currentStatus AND client BOTH COME FROM THE FACTS, AND THAT PAIRING IS WHAT R5i MEANS.
-  // attributionReplay.js destructures this exact call and hands both to the engine the same
-  // way; taking the status from facts while passing the LIVE client would give the replay and
-  // the live door two different engine inputs from one set of rows, which is the parity the
-  // fence in this arc exists to hold.
-  // decided inside the locked transaction above, together with the stage write
+  // ⚠ currentStatus, THE CLIENT AND THE REQUEST LIST ALL COME FROM THE FACTS, AND THAT TRIPLE IS
+  // WHAT R5i MEANS. attributionReplay.js feeds the engine the same three from the same rows;
+  // taking any one of them from a live fetch would give the replay and the live door different
+  // engine inputs from one set of facts, which is the parity the fence in this arc exists to
+  // hold. Commit 5 did the first two; 7b did the third, which is the one that names the rep.
+  // All of it is decided inside the locked transaction above, together with the stage write.
 
   // ── THE STAGE WRITE (Canvass-stage Part 2; the seventh zero REVERSED) ───────
   //
@@ -188,26 +236,12 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
   // ⚠ THE WRITE ITSELF MOVED INTO writeStage() AND RUNS INSIDE THE LOCK (Commit 6). The comment
   // block above is unchanged and still governs: UPDATE-only, a zero-row result is the expected
   // quiet outcome, and this path must never CREATE a jobber_clients row.
+  // ⚠ AND THE ENGINE RUNS IN THAT SAME TRANSACTION SINCE 7b — see the block above the lock.
 
-  await runAttributionEngine(pool, {
-    contractorId,
-    jobberClientId,
-    currentStatus,
-    client: factClient,
-    fetchAttributionData,
-    token,
-    // R2 — the triggering request's own createdAt, never pipeline_cache.created_at.
-    referralAnchor: request.createdAt,
-    // R3 — an unresolved client records NOTHING: no assignment, no flagged_assignments
-    // row, no admin_messages bell. When a rep is assigned later, REQUEST_UPDATE fires and
-    // it attributes then (finding 3: assigning a rep DOES bump the request's updatedAt,
-    // measured 15:41:20Z -> 20:05:17Z).
-    // ⚠ Scoped to THIS path. The referral pipeline's orphan flag is unchanged — that flag
-    // exists because a referral's credit is a money question.
-    writeOrphanOnMiss: false,
-    logError,
-  });
-
+  // ⚠ 'attributed' STILL MEANS THE ENGINE RAN, and since 7b it also means the assignment was
+  // committed atomically with the facts it was taken from. It still does NOT mean a rep was
+  // found — under R3 a client resolving to nobody writes nothing and is indistinguishable here
+  // from one that wrote a sticky.
   return 'attributed';
 }
 
