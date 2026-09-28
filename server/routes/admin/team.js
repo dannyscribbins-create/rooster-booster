@@ -6,7 +6,7 @@ const { pool } = require('../../db');
 const { verifyAdminSession } = require('../../middleware/auth');
 const { requirePermission } = require('../../middleware/permissions');
 const { logError } = require('../../middleware/errorLogger');
-const { getClientAssignment } = require('../../utils/clientAssignment');
+const { getClientAssignment, writeManualSticky } = require('../../utils/clientAssignment');
 const { formerRepTag } = require('../../utils/attributionTags');
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { jobberShouldRetry, resendShouldRetry } = require('../../utils/retryHelpers');
@@ -974,24 +974,19 @@ router.patch('/api/admin/team/flagged-assignments/:id', requirePermission('rep_a
         return res.status(422).json({ error: 'rep_id is not a valid attributable rep for this contractor' });
       }
 
-      // No WHERE sticky_rep_id IS NULL guard here — unlike the engine's writeSticky,
-      // a manual resolve-assign always supersedes any existing sticky value (rule #4).
-      await client.query(
-        // written_by='manual' alongside sticky_source='manual' (Danny, 2026-09-22): the
-        // source says WHY this rep, the marker says WHO put it there. A rebuild discards
-        // engine-written rows and must never touch this one — A36.3 makes manual the
-        // designed override.
-        `INSERT INTO client_rep_assignments
-           (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, written_by)
-         VALUES ($1, $2, $3, 'manual', NOW(), NOW(), 'manual')
-         ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
-           sticky_rep_id = EXCLUDED.sticky_rep_id,
-           sticky_source = EXCLUDED.sticky_source,
-           sticky_set_at = EXCLUDED.sticky_set_at,
-           updated_at    = EXCLUDED.updated_at,
-           written_by    = EXCLUDED.written_by`,
-        [contractorId, jobberClientId, rep_id]
-      );
+      // ⚠ ONE SHARED WRITER SINCE 3d PHASE 1b COMMIT 3 — see writeManualSticky in
+      // server/utils/clientAssignment.js. This statement and the client-record correction
+      // path's were BYTE-IDENTICAL; the batch ruling puts the same-rep date guard in one
+      // writer rather than in two copies.
+      // ⚠ THE TWO RULINGS THIS BLOCK USED TO CARRY BOTH HOLD AND NOW LIVE IN THE WRITER.
+      // No `WHERE sticky_rep_id IS NULL` guard: a manual resolve-assign always supersedes
+      // any existing sticky (rule #4 / A36.3). And written_by='manual' alongside
+      // sticky_source='manual' (Danny, 2026-09-22) — the source says WHY this rep, the
+      // marker says WHO put it there, and a rebuild discards engine-written rows while
+      // never touching this one.
+      // ⚠ `client`, NOT `pool` — the transaction opened above, whose ROLLBACK paths must
+      // be able to undo this write.
+      await writeManualSticky(client, { contractorId, jobberClientId, repId: rep_id });
     }
 
     await client.query(
@@ -1573,20 +1568,17 @@ router.patch('/api/admin/team/client-assignment/:jobberClientId', requirePermiss
         await client.query('ROLLBACK');
         return res.status(422).json({ error: 'rep_id is not a valid attributable rep for this contractor' });
       }
-      // No `WHERE sticky_rep_id IS NULL` guard, exactly as the flagged path: a manual
-      // assignment always supersedes whatever the engine decided.
-      await client.query(
-        `INSERT INTO client_rep_assignments
-           (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, written_by)
-         VALUES ($1, $2, $3, 'manual', NOW(), NOW(), 'manual')
-         ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
-           sticky_rep_id = EXCLUDED.sticky_rep_id,
-           sticky_source = EXCLUDED.sticky_source,
-           sticky_set_at = EXCLUDED.sticky_set_at,
-           updated_at    = EXCLUDED.updated_at,
-           written_by    = EXCLUDED.written_by`,
-        [contractorId, jobberClientId, rep_id]
-      );
+      // ⚠ ONE SHARED WRITER SINCE 3d PHASE 1b COMMIT 3 — see writeManualSticky in
+      // server/utils/clientAssignment.js. This statement and the flagged path's were
+      // BYTE-IDENTICAL, and the batch ruling puts the same-rep date guard in one place
+      // rather than in two copies of one statement.
+      // ⚠ THE RULING THIS LINE USED TO CARRY STILL HOLDS AND NOW LIVES IN THE WRITER:
+      // no `WHERE sticky_rep_id IS NULL` guard — a manual assignment always supersedes
+      // whatever the engine decided (A36.3). The same-rep guard added in Commit 3 governs
+      // the DATE only; the rep, the source and the marker are written unconditionally.
+      // ⚠ `client`, NOT `pool` — this is the transaction opened above, and a pool-bound
+      // write would survive the ROLLBACK paths in this handler.
+      await writeManualSticky(client, { contractorId, jobberClientId, repId: rep_id });
       // An open flag on this client is answered by the decision just made.
       await client.query(
         `UPDATE flagged_assignments SET status = 'resolved', resolved_by = $3, resolved_at = NOW()

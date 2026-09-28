@@ -424,8 +424,41 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2023 server tests across 332 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the Phase 1b Commit 2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2023 · suites 332 · pass 2023 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 2 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2036 server tests across 335 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the Phase 1b Commit 3 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2036 · suites 335 · pass 2036 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 3 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2023 → 2036 is **+13**, one new file (`manualAssignedAt.test.js`); suites 332 → 335 is
+  that file's **three** top-level describes. React did not move — no `src/` file was touched —
+  and was re-measured. **All four predicted before the run and matched.** Counted with an
+  anchored `^\s*it\(` (13); the file's two loops both sit in `beforeEach` and wrap no case.
+  ⚠ **TWO OBLIGATIONS PULL IN OPPOSITE DIRECTIONS IN THIS COMMIT, AND THE WHOLE RISK IS THAT
+  ONE SILENTLY WINS.** The DATE obeys the same-rep guard; the REP obeys A36.3 — a manual
+  assignment ALWAYS supersedes the engine, so the shared writer has no
+  `WHERE sticky_rep_id IS NULL` and never may. ⚠ **A guard leaking from the date onto the rep
+  would leave EVERY date assertion passing** while a contractor's correction silently did
+  nothing, so the A36.3 cases are load-bearing rather than decorative — guard-proof (ii) is
+  what pins them.
+  ⚠ **AND THREE WIDTHS ARE TWO THINGS AT ONCE, SO EACH IS SPLIT RATHER THAN REPORTED AS ONE
+  NUMBER.** (i) the date re-stamped unconditionally → **2 behavioural** + 1 structural; (ii)
+  the engine's existing-wins guard added to the manual writer → **2 behavioural** + 1
+  structural; (iii) the writer ignoring its `tx` and using the pool → **exactly 1**, no
+  structural; (iv) the guard made always-on → **1 behavioural** + 1 structural. The structural
+  one is the same source-text fence each time, and it firing is the fence working — but
+  **an injection that also trips a text fence is reporting two things at once, and one of them
+  is not evidence about the behaviour.** Every revert was an inverse patch in a `finally`,
+  byte-identical by sha256, with anchors checked unique in BOTH directions before writing.
+  ⚠ **(ii) REDS THE PAIRED POSITIVE TOO, AND THAT IS CORRECT RATHER THAN NOISE.** With
+  existing-wins on the manual writer, a DIFFERENT-rep re-assign onto an existing sticky is
+  also a no-op, so its date does not move either. Both failures are genuine consequences of
+  the same broken rule.
+  ⚠ **A SOURCE FENCE CAUGHT ITS OWN AUTHOR MISCOUNTING, WHICH IS THE ENTRY WORTH KEEPING.**
+  The "both routes call the shared writer" fence first counted `writeManualSticky(` and
+  expected **3** — "one import plus two call sites" — and got 2, because the import is a
+  DESTRUCTURE and carries no `(`. The needle would have matched the import in a file that
+  imported it differently, which is the substring trap this file records. The import is now
+  asserted by its own pattern and the call sites counted separately, so each number means one
+  thing.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 2 COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2023 / 332 / 1358 / 82**.
   Server 1998 → 2023 is **+25**, one new file (`assignedAtWriters.test.js`); suites 327 → 332 is
   that file's **five** top-level describes. React did not move — no `src/` file was touched — and
   was re-measured. **All four predicted before the run and matched.** Counted with an anchored

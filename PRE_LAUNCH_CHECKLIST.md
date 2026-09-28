@@ -337,6 +337,23 @@ preview — in that order, and **the order is load-bearing**: §6 records that t
       **a preview run in that window is NOT a review of the date-restoring rebuild**, and the
       gate's precondition is not met by one.
 
+- [x] **Commit 3 — one shared `writeManualSticky`. SHIPPED locally 2026-09-28, NOT PUSHED.**
+      Both admin routes (the flagged-assignment resolve and the client-record correction)
+      wrote byte-identical statements; the statement now lives once in
+      `server/utils/clientAssignment.js` and both routes call it.
+      ⚠ **THE SAME-REP GUARD IS ON THE DATE ONLY, AND A36.3 IS WHY THAT DISTINCTION IS
+      LOAD-BEARING RATHER THAN PEDANTIC.** A manual assignment must ALWAYS supersede whatever
+      the engine decided, so the shared writer has no `WHERE sticky_rep_id IS NULL` and never
+      may. **A guard leaking from the date onto the rep would leave every date assertion
+      passing** while a contractor's correction silently did nothing — so the writer carries
+      a source-text fence asserting the absence of that guard, alongside the behavioural case.
+      ⚠ **REP VALIDATION WAS DELIBERATELY NOT FOLDED IN.** The flagged path requires
+      `is_attributable`; the correction path requires `is_attributable AND active`. That
+      asymmetry is the separately-filed activity-flag item, and unifying it as a side effect
+      of an extraction is not a decision this commit gets to make. **Whoever closes that item
+      should note the shared writer is now the natural place for it, but the two routes still
+      validate independently.**
+
 - [ ] **🔴 THE DATE-RESTORING REBUILD, AFTER COMMIT 6.** The 2026-09-27 rebuild reset roughly
       400 rows' dates to that day, and Commit 1's backfill has now copied those same wrong
       dates into `assigned_at`. **The fix is the EXISTING rebuild under the EXISTING gate** —
@@ -347,6 +364,19 @@ preview — in that order, and **the order is load-bearing**: §6 records that t
       ⚠ **The rebuild re-runs the whole attribution, so it can move REPS as well as dates.**
       The 442/442-unchanged preview is a 2026-09-27 measurement and is **not** evidence about
       the tree after 1b. Re-measure; a non-zero "would change" column is a STOP.
+      ⚠ **SEQUENCE IT AS SOON AS COMMIT 6 LANDS — NOT "SOMETIME PRE-LAUNCH" (Danny,
+      2026-09-28), AND THE REASON IS THAT WAITING MAKES IT WORSE RATHER THAN NEUTRAL.** R5
+      forbids a re-run moving the date, so the same-rep guard **locks in** the pre-Commit-2
+      write-clock dates on every existing row: live traffic can never repair history, and
+      each further same-rep write cements a wrong date rather than correcting it. Only the
+      rebuild repairs them, because only the rebuild DELETES the row so the replay
+      re-derives from the fact.
+      ⚠ **MEASURED IN PRODUCTION 2026-09-28, which is what turns this from reasoning into a
+      finding.** Client `…Q2xpZW50LzE1NDA4NTg2NA==` was re-written by a live `request-update`
+      after the Commit 2 deploy: its stored `assigned_at` held at `13:20:00.857` (a
+      pre-Commit-2 write clock) while the deciding request's own `created_at` is
+      `2026-09-22T18:08:07Z` — **six days apart**. The guard behaved exactly as ruled AND
+      preserved a wrong value. Both are true together and both are by design.
 
 - [ ] **THE `qr_link` DISCARD LEAK — gated on the first `qr_link` MINT, not on Phase 4's
       number.** Ruled 2026-09-28 (Danny, Q5): file it, do nothing now.
