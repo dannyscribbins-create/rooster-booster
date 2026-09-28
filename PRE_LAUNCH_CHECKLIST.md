@@ -454,6 +454,40 @@ preview — in that order, and **the order is load-bearing**: §6 records that t
       `2026-09-22T18:08:07Z` — **six days apart**. The guard behaved exactly as ruled AND
       preserved a wrong value. Both are true together and both are by design.
 
+- [ ] **🔴 MAP EVERY ACTIVE ACCENT REP BEFORE LAUNCH — THEN PREVIEW, THEN REBUILD.** Ruled
+      2026-09-28 (Danny), and it is the pre-launch half of the Lyndall ruling
+      (`RoofMiles_Decisions_Record_Canvass_Attribution.md`, PART 10b). When a client's most
+      recent activity belongs to an **unmapped** person, the engine attributes from OLDER
+      activity naming a mapped rep. That is the accepted behaviour, not a defect — **and it
+      means an unmapped rep's clients launch attributed to somebody else.**
+      ⚠ **IT SELF-CORRECTS ONLY IF SOMEONE RUNS THE REBUILD.** Mapping the person makes their
+      activity eligible and — being newest — winning, but **nothing re-decides an existing
+      row**: the same-rep guard and the sticky both hold what is already there. The sequence is
+      **map every active rep → run the preview → Danny reviews → one rebuild**, and mapping
+      without the rebuild leaves the wrong answer in place looking settled.
+      ⚠ **MEASURED 2026-09-28:** of 26 clients holding a live approved quote with no job, **23
+      have unmapped quote authors.** That is the visible edge of the population; the full size
+      is not measured and will only be known from the preview after the mapping is done.
+      **Ordering: this must happen BEFORE the launch rebuild, or it buys a rebuild that has to
+      be run again.**
+
+- [ ] **`crm_request_facts` HAS NO `updated_at` — WHEN A FACT CHANGED CANNOT BE MEASURED.**
+      Filed 2026-09-28 from a live investigation that hit the wall. Nihar Das's single request
+      fact (created 2026-07-06) now carries `assessment_id: null` and an empty
+      `assigned_jobber_user_ids`, so **Mode A cannot match it today** — yet the 2026-09-27
+      rebuild's replay wrote him a `mode_a` provisional, which means the assessment WAS there
+      then. **The fact was rewritten at some point between, and the table cannot say when.**
+      ⚠ **THE COST IS NOT THE MISSING COLUMN, IT IS THAT AN EXPLANATION BECOMES UNFALSIFIABLE.**
+      "A later upsert nulled the assessment" is the obvious mechanism and it is **inference,
+      not measurement** — there is no column that could confirm or refute it, so any
+      investigation into "why does this row disagree with its own facts" terminates in a
+      plausible story. The sibling fact tables should be checked for the same gap rather than
+      assumed to differ.
+      ⚠ **DO NOT ADD THE COLUMN AS A TIDY-UP.** It is a write on every capture at every door,
+      and a backfill would have to invent values for every existing row — writing `NOW()` would
+      make the column assert that every fact changed on migration day, which is worse than not
+      having it. Scope it deliberately, with the backfill answered first.
+
 - [ ] **THE `qr_link` DISCARD LEAK — gated on the first `qr_link` MINT, not on Phase 4's
       number.** Ruled 2026-09-28 (Danny, Q5): file it, do nothing now.
       **The shape:** the rebuild's discard clears assignment HALVES and deliberately does not

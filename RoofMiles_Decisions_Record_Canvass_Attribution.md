@@ -153,6 +153,49 @@ because they often do not.
 historical. Counting 'sold' alone would make a rep's conversions **shrink** as jobs
 get paid, reading as lost work. Once sold, always converted.
 
+## 2.1a A SALE HAPPENS AT JOB CREATION, NOT AT QUOTE APPROVAL — and this REVERSES a same-day ruling
+
+**RULED by Danny, 2026-09-28.** A sale happens when a **JOB is created**. An approved quote with
+no job is **not** a sale and is **not** 'sold'. **This confirms `classifyPipelineStatus` exactly
+as it ships — no classifier change, no migration, no backfill.**
+
+⚠ **IT IS RECORDED AS A REVERSAL RATHER THAN AS A CONFIRMATION, AND THAT IS THE POINT OF THE
+ENTRY.** Earlier the same day the opposite was ruled — *"an approved quote counts as sold even
+before a job exists"* — and an implementation report was commissioned against it. **Nothing was
+built.** Writing this as *"the classifier was right all along"* would delete the reasoning below,
+and the reasoning is the only thing that stops the approved-quote proposal returning: on the
+evidence available at the time it was an entirely sensible ruling.
+
+**Danny's three reasons, and each one is a property the classifier already has:**
+
+1. **An approved quote can be cancelled**, or approved by mistake when several were sent. Approval
+   is not a commitment; job creation is.
+2. ⚠ **A REFERRAL WOULD BE ABLE TO GO SOLD → NOT SOLD ON THE REFERRER'S OWN SCREEN.** That is the
+   decisive one, and it is about trust rather than accuracy. A referrer who has been told their
+   person is sold, and then sees it withdrawn, reads the platform as acting in bad faith — and no
+   amount of correct downstream arithmetic repairs that. **A stage a referrer can see must only
+   ever move forward.** (The bonus is already gated to `complete`, so no money was ever at risk —
+   the exposure is the WORD, not the amount. → Never-Break, *Frontend Rules*.)
+3. **A quote becomes a job only after offline follow-through** between rep and client, so the
+   quote-to-job rate is far higher than the sent-to-approved rate. The stronger signal is the one
+   that survives the follow-through.
+
+**R5j STAYS, AND IS NOT WEAKENED BY THIS.** The QUOTE_APPROVED door
+(`POST /webhooks/jobber/quote-approved`, added in `75dec0c`) captures the approval into
+`crm_quote_facts` **immediately** and runs the engine. The approval is therefore on record the
+moment it happens — it simply does not move the stage, and **the sticky lock follows at job
+creation.** ⚠ **Capture and decision are different jobs**, and the value of capturing early is
+exactly that the decision, whenever it comes, has the fact already.
+
+⚠ **THE MEASURED CONSEQUENCE, so nobody re-opens this expecting it to be large.** At Accent on
+2026-09-28: **2,379** clients hold a live approved quote and **26** of those have no job. Of the
+26, **23** are unassigned with unmapped quote authors (PART 10b's population, not this one) and
+**3** hold a provisional for rep 5. **The population this ruling decides is three clients**, and
+they lock in when their jobs are created.
+
+→ §2.1 states the rule; §2.5 records why a cancellation is invisible to us, which is reason 1's
+teeth; §2.6 and §2.7 hold the money path, which this does not touch.
+
 ## 2.2 Conversions count sales; the close rate counts clients
 
 Danny expected ~213 from a 52% close rate on 411 clients. The card showed 286.
@@ -686,6 +729,39 @@ out of mojibake.
 non-vacuity is a test of its own: the two ids are asserted to DISAGREE between text order and
 numeric order, because a fixture whose orderings happened to agree would leave the injection green
 and the ruling untested while looking tested.
+
+---
+
+# PART 10b — AN UNMAPPED PERSON ON THE NEWEST ACTIVITY DOES NOT BLOCK ATTRIBUTION
+
+**RULED by Danny, 2026-09-28.** When a client's MOST RECENT activity belongs to a person who is
+**not mapped to a RoofMiles team member**, the engine may attribute from **older** activity that
+does name a mapped rep. The engine's answer is accepted as it stands; **an admin corrects it by
+hand if it is wrong.**
+
+**This sits beside PART 10** and does not amend it. Most-recent-eligible-request-wins governs
+ordering *within the eligible set*; this governs what happens when the newest request is not
+eligible at all, because nobody it names is mapped. The eligible set skips it and the next one
+down wins — which is the behaviour that already ships.
+
+**The worked case: Lyndall Tunnell.** The newest request named an unmapped person; an older one
+named rep 5. The engine reached past the newer activity and attributed to rep 5.
+
+⚠ **IT SELF-CORRECTS, AND THAT IS WHY NO MACHINERY IS BEING BUILT.** The moment the current
+person is mapped to a team member, their activity becomes eligible and — being the most recent —
+wins under PART 10. The repair path is then the ordinary one: **map the rep, run the preview,
+review, run the rebuild.** No migration, no special case, no flag.
+
+⚠ **THE PRE-LAUNCH CONSEQUENCE IS FILED RATHER THAN LEFT IMPLICIT.** Every active Accent rep must
+be mapped **before launch**, then previewed and rebuilt, or clients will launch attributed to
+whoever happens to be mapped rather than to whoever is working them. See
+`PRE_LAUNCH_CHECKLIST.md`.
+
+⚠ **THE REJECTED ALTERNATIVE, RECORDED BECAUSE IT LOOKS LIKE THE CAUTIOUS ONE.** Leaving such a
+client **unassigned** until the newest person is mapped is the obvious conservative move, and it
+is worse: it hides a client from the rep who has genuinely worked them, produces an empty book
+rather than a correctable one, and gives an admin nothing to correct. **A wrong-but-visible
+assignment can be fixed; an absent one is not even noticed.**
 
 ---
 

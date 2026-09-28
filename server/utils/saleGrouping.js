@@ -11,10 +11,23 @@
 // disagreed (the admin UI's copy says invoices; the original description said the
 // first approved quote or scheduled job; the classifier says a job exists) and the
 // third won, so the count and the stage cannot drift apart.
-// ⚠ **QUOTE_APPROVED IS THEREFORE NOT NEEDED AND IS NOT REGISTERED.** Approving a
-// quote creates no job, so it starts no sale and moves no stage — the classifier
-// reads only "a quote is not archived", which approval does not change. A handler
-// for it would fire on an event that can change nothing.
+// ⚠ **THE SENTENCE HERE USED TO READ "QUOTE_APPROVED IS THEREFORE NOT NEEDED AND IS NOT
+// REGISTERED", AND THAT IS NOW FALSE IN ITS FIRST HALF AND WAS ALWAYS WRONG IN ITS SECOND.**
+// QUOTE_APPROVED **IS** registered — `POST /webhooks/jobber/quote-approved`, added in
+// `75dec0c` (3d Phase 1a Commit 0) after the shared topic was found 404-ing every delivery.
+// It CAPTURES the approval into crm_quote_facts immediately and runs the engine (R5j).
+//
+// What survives unchanged is the half this file actually depends on: **approval starts no
+// sale and moves no stage.** A job is what creates a sale, and the classifier still reads
+// only "a quote is not archived", which approval does not change.
+// ⚠ **RE-RULED 2026-09-28 AFTER BEING REVERSED AND RE-REVERSED THE SAME DAY.** Danny ruled
+// that an approved quote counts as sold, then reversed it within the day: an approved quote
+// can be cancelled, and a referral that went sold → not sold on the referrer's own screen
+// reads as bad faith. **The sticky lock follows at JOB CREATION.** The reasons are in
+// RoofMiles_Decisions_Record_Canvass_Attribution.md, PART 2.
+// ⚠ **CAPTURING EARLY AND DECIDING LATE ARE DIFFERENT JOBS**, and the old sentence conflated
+// them — it reasoned from "the event can change nothing" to "the handler is not needed",
+// which is exactly the argument that left approvals unrecorded until 75dec0c.
 //
 // ⚠ THE WINDOW IS MEASURED FROM THE GROUP'S MOST RECENT JOB — CHAINED, RULED BY DANNY
 // 2026-09-22, REVERSING THE ANCHORED RULE THIS FILE SHIPPED WITH.
