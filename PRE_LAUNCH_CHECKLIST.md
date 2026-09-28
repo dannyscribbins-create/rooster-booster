@@ -282,11 +282,60 @@ index. Commits 2–6 are the writers, the shared admin writer, `NOT NULL`, the r
 preview — in that order, and **the order is load-bearing**: §6 records that the obvious
 "schema first" ordering would fail every engine write on a live service.*
 
-- [ ] **🔴 `assigned_at` IS STILL NULLABLE AND NOTHING READS IT.** Commit 1 is inert by
-      design. Until Commit 5 lands, every rep surface still reads
+- [ ] **🔴 `assigned_at` IS STILL NULLABLE AND NOTHING READS IT.** Commits 1 and 2 are inert
+      *on the surface* by design. Until Commit 5 lands, every rep surface still reads
       `COALESCE(sticky_set_at, provisional_set_at)` and R5f's defect — a same-rep lock moving
-      the displayed date — **is still live**. ⚠ Do not read "the column exists" as "the date
-      is fixed".
+      the **displayed** date — **is still live**. ⚠ Do not read "the column exists and the
+      writers fill it" as "the date is fixed". What Commit 2 changed is what gets WRITTEN;
+      what a rep SEES is Commit 5.
+
+- [ ] **🔴🔴 COMMIT 4's `SET NOT NULL` MUST NEVER BE ABLE TO STOP THE SERVICE BOOTING.**
+      Ruled by Danny 2026-09-28, and it **supersedes** the design's original "it throws, and
+      that is fail-closed" reading. **The required shape, in order:**
+      **(1)** COUNT the rows with `assigned_at IS NULL`. **(2)** If the count is non-zero:
+      `logError` with **`alert` ENABLED**, naming the **count AND a sample of
+      `jobber_client_id`s**, then **SKIP the constraint and let boot continue**.
+      **(3)** Only `SET NOT NULL` when the count is zero.
+      ⚠ **THE ALERT MUST BE ENABLED, AND EVERY OTHER `logError` IN THIS ARC PASSES
+      `alert: false`.** A skipped constraint is a SILENT degradation — the app serves, the
+      crons run, the column stays nullable, and no surface looks different. **A skip nobody is
+      told about is worse than the throw it replaces**, because the throw at least stopped the
+      cron jobs and left a signature.
+      ⚠ **THE GUARD-PROOF:** a row with NULL `assigned_at` → **boot COMPLETES**, the **alert is
+      logged**, and the **constraint is NOT applied**. All three together, or the case is
+      satisfied by a boot that completed for the wrong reason. Paired positive: with no NULL
+      rows, the constraint IS applied.
+      ⚠ **CONTRIVING THE RED FIXTURE NEEDS THOUGHT, FLAGGED NOW RATHER THAN DISCOVERED THEN.**
+      The backfill's third arm is `updated_at`, which is NOT NULL DEFAULT NOW(), so an ordinary
+      row can no longer end up NULL — that is the whole point of Commit 1. The fixture must
+      insert the NULL *after* the backfill, or drive the constraint step directly. **Say which
+      in the test**: a fixture that quietly cannot produce the state reads as a passing
+      guard-proof.
+
+- [x] **Commit 1 — the columns, the backfill and the index. SHIPPED and VERIFIED IN
+      PRODUCTION 2026-09-28** (deployment `9b4e51ec`, SUCCESS; `/health` 200; no migration
+      failure and no rebuild line in the boot log). Read-only production verification under
+      the CLAUDE.md rule, on `accent-roofing-dev`: **420 assignment rows, 0 with
+      `assigned_at` NULL** (0 account-wide too), **420/420 agree** with the displayed
+      `COALESCE(sticky_set_at, provisional_set_at)`, `idx_cra_owner_assigned` present with the
+      intended definition, and `idx_cra_contractor_owner` still present per Q4.
+      ⚠ **409 OF THE 420 ARE DATED 2026-09-27** — the rebuild day. That is the population the
+      date-restoring run has to fix, measured rather than estimated, and it matches the
+      handoff's "about 400 rows".
+      ⚠ **AND THE `write_time` ARM IS UNEXERCISED IN PRODUCTION: 0 rows carry it, because 0
+      rows are dateless.** The arm is correct and has never run outside a test. **Do not read
+      its absence as coverage** — it is reachable only through a state production does not
+      currently contain.
+
+- [x] **Commit 2 — the one same-rep expression and the six engine writes. SHIPPED locally
+      2026-09-28, NOT PUSHED.** `server/utils/assignedAt.js` holds the rule in two forms (SQL
+      for the writers, JS for the preview) with a case-table fence holding them together.
+      ⚠ **THE PREVIEW STILL IGNORES THE DATE UNTIL COMMIT 6.** `assignmentPreview.js`'s four
+      recording writers take their arguments positionally and silently drop the new `fact`
+      parameter, so a preview run today reports rep and state changes correctly and **reports
+      nothing about `assigned_at`**. That is expected between Commits 2 and 6 — but it means
+      **a preview run in that window is NOT a review of the date-restoring rebuild**, and the
+      gate's precondition is not met by one.
 
 - [ ] **🔴 THE DATE-RESTORING REBUILD, AFTER COMMIT 6.** The 2026-09-27 rebuild reset roughly
       400 rows' dates to that day, and Commit 1's backfill has now copied those same wrong

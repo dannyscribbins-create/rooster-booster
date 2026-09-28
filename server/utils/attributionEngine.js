@@ -1,6 +1,13 @@
 'use strict';
 
 const { logError: realLogError } = require('../middleware/errorLogger');
+// ⚠ THE ASSIGNED-DATE RULE IS NOT SPELLED OUT IN THIS FILE, DELIBERATELY (3d Phase 1b
+// Commit 2). Six writes here, two in routes/admin/team.js and the rebuild preview all have
+// to agree on when assigned_at moves; a copy in each is how a fix lands in one of them.
+// See server/utils/assignedAt.js for the rule and for why it exists in two forms.
+const {
+  FACT_KINDS, ASSIGNED_COLUMNS, normaliseFact, assignedAtSetClause,
+} = require('./assignedAt');
 
 // Anchor = pipeline_cache.created_at (first-seen time), NOT the actual referral moment in
 // Jobber — it lags behind the true referral by however long until our sync first observes the
@@ -48,12 +55,29 @@ async function getAttributionSource(pool, contractorId) {
 // BEFORE match-counting, so an excluded pre-anchor rep can never contribute to a co-assignment
 // flag). requests must already be sorted newest-first (readRequests' contract, enforced by
 // requestsFromFacts in server/utils/requestFacts.js).
-// Returns { type: 'none' } | { type: 'single', repId, assessmentId } | { type: 'multiple', repIds, assessmentId }.
+// Returns { type: 'none' } | { type: 'single', repId, assessmentId, requestId, requestAt }
+//       | { type: 'multiple' | 'truncated', repIds, assessmentId }.
+//
+// ── THE SINGLE MATCH NOW CARRIES ITS OWN REQUEST (3d Phase 1b Commit 2) ──────
+// ⚠ R5g DATES A MODE A/B ASSIGNMENT BY THE SELECTED REQUEST'S OWN created_at, AND UNTIL THIS
+// COMMIT THAT VALUE DIED HERE. `eligible[0]` is the deciding request and was read for its
+// assessment alone, so the writer downstream had a rep and no way to know WHEN. That was the
+// last of the three places the fact time was dropped (the other two closed in 7b) and it is
+// why the live path and a re-run could only ever agree by both using the clock.
+// ⚠ IT IS THE REQUEST'S TIME, NOT THE ASSESSMENT'S, AND THE DIFFERENCE IS REAL RATHER THAN
+// PEDANTIC. Mode A's evidence is the assessment; no assessment timestamp is stored anywhere
+// (crm_request_facts carries assessment_id and no assessment_at), and the two are measurably
+// hours apart on Accent's real data. R5g rules the parent request's created_at and REJECTED
+// storing the assessment time as extra import work with this fallback needed regardless.
+// **A future session re-opening that should read R5g first, not re-derive it from here.**
+// ⚠ 'multiple' and 'truncated' DELIBERATELY CARRY NOTHING NEW: both flag for a human instead
+// of assigning, so there is no tenure to date.
 async function resolveModeAMatch(pool, contractorId, requests, referralAnchor) {
   const eligible = (requests || []).filter(r => r.assessment != null && isRequestEligible(r, referralAnchor));
   if (eligible.length === 0) return { type: 'none' };
 
-  const assessment = eligible[0].assessment; // most recent in-grade request with an assessment
+  const winner = eligible[0]; // most recent in-grace request with an assessment
+  const assessment = winner.assessment;
   const assignedUserIds = (assessment.assignedUsers && assessment.assignedUsers.nodes)
     ? assessment.assignedUsers.nodes.map(u => u.id)
     : [];
@@ -88,11 +112,19 @@ async function resolveModeAMatch(pool, contractorId, requests, referralAnchor) {
     return { type: 'truncated', repIds: matchedReps.map(r => r.id), assessmentId: assessment.id };
   }
 
-  return { type: 'single', repId: matchedReps[0].id, assessmentId: assessment.id };
+  return {
+    type: 'single',
+    repId: matchedReps[0].id,
+    assessmentId: assessment.id,
+    requestId: winner.id,
+    requestAt: winner.createdAt,
+  };
 }
 
 // Resolves Mode B's match from in-grace requests carrying a salesperson.
-// Returns { type: 'none' } | { type: 'single', repId }.
+// Returns { type: 'none' } | { type: 'single', repId, requestId, requestAt }.
+// ⚠ requestId/requestAt added in 3d Phase 1b Commit 2 — see resolveModeAMatch for why. Here
+// the deciding request was ALREADY in a local named `request`; only its time was discarded.
 async function resolveModeBMatch(pool, contractorId, requests, referralAnchor) {
   const eligible = (requests || []).filter(r => r.salesperson && r.salesperson.id && isRequestEligible(r, referralAnchor));
   if (eligible.length === 0) return { type: 'none' };
@@ -104,7 +136,9 @@ async function resolveModeBMatch(pool, contractorId, requests, referralAnchor) {
     [contractorId, request.salesperson.id]
   );
   if (matchedReps.length === 0) return { type: 'none' };
-  return { type: 'single', repId: matchedReps[0].id };
+  return {
+    type: 'single', repId: matchedReps[0].id, requestId: request.id, requestAt: request.createdAt,
+  };
 }
 
 // ── THE WRITER MARKER (Danny, 2026-09-22) ─────────────────────────────────────
@@ -118,16 +152,26 @@ async function resolveModeBMatch(pool, contractorId, requests, referralAnchor) {
 // activity after their import.
 // 'live' (default) · 'replay' (attributionReplay) · 'manual' (the admin assign route,
 // which writes its own row rather than calling these helpers).
-async function writeProvisional(pool, contractorId, jobberClientId, repId, source, writtenBy = 'live') {
+// ⚠ `fact` IS THE SEVENTH PARAMETER AND IT IS POSITIONAL (3d Phase 1b Commit 2). An options
+// object was weighed and rejected: it does NOT remove the failure it looks like it removes —
+// a recording stub in assignmentPreview.js that destructures `{ repId, source }` and ignores
+// `fact` is exactly as silent as one that ignores a seventh argument — while costing a diff
+// across every call site Commit 7c deliberately left byte-identical. **What protects the seam
+// is Commit 6's behavioural fence, not the calling convention.** Every existing call site
+// already passes `writtenBy` explicitly, so a seventh argument cannot collide with a default.
+async function writeProvisional(pool, contractorId, jobberClientId, repId, source, writtenBy = 'live', fact = null) {
+  const f = normaliseFact(fact);
   await pool.query(
     `INSERT INTO client_rep_assignments
-       (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at, updated_at, written_by)
-     VALUES ($1, $2, $3, $4, NOW(), NOW(), $5)
+       (contractor_id, jobber_client_id, provisional_rep_id, provisional_source, provisional_set_at, updated_at, written_by,
+        ${ASSIGNED_COLUMNS})
+     VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, COALESCE($6::timestamptz, NOW()), $7, $8, $6::timestamptz)
      ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
        provisional_rep_id = EXCLUDED.provisional_rep_id,
        provisional_source = EXCLUDED.provisional_source,
        provisional_set_at = EXCLUDED.provisional_set_at,
        updated_at         = EXCLUDED.updated_at,
+       ${assignedAtSetClause('provisional')},
        -- ⚠ A REPLAY MAY NOT DOWNGRADE A LIVE OR MANUAL MARKER (3d Phase 1a Commit 7, R5k).
        -- This was an unconditional rewrite to the incoming value, and the consequence
        -- was specific: a replay pass over a client flipped a LIVE-written provisional to
@@ -147,21 +191,24 @@ async function writeProvisional(pool, contractorId, jobberClientId, repId, sourc
                                    AND EXCLUDED.written_by = 'replay'
                                  THEN client_rep_assignments.written_by
                                  ELSE EXCLUDED.written_by END`,
-    [contractorId, jobberClientId, repId, source, writtenBy]
+    [contractorId, jobberClientId, repId, source, writtenBy, f.at, f.kind, f.id]
   );
 }
 
-async function writeSticky(pool, contractorId, jobberClientId, repId, source, writtenBy = 'live') {
+async function writeSticky(pool, contractorId, jobberClientId, repId, source, writtenBy = 'live', fact = null) {
+  const f = normaliseFact(fact);
   // WHERE guard prevents overwriting an existing sticky under a concurrent race
   const result = await pool.query(
     `INSERT INTO client_rep_assignments
-       (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, written_by)
-     VALUES ($1, $2, $3, $4, NOW(), NOW(), $5)
+       (contractor_id, jobber_client_id, sticky_rep_id, sticky_source, sticky_set_at, updated_at, written_by,
+        ${ASSIGNED_COLUMNS})
+     VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, COALESCE($6::timestamptz, NOW()), $7, $8, $6::timestamptz)
      ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
        sticky_rep_id = EXCLUDED.sticky_rep_id,
        sticky_source = EXCLUDED.sticky_source,
        sticky_set_at = EXCLUDED.sticky_set_at,
        updated_at    = EXCLUDED.updated_at,
+       ${assignedAtSetClause('sticky')},
        -- ⚠ THIS ONE IS STILL UNCONDITIONAL, AND THE ASYMMETRY WITH writeProvisional IS
        -- NAMED RATHER THAN LEFT TO BE NOTICED. A replay adding a STICKY to a row whose
        -- provisional half a webhook wrote does relabel the row 'replay'. It is the same
@@ -172,7 +219,7 @@ async function writeSticky(pool, contractorId, jobberClientId, repId, source, wr
        -- written down: filed on PRE_LAUNCH_CHECKLIST.md, not forgotten.
        written_by    = EXCLUDED.written_by
      WHERE client_rep_assignments.sticky_rep_id IS NULL`,
-    [contractorId, jobberClientId, repId, source, writtenBy]
+    [contractorId, jobberClientId, repId, source, writtenBy, f.at, f.kind, f.id]
   );
 
   // Auto-resolution (FA spec §4.5): rowCount > 0 means this call actually just set the
@@ -262,6 +309,21 @@ async function writeOrphanFlag(pool, contractorId, jobberClientId, triggeringQuo
 const DEFAULT_WRITERS = Object.freeze({
   writeSticky, writeProvisional, writeCoAssignmentFlag, writeOrphanFlag,
 });
+
+// ── R5g's FACT, FROM A MODE A/B MATCH (3d Phase 1b Commit 2) ─────────────────
+// One helper for all six Mode A/B write sites, so "a request-based assignment is dated by
+// the request's own created_at" is written once rather than six times.
+// ⚠ IT READS THE MATCH, NOT THE REQUEST LIST. The deciding request is whichever one
+// resolveModeAMatch/resolveModeBMatch selected under the eligibility filter and the ruled
+// tie-break; re-deriving it here from `requests` would be a second selection, and the two
+// would disagree the first time either moved.
+// ⚠ A MATCH WITHOUT A requestAt NORMALISES TO 'write_time' RATHER THAN THROWING, and today
+// that cannot happen: crm_request_facts.created_at is NOT NULL and toEngineRequest always
+// produces an ISO string from it. The arm is here because Commit 4 makes assigned_at NOT
+// NULL and a writer must always have a value — not because a path needs it.
+function requestFact(match) {
+  return { kind: FACT_KINDS.REQUEST, id: match.requestId, at: match.requestAt };
+}
 
 // Assigns a sales rep to a referred Jobber client.
 //
@@ -448,7 +510,21 @@ async function runAttributionEngine(pool, {
     }
 
     if (stickyRepId !== null) {
-      await writeSticky(pool, contractorId, jobberClientId, stickyRepId, stickySource, writtenBy);
+      // ⚠ THE FACT DEPENDS ON WHICH BRANCH SET stickySource, AND THE PROMOTION BRANCH HAS
+      // NO FACT OF ITS OWN. 'quote_salesperson' is dated by the winning quote's approved_at
+      // (the batch ruling). 'promoted_provisional' is SAME-REP BY CONSTRUCTION -- stickyRepId
+      // IS currentProvisionalRepId, two lines up -- so assignedAtSetClause keeps the stored
+      // date and the stored R5h triple, and whatever is passed here is never read.
+      // ⚠ IT IS STILL PASSED HONESTLY RATHER THAN LEFT undefined. Reaching this line with
+      // 'promoted_provisional' requires currentProvisionalRepId != null, which requires a row,
+      // so the INSERT branch is unreachable for it -- but that is an argument from the
+      // caller's control flow, and a null fact normalises to 'write_time', which is the
+      // honest answer if it ever were reached rather than a borrowed one.
+      const stickyFact = stickySource === 'quote_salesperson'
+        ? { kind: FACT_KINDS.QUOTE, id: winnerQuote.id, at: winnerQuote.lastTransitioned.approvedAt }
+        : null;
+      await writeSticky(pool, contractorId, jobberClientId, stickyRepId, stickySource, writtenBy,
+        stickyFact);
       return;
     }
 
@@ -474,10 +550,12 @@ async function runAttributionEngine(pool, {
         if (quoteAuthorUnmapped) {
           // qr_link keeps its precedence here exactly as it does in the provisional step.
           if (currentProvisionalSource !== 'qr_link') {
-            await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_a', writtenBy);
+            await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_a', writtenBy,
+              requestFact(match));
           }
         } else {
-          await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_a_at_close', writtenBy);
+          await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_a_at_close', writtenBy,
+            requestFact(match));
         }
       } else if (match.type === 'multiple' || match.type === 'truncated') {
         // ⚠ 'truncated' LANDS IN THE SAME QUEUE AS A CO-ASSIGNMENT, DELIBERATELY (7a-2). Both mean
@@ -496,10 +574,12 @@ async function runAttributionEngine(pool, {
       if (match.type === 'single') {
         if (quoteAuthorUnmapped) {
           if (currentProvisionalSource !== 'qr_link') {
-            await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_b', writtenBy);
+            await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_b', writtenBy,
+              requestFact(match));
           }
         } else {
-          await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_b_at_close', writtenBy);
+          await writeSticky(pool, contractorId, jobberClientId, match.repId, 'mode_b_at_close', writtenBy,
+            requestFact(match));
         }
       } else {
         if (writeOrphanOnMiss) await writeOrphanFlag(pool, contractorId, jobberClientId, winnerQuote ? winnerQuote.id : null);
@@ -519,7 +599,8 @@ async function runAttributionEngine(pool, {
     if (match.type === 'single') {
       // Exactly one attributable match — qr_link source takes precedence over mode_a
       if (currentProvisionalSource !== 'qr_link') {
-        await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_a', writtenBy);
+        await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_a', writtenBy,
+          requestFact(match));
       }
     } else if (match.type === 'multiple' || match.type === 'truncated') {
       // ⚠ THE PROVISIONAL STEP NEEDS THE SAME BRANCH AS THE STICKY GATE, AND IT WAS MISSED ON THE
@@ -533,7 +614,8 @@ async function runAttributionEngine(pool, {
   } else {
     const match = await resolveModeBMatch(pool, contractorId, requests, referralAnchor);
     if (match.type === 'single' && currentProvisionalSource !== 'qr_link') {
-      await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_b', writtenBy);
+      await writeProvisional(pool, contractorId, jobberClientId, match.repId, 'mode_b', writtenBy,
+        requestFact(match));
     }
   }
 }

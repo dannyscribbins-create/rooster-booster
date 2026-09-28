@@ -424,8 +424,39 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **1998 server tests across 327 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the Phase 1b Commit 1 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 1998 · suites 327 · pass 1998 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 1 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2023 server tests across 332 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the Phase 1b Commit 2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2023 · suites 332 · pass 2023 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 2 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 1998 → 2023 is **+25**, one new file (`assignedAtWriters.test.js`); suites 327 → 332 is
+  that file's **five** top-level describes. React did not move — no `src/` file was touched — and
+  was re-measured. **All four predicted before the run and matched.** Counted with an anchored
+  `^\s*it\(` (25); the file's five loops were each checked for POSITION — two in `beforeEach`,
+  three inside `it()` bodies iterating assertions and a case table — so **none wraps a case**.
+  ⚠ **AND ONE GUARD-PROOF'S WIDTH IS TWO THINGS AT ONCE, WHICH IS WORTH SEPARATING RATHER THAN
+  REPORTING AS A NUMBER.** Injection (iv) — the provisional form comparing only the provisional
+  halves — reds **2**, but only **one** is behavioural (a provisional-B write under sticky-A
+  moving a date whose owner never changed). The other is a STRUCTURAL fence asserting the two
+  halves of the shared clause differ in exactly one term. **An injection that also trips a text
+  fence is reporting two things at once, and one of them is not evidence about the behaviour** —
+  this file already records that from the lock-timeout commit. The behavioural width is 1.
+  ⚠ **THE OTHER FOUR WIDTHS:** (i) the CASE replaced by a bare `EXCLUDED` — R5f's exact defect,
+  a same-rep lock moving the date → **8**; (ii) the quote fact pointed at the clock instead of
+  `approvedAt` → **exactly 1**; (iii) `resolveModeAMatch` no longer carrying `requestAt`, which
+  is the pre-Commit-2 state → **6**; (v) both writers stamping `NOW()` regardless of the fact →
+  **12**. Every revert was an inverse patch in a `finally`, proven byte-identical by sha256.
+  ⚠ **AND THE HARNESS NOW CHECKS ANCHOR UNIQUENESS IN BOTH DIRECTIONS BEFORE WRITING ANYTHING,
+  BECAUSE COMMIT 1's DID NOT AND LEFT A FILE INJECTED.** A forward anchor that matches once
+  gives no guarantee the REVERSE anchor does; there the injected form also matched a prose
+  sentence, the revert refused, and `db.js` was left holding the injection.
+  ⚠ **AND THE ONE CASE MOST WORTH COPYING IS THE ONE THAT NEEDED A DELETE.** *"A re-run writes
+  the ORIGINAL date"* is **vacuous** written the obvious way: seed a row, replay twice, assert
+  the date is unchanged — that passes IDENTICALLY against a writer that stamped `NOW()` on the
+  first run, because the same-rep guard then preserves the wrong value just as faithfully as the
+  right one. R5 holds because the date is a FUNCTION OF THE STORED FACT, so the discriminating
+  case **deletes the row between runs, exactly as a rebuild does**, and asserts the second date
+  equals the request's own `created_at`. Injection (v) takes it red; without the delete it
+  would not.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 1 COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **1998 / 327 / 1358 / 82**.
   Server 1984 → 1998 is **+14**, one new file (`assignedAtColumn.test.js`); suites 324 → 327 is
   that file's **three** top-level describes. React did not move — **no `src/` file was touched at
   all**, and the three non-test files this commit edits are `server/db.js`, `CLAUDE.md` and
