@@ -143,14 +143,14 @@ describe('syncSingleClient — attribution engine wiring', () => {
   it('(a) invokes the engine after the pipeline_cache upsert, deciding from SAVED FACTS — never from the live object or a Jobber fetch', async () => {
     const spy = makeSpy();
     _setAttributionEngineForTest(spy.fn);
-    const client = makeReferredClient('attr-wire-a');
+    const client = makeReferredClient('Z2lkOi8vSm9iYmVyL0NsaWVudC9hdHRyLXdpcmUtYQ==');
 
     await syncSingleClient(CID, client, REFERRAL_START_DATE, [], 'test-token-abc');
 
     assert.equal(spy.callCount, 1, 'engine called exactly once');
     const opts = spy.lastCallOptions;
     assert.equal(opts.contractorId, CID, 'contractorId is the sync contractorId');
-    assert.equal(opts.jobberClientId, 'attr-wire-a', 'jobberClientId equals client.id');
+    assert.equal(opts.jobberClientId, 'Z2lkOi8vSm9iYmVyL0NsaWVudC9hdHRyLXdpcmUtYQ==', 'jobberClientId equals client.id');
     assert.equal(opts.currentStatus, 'lead', 'currentStatus is derived by decideFromFacts');
     assert.ok(opts.referralAnchor, 'referralAnchor must be passed to the engine');
 
@@ -171,7 +171,7 @@ describe('syncSingleClient — attribution engine wiring', () => {
       'the engine receives a fact-backed request reader');
 
     // And it reads FACTS: with none stored for this client the reader answers empty, from the DB.
-    const read = await opts.readRequests('attr-wire-a');
+    const read = await opts.readRequests('Z2lkOi8vSm9iYmVyL0NsaWVudC9hdHRyLXdpcmUtYQ==');
     assert.deepEqual(read, { requests: [] },
       'the reader answers from crm_request_facts — empty, because nothing was captured for it');
   });
@@ -179,7 +179,7 @@ describe('syncSingleClient — attribution engine wiring', () => {
   it('(a2) referralAnchor is the pipeline_cache row\'s own created_at, not last_synced_at/updated_at, and is preserved (not reset) on re-sync', async () => {
     const spy = makeSpy();
     _setAttributionEngineForTest(spy.fn);
-    const client = makeReferredClient('attr-wire-a2');
+    const client = makeReferredClient('Z2lkOi8vSm9iYmVyL0NsaWVudC9hdHRyLXdpcmUtYTI=');
 
     // First sync — creates the pipeline_cache row. Anchor should equal that first-seen moment.
     await syncSingleClient(CID, client, REFERRAL_START_DATE, [], 'test-token-abc');
@@ -187,13 +187,13 @@ describe('syncSingleClient — attribution engine wiring', () => {
 
     const { rows } = await pool.query(
       `SELECT created_at FROM pipeline_cache WHERE contractor_id=$1 AND jobber_client_id=$2`,
-      [CID, 'attr-wire-a2']
+      [CID, 'Z2lkOi8vSm9iYmVyL0NsaWVudC9hdHRyLXdpcmUtYTI=']
     );
     assert.equal(firstAnchor, new Date(rows[0].created_at).getTime(), 'anchor equals the pipeline_cache row created_at on first sync');
 
     // Re-sync the same client later — created_at must not change, so the anchor passed to
     // the engine on the second call must equal the FIRST call's anchor, not "now".
-    const clientAgain = makeReferredClient('attr-wire-a2');
+    const clientAgain = makeReferredClient('Z2lkOi8vSm9iYmVyL0NsaWVudC9hdHRyLXdpcmUtYTI=');
     await syncSingleClient(CID, clientAgain, REFERRAL_START_DATE, [], 'test-token-abc');
     const secondAnchor = new Date(spy.lastCallOptions.referralAnchor).getTime();
 
@@ -204,7 +204,7 @@ describe('syncSingleClient — attribution engine wiring', () => {
     // Unique message keeps the error_log dedup key (contractor_id, route, method, error_message) fresh.
     const uniqueMsg = `attr-wire-b-throw-${Date.now()}`;
     _setAttributionEngineForTest(async () => { throw new Error(uniqueMsg); });
-    const client = makeReferredClient('attr-wire-b');
+    const client = makeReferredClient('Z2lkOi8vSm9iYmVyL0NsaWVudC9hdHRyLXdpcmUtYg==');
 
     // Must NOT throw — fail-safe wrapping must absorb the engine error.
     await syncSingleClient(CID, client, REFERRAL_START_DATE, [], 'test-token-abc');
@@ -213,7 +213,7 @@ describe('syncSingleClient — attribution engine wiring', () => {
     const { rows: cacheRows } = await pool.query(
       `SELECT pipeline_status FROM pipeline_cache
        WHERE contractor_id = $1 AND jobber_client_id = $2`,
-      [CID, 'attr-wire-b']
+      [CID, 'Z2lkOi8vSm9iYmVyL0NsaWVudC9hdHRyLXdpcmUtYg==']
     );
     assert.equal(cacheRows.length, 1, 'pipeline_cache row written — sync completed despite engine throw');
 
@@ -229,7 +229,7 @@ describe('syncSingleClient — attribution engine wiring', () => {
   it('(c) engine is NOT invoked when contractorId is falsy — NOTE: trivially passes in RED because no engine call exists yet; becomes meaningful only at GREEN where (a) must also pass', async () => {
     const spy = makeSpy();
     _setAttributionEngineForTest(spy.fn);
-    const client = makeReferredClient('attr-wire-c1');
+    const client = makeReferredClient('Z2lkOi8vSm9iYmVyL0NsaWVudC9hdHRyLXdpcmUtYzE=');
 
     // Valid contractorId — engine MUST fire (this is the RED-breaking assertion alongside test (a)).
     await syncSingleClient(CID, client, REFERRAL_START_DATE, [], 'test-token-abc');
@@ -240,6 +240,25 @@ describe('syncSingleClient — attribution engine wiring', () => {
     const client2 = makeReferredClient('attr-wire-c2');
     await syncSingleClient('', client2, REFERRAL_START_DATE, [], 'test-token-abc');
     assert.equal(spy.callCount, 1, 'engine call count unchanged for empty contractorId');
+
+    // ⚠ AMENDED BY N4 COMMIT 7b. The old case asserted ONLY the line above — the engine's call
+    // count — and said nothing about what the row ended up holding:
+    //     assert.equal(spy.callCount, 1, 'engine call count unchanged for empty contractorId');
+    // 7b derives the referrer-visible status from CONTRACTOR-SCOPED facts, so with no resolvable
+    // contractor there is no derivation to run. Danny ruled (2026-09-29) what happens then, and it
+    // is the same rule as for a failed capture — so it is asserted here rather than left implied.
+    // ⚠ THE SYNTHETIC ID IS DELIBERATE ON THIS ONE. `attr-wire-c2` is not a Jobber EncodedId, and
+    // it does not need to be: the contractor guard returns before the derivation is reached, so
+    // this case also pins that the guard comes FIRST. A real id here would hide that ordering.
+    const { rows: c2 } = await pool.query(
+      `SELECT pipeline_status, status_derived_at FROM pipeline_cache
+        WHERE contractor_id = '' AND jobber_client_id = 'attr-wire-c2'`);
+    assert.equal(c2.length, 1, 'the referral record is still written — that is the sync\'s own job');
+    assert.equal(c2[0].pipeline_status, 'lead', 'the entry stage, which is simply true of it');
+    assert.equal(
+      c2[0].status_derived_at, null,
+      'and the not-yet-derived marker, so a later pass with a real contractor derives it'
+    );
   });
 
   it('(d) engine is NOT invoked for non-referred clients — attribution only runs for referred clients, consistent with the if (!referredBy) return guard at top of syncSingleClient', async () => {
@@ -247,7 +266,7 @@ describe('syncSingleClient — attribution engine wiring', () => {
     _setAttributionEngineForTest(spy.fn);
 
     // Referred client — engine MUST fire.
-    const referred = makeReferredClient('attr-wire-d-ref');
+    const referred = makeReferredClient('Z2lkOi8vSm9iYmVyL0NsaWVudC9hdHRyLXdpcmUtZC1yZWY=');
     await syncSingleClient(CID, referred, REFERRAL_START_DATE, [], 'test-token-abc');
     assert.equal(spy.callCount, 1, 'engine called once for referred client');
 

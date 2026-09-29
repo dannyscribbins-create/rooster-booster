@@ -16,6 +16,8 @@ const axios = require('axios');
 const { pool } = require('../../db');
 const { syncSingleClient, classifyPipelineStatus } = require('../../crm/pipelineSync');
 const { writeReferralConversion } = require('../../utils/referralConversion');
+const { deriveReferredStatus } = require('../../utils/referredStatus');
+const { isDerivableJobberClientId } = require('../../utils/derivableClient');
 const { refreshClientSales } = require('../../utils/clientSales');
 const { logError } = require('../../middleware/errorLogger');
 const { BRANDING_THEME_DEFAULTS } = require('../../utils/brandingTheme');
@@ -508,7 +510,15 @@ async function logWebhookResolutionFailure(req, topic, itemId, payload, err) {
 // ⚠ `door` IS A REQUIRED-IN-PRACTICE FOURTH ARGUMENT (6b). Four routes share this function, so
 // without it every cost and hold-time line it produces is untraceable to the event that caused it
 // — which is exactly the state the live check found: `door=fetchClientRelatedData contractor=-`.
-async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 'upsertAndTagClient') {
+// ⚠ `alsoDeriveReferredStatus` IS OPT-IN AND ONLY invoice-paid PASSES IT (N4 commit 7b).
+// A paid invoice moves the REFERRER-visible stage, and this door is the only one that sees a paid
+// invoice without also calling `syncSingleClient` — client-create and client-update both call it a
+// few lines later, so turning this on for them would write `pipeline_cache` twice per event.
+// ⚠ IT RUNS INSIDE THIS FUNCTION'S EXISTING LOCK AND TRANSACTION, WHICH IS DANNY'S RULING RATHER
+// THAN A CONVENIENCE. A second lock immediately afterwards would serialize on the same key but
+// would not be ATOMIC with the capture: another event could land between, and the later derive
+// could then write a status taken from facts the first had not finished writing.
+async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 'upsertAndTagClient', { alsoDeriveReferredStatus = false } = {}) {
   const email = fullClient.emails?.find(e => e.isPrimary)?.address
     || fullClient.emails?.[0]?.address
     || null;
@@ -572,6 +582,32 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 
         await captureClientFacts(tx, { contractorId, client: relatedData });
         // `tx`, not `pool` — a read on another connection would sit outside the lock.
         const decided = await decideFromFacts(tx, { contractorId, jobberClientId: fullClient.id });
+
+        // ── THE REFERRER-VISIBLE STAGE, FROM THE SAME FACTS (N4 commit 7b) ──────
+        // ⚠ ONLY FOR A REFERRED CLIENT, AND ONLY WHERE A ROW ALREADY EXISTS. This is an UPDATE,
+        // never an INSERT: `syncSingleClient` owns creating a `pipeline_cache` row, because it is
+        // the only path that knows the referrer name and the pre-start-date decision. A zero-row
+        // result here is the expected quiet outcome for a client the referral sync has not seen.
+        // ⚠ IT WRITES NO CONVERSION AND CREDITS NOBODY. That is commit 7d, and it is blocked on
+        // 7c — the Job Type custom field is not captured, so `evaluateReferral` cannot run from
+        // facts at all yet.
+        if (alsoDeriveReferredStatus && isDerivableJobberClientId(fullClient.id)) {
+          const ref = await deriveReferredStatus(tx, { contractorId, jobberClientId: fullClient.id });
+          await tx.query(
+            `UPDATE pipeline_cache
+                SET pipeline_status   = $3,
+                    updated_at        = NOW(),
+                    paid_at           = CASE
+                      WHEN $3 = 'paid' AND pipeline_status != 'paid'
+                      THEN COALESCE($4::timestamptz, paid_at)
+                      ELSE paid_at
+                    END,
+                    status_derived_at = NOW()
+              WHERE contractor_id = $1 AND jobber_client_id = $2`,
+            [contractorId, fullClient.id, ref.status, ref.paidAt]
+          );
+        }
+
         return decided.currentStatus;
       });
     } catch (capErr) {
@@ -1404,7 +1440,12 @@ router.post('/jobber/invoice-paid', async (req, res) => {
               emails: fullClient.emails || [],
               phones: fullClient.phones || [],
             };
-            await upsertAndTagClient(contractorId, clientShell, relatedData, 'invoice-paid');
+            // ⚠ THE FIFTH CALLER OF THE REFERRED-STATUS DERIVATION (N4 commit 7b, Danny's ruling).
+            // A paid invoice moves the referrer-visible stage, and this door previously wrote only
+            // `jobber_clients.pipeline_stage` — which is exactly how a referrer sat at
+            // "Inspection Completed" for four months against an invoice settled in May.
+            await upsertAndTagClient(contractorId, clientShell, relatedData, 'invoice-paid',
+              { alsoDeriveReferredStatus: true });
           }
         } catch (tagErr) {
           await logError({ req, error: tagErr, contractorId, source: 'POST /webhooks/jobber/invoice-paid — upsertAndTagClient' });

@@ -654,7 +654,7 @@ describe('7b — the referral door captures before it decides', () => {
     // ⚠ ORDERED FIRST DELIBERATELY. The absence case below asserts that NOTHING is written, and
     // "nothing was written" is also what a door that never runs the engine produces. This is the
     // control that proves the door can attribute at all.
-    const C = 'ps-ok';
+    const C = 'Z2lkOi8vSm9iYmVyL0NsaWVudC9wcy1vaw==';
     const rep = await seedRep(CID, 'ju-ps', 'ps@t.com');
     _setPipelineSyncFetchForTest(async (id) => captureShape(id, 'ju-ps'));
 
@@ -677,7 +677,7 @@ describe('7b — the referral door captures before it decides', () => {
     // ⚠ AND THE ORPHAN FLAG IS THE POINT. This door's writeOrphanOnMiss defaults to TRUE, so a
     // decision taken from a half-written fact set would not merely pick the wrong rep — it would
     // raise an incident about a referral that is fine, and ring the admin bell about it.
-    const C = 'ps-fail';
+    const C = 'Z2lkOi8vSm9iYmVyL0NsaWVudC9wcy1mYWls';
     await seedRep(CID, 'ju-ps-fail', 'psfail@t.com');
     _setPipelineSyncFetchForTest(async (id) => {
       const c = captureShape(id, 'ju-ps-fail');
@@ -705,10 +705,34 @@ describe('7b — the referral door captures before it decides', () => {
 
     // ⚠ THE REST OF THE SYNC MUST SURVIVE IT. A capture failure is scoped to attribution; the
     // referral record is the sync's actual job and must still be written.
+    //
+    // ⚠ AMENDED BY N4 COMMIT 7b, AND STRENGTHENED RATHER THAN RELAXED. The old assertion was
+    // exactly this and nothing more:
+    //     assert.equal(cache.length, 1, 'the pipeline_cache row must still be written');
+    // That was the whole check, and it was satisfiable by a row carrying ANY status — including one
+    // live-classified from the truncated Jobber object, which is precisely what Danny's ruling of
+    // 2026-09-29 forbids on this path. 7b makes the status fact-derived, so a failed capture has no
+    // derivation to write, and the ruling says what goes in instead.
+    //
+    // ⚠ WHY 'lead' AND NOT NULL: 'lead' is simply TRUE of this row — a referral exists — and it is
+    // the LOWEST stage, so the next successful derivation can only move it FORWARD. NULL was
+    // rejected because STATUS_CONFIG has no null key and StatusBadge has no null guard: it would
+    // throw on the referrer's own card rather than rendering.
+    // ⚠ AND WHY NOT A LIVE CLASSIFY: a TRANSIENT Jobber failure must never flip a referrer-visible
+    // stage BACKWARDS (the forward-only principle behind §2.1a). The live object here is truncated
+    // by construction — that truncation is what made this capture fail.
     const { rows: cache } = await pool.query(
-      `SELECT pipeline_status FROM pipeline_cache WHERE contractor_id = $1 AND jobber_client_id = $2`,
+      `SELECT pipeline_status, status_derived_at, paid_at
+         FROM pipeline_cache WHERE contractor_id = $1 AND jobber_client_id = $2`,
       [CID, C]);
     assert.equal(cache.length, 1, 'the pipeline_cache row must still be written');
+    assert.equal(cache[0].pipeline_status, 'lead', 'a NEW row with a failed capture gets the entry stage');
+    assert.notEqual(cache[0].pipeline_status, null, 'and never NULL — that would throw on the card');
+    assert.equal(
+      cache[0].status_derived_at, null,
+      'with the not-yet-derived marker set, so the next pass derives it'
+    );
+    assert.equal(cache[0].paid_at, null, 'and no payable date, because nothing was derived');
   });
 
   it('⚠ the door never captures the SYNC OWN NODE — which would write job facts with a NULL client id', async () => {
@@ -716,7 +740,7 @@ describe('7b — the referral door captures before it decides', () => {
     // RATHER THAN ONLY WRITTEN DOWN. writeJobFacts filters on n?.id alone, so the sync node's
     // jobs — which carry no client { id } — pass the filter and land with jobber_client_id
     // NULL, orphaned from decideFromFacts' client-scoped read. A capture that corrupts.
-    const C = 'ps-shape';
+    const C = 'Z2lkOi8vSm9iYmVyL0NsaWVudC9wcy1zaGFwZQ==';
     await seedRep(CID, 'ju-ps-shape', 'psshape@t.com');
     _setPipelineSyncFetchForTest(async (id) => captureShape(id, 'ju-ps-shape'));
 
@@ -738,7 +762,7 @@ describe('7b — the referral door captures before it decides', () => {
     let fetches = 0;
     _setPipelineSyncFetchForTest(async (id) => { fetches += 1; return captureShape(id, 'ju-none'); });
 
-    await syncSingleClient(CID, syncNode('ps-count-ref'), REFERRAL_START, [], 'tok');
+    await syncSingleClient(CID, syncNode('Z2lkOi8vSm9iYmVyL0NsaWVudC9wcy1jb3VudC1yZWY='), REFERRAL_START, [], 'tok');
     assert.equal(fetches, 1, 'exactly one capture fetch for a referred client');
 
     const unreferred = { ...syncNode('ps-count-unref'), customFields: [] };
@@ -750,7 +774,7 @@ describe('7b — the referral door captures before it decides', () => {
     // Both client webhooks already hold a fetchFullClient result and pass it through, so the
     // referral door captures without fetching again. A regression here is invisible in behaviour
     // and doubles this door's Jobber cost.
-    const C = 'ps-supplied';
+    const C = 'Z2lkOi8vSm9iYmVyL0NsaWVudC9wcy1zdXBwbGllZA==';
     const rep = await seedRep(CID, 'ju-ps-sup', 'pssup@t.com');
     let fetches = 0;
     _setPipelineSyncFetchForTest(async (id) => { fetches += 1; return captureShape(id, 'ju-ps-sup'); });

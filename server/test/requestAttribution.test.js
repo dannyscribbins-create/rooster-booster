@@ -32,7 +32,10 @@ const {
 const TENANT = 'req-attr-tenant';
 const OTHER  = 'req-attr-other';
 const ACCT   = 'JACCT_REQ';
-const CLIENT = 'jc-req-1';
+// N4 commit 7b: a REAL Jobber EncodedId — the referrer-visible derivation refuses a synthetic
+// id (commit 2's predicate). It decodes to gid://Jobber/Client/jc-req-1, so the fixture name
+// survives and stays readable.
+const CLIENT = 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1yZXEtMQ==';
 const REQ    = 'req-1';
 
 let pool, server, port;
@@ -557,6 +560,15 @@ describe('Canvass-3.7 — THE FENCE: widening attribution must not widen outreac
       adminNotification: async () => { adminAlerts += 1; },
       email: async () => ({ data: { id: 'x' } }),
     });
+    // ⚠ THE FETCH SEAM IS REQUIRED SINCE N4 COMMIT 7b, AND WITHOUT IT THIS CASE REACHES JOBBER.
+    // `syncSingleClient` now captures facts before deriving the referrer-visible status, so a
+    // caller that supplies no `captureClient` causes a real `fetchFullClient`. This case passed
+    // `[]` and no capture client, so it went out to api.getjobber.com and failed with a 401 —
+    // which reads like an auth defect and is a missing stub. The fixture it would have fetched is
+    // the same one it already hands to syncSingleClient.
+    pipelineSync._setPipelineSyncFetchForTest(async () => soldClient({
+      customFields: [{ label: 'Referred by', valueText: 'Someone Who Referred' }],
+    }));
     try {
       await pipelineSync.syncSingleClient(
         TENANT,
@@ -569,6 +581,7 @@ describe('Canvass-3.7 — THE FENCE: widening attribution must not widen outreac
       assert.ok(adminAlerts > 0, 'the referral pipeline must still raise its #25 admin alert');
     } finally {
       pipelineSync._resetPipelineSyncEmails();
+      pipelineSync._resetPipelineSyncFetch();
     }
   });
 });

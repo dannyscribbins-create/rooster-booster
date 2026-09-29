@@ -424,7 +424,50 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2210 server tests across 367 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 7a commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2210 · suites 367 · pass 2210 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2219 server tests across 369 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 7b commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2219 · suites 369 · pass 2219 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 7b COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2210 → 2219 is **+9**, one new file (`referredStatusFromFacts.test.js`); suites 367 → 369
+  is that file's **two** top-level describes. React did not move — no `src/` file was touched at
+  all — and was re-measured. **All four predicted before the run and matched.** Counted with an
+  anchored `^\s*it\(` (9); the file's two loops were each checked for POSITION — a `.map` inside
+  the `captureShape` fixture helper and a `for` inside `beforeEach` — so **neither wraps a case**.
+  ⚠ **THE GATE WAS RUN TWICE AND THE SECOND RUN IS THE ONE CITED**, because a comment-only edit to
+  `crm/pipelineSync.js` landed while the first was running. **A comment cannot change a count — and
+  "it cannot have changed" is a prediction, not a measurement**, which is this block's own rule.
+  Both runs read `EXIT=0` and the same seven numbers.
+  ⚠ **THE NEW SUITE FOUND A DEFECT IN THE COMMIT IT WAS WRITTEN FOR, AND THAT IS THE ENTRY WORTH
+  KEEPING.** The Jobber fetch sat **outside** the try/catch that handles a failed capture, so a
+  fetch failure escaped `syncSingleClient` entirely: the referral record was not written at all and
+  a brand-new referred client simply **did not appear**. ⚠ **A FETCH failure IS a capture failure,
+  and it is the MOST LIKELY one** — precisely the transient Jobber failure the ruling is about — so
+  the one path the handler most needed to cover was the one it could not see. Found by the case
+  named `(ii)`, on its first run, **not by reading the block I had just written.**
+  ⚠ **THE RULING IS REFINED A, AND IT TURNS ON `$5` RATHER THAN `EXCLUDED.pipeline_status`.**
+  A failed capture leaves an EXISTING row's `pipeline_status` and `paid_at` **alone**, and gives a
+  NEW row `'lead'` plus a NULL `status_derived_at` marker. `EXCLUDED` carries the INSERT's
+  `COALESCE($5, 'lead')` and is therefore **never null**, so reading it on the conflict branch
+  would write `'lead'` over a real stage on every failed capture; the bare parameter is what makes
+  "leave it alone" expressible. ⚠ **A live-classify fallback was REJECTED**: the live object is
+  truncated by construction (`jobs(first: 50)`, an unpaged `invoices`), so a transient failure could
+  downgrade a `'paid'` client to `'sold'` — and **a referrer-visible stage must never move
+  backwards.** ⚠ **NULL was rejected too, for a different reason**: `STATUS_CONFIG` has no null key
+  and `StatusBadge` no null guard, so it **throws** rather than rendering.
+  ⚠ **FOUR WIDTHS, AND (iii) REPORTS TWO THINGS AT ONCE SO IT IS SPLIT.** (i) the conflict branch
+  reading `EXCLUDED.pipeline_status` — the defect exactly → **exactly 1 red**, the existing-paid
+  case; (ii) `COALESCE($5, 'lead')` dropped from the INSERT so a new row stores NULL → **4 red**,
+  and crucially **two of them are the amended cases in `oneEngineFromFacts` and
+  `attributionWiring`**, which is the evidence those amendments are load-bearing rather than
+  decorative; (iii) a live classify restored on the failure path → **5 red = 4 behavioural + 1
+  STRUCTURAL** (the commit-1 call-site fence, naming the file and line) — the behavioural width is
+  4; (iv) `status_derived_at` never cleared → **exactly 1 red**, the healing case.
+  ⚠ **AND THE HARNESS CRASHED ON A cp1252 CONSOLE AFTER AN INJECTION HAD LANDED — THE EXACT FAILURE
+  THIS FILE RECORDS, HIT BY THE SESSION THAT HAD READ IT.** A test name containing `✖` raised
+  `UnicodeEncodeError` from the PRINTER. **The revert was in a `finally`, so the file came back
+  byte-identical by sha256 and nothing was left injected** — which is the whole reason that rule is
+  written as "revert in a `finally`" rather than "revert after reading the result". Output is
+  ASCII-folded now.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 7a COMMIT ITSELF, BECAUSE IT
+  SHIPS TESTS.* It read **2210 / 367 / 1397 / 85**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 7a COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
   Server 2199 → 2210 is **+11**, one new file (`cardShowsCreditedBonus.test.js`); suites 365 → 367
   is that file's **two** top-level describes. React did not move — **no `src/` file was touched**,

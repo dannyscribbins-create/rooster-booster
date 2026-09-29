@@ -232,7 +232,85 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
   const clientName  = `${client.firstName || ''} ${client.lastName || ''}`.trim();
   const createdAt   = client.createdAt ? new Date(client.createdAt) : null;
   const isPreStart  = !!(referralStartDate && createdAt && createdAt < referralStartDate);
-  const status      = classifyPipelineStatus(client);
+
+  // ── CAPTURE, THEN DERIVE THE REFERRER-VISIBLE STATUS (N4 commit 7b) ────────
+  //
+  // ⚠ WAS `classifyPipelineStatus(client)` — A DECISION FROM THE LIVE OBJECT. That is why the
+  // referrer's stage and the rep's stage disagreed: `jobber_clients.pipeline_stage` moved onto
+  // saved facts at the webhook doors while this one stayed on a live classify that only ran when a
+  // sync happened to reach the client. Measured 2026-09-29: 6 of 15 shared clients disagreed, and
+  // in two of them the referrer was shown the LOWER value.
+  //
+  // ⚠ THE CAPTURE HAS MOVED EARLIER, AND THAT IS THE STRUCTURAL CHANGE. It used to happen inside
+  // `attributeReferredClient` further down, AFTER this upsert — so the facts this status is
+  // derived from would not have existed yet. Capture must precede derivation or a first-ever sync
+  // decides against an empty fact set and returns 'lead'.
+  //
+  // ⚠ THE JOBBER FETCH IS OUTSIDE THE LOCK AND MUST STAY THERE (server/utils/clientLock.js).
+  // `_psFetchFullClient` is only called when the caller supplied no capture-shape client.
+  //
+  // ⚠ A FAILED CAPTURE OR DERIVATION ABORTS THE SYNC FOR THIS CLIENT, deliberately — it does NOT
+  // fall back to a live classify. A status written from a fact set a failed capture may have left
+  // partial is a confident wrong answer on a referrer's own screen, and the next tick retries.
+  // ⚠ REQUIRED LAZILY, AND IT IS NOT A STYLE CHOICE — A TOP-LEVEL REQUIRE HERE IS A CYCLE.
+  // `referredStatus` requires `attributionDecide`, which requires `classifyPipelineStatus` from
+  // THIS file. Under the cycle Node hands out a half-initialised module and the symbol is
+  // `undefined` at call time, with no error until something invokes it. The first writing of this
+  // commit did exactly that and the gate reported `classifyPipelineStatus is not a function` —
+  // the failure mode `attributionDecide.js`'s own header describes, reproduced by the session that
+  // had read it. `attributeReferredClient` below requires `decideFromFacts` lazily for the same
+  // reason; this is the same hazard one module further out.
+  const { deriveReferredStatus } = require('../utils/referredStatus');
+
+  // ⚠ GUARDED ON contractorId, BECAUSE A CONTRACTOR-SCOPED DERIVATION CANNOT RUN WITHOUT ONE.
+  // `syncSingleClient` tolerates a falsy contractorId — `attributionWiring.test.js` case (c)
+  // drives it deliberately, and `pipeline_cache.contractor_id` has no FK so the upsert proceeds.
+  // The first writing of this commit took the lock unconditionally and threw
+  // `withClientLock: contractorId is required` before the existing guard was ever reached.
+  let forCapture = null;
+  let derived = null;
+  if (contractorId) {
+    try {
+      // ⚠ THE FETCH IS INSIDE THE try, AND IT WAS OUTSIDE IT IN THE FIRST WRITING OF THIS COMMIT.
+      // A FETCH failure IS a capture failure — it is the MOST LIKELY one, and it is precisely the
+      // transient Jobber failure the ruling above is about. Outside the try it escaped
+      // `syncSingleClient` entirely, so the referral record was not written at all and a brand-new
+      // referred client simply did not appear. Found by the case named '(ii)', not by reading.
+      forCapture = captureClient || await _psFetchFullClient(client.id, token, {
+        door: 'pipeline-sync', contractorId,
+      });
+      derived = await withClientLock(
+        pool, { contractorId, jobberClientId: client.id, door: 'pipeline-sync' },
+        async (tx) => {
+          await captureClientFacts(tx, { contractorId, client: forCapture });
+          // `tx`, not `pool` — a read on another connection would sit outside the lock and could
+          // miss the capture on the line above.
+          return deriveReferredStatus(tx, { contractorId, jobberClientId: client.id });
+        }
+      );
+    } catch (capErr) {
+      // ⚠ A FAILED CAPTURE LEAVES THE STATUS UNDERIVED — IT DOES NOT FALL BACK TO THE LIVE OBJECT.
+      // Ruled by Danny 2026-09-29, and the reason is the forward-only principle behind §2.1a: the
+      // live object is TRUNCATED (`jobs(first: 50)`, an unpaged `invoices`), so classifying from it
+      // here could downgrade a 'paid' referrer-visible client to 'sold' because of one bad
+      // afternoon at Jobber. **A transient failure must never flip a referrer's stage backwards.**
+      // The upsert below therefore leaves `pipeline_status` and `paid_at` ALONE on an existing row,
+      // and writes 'lead' plus a NULL `status_derived_at` marker on a new one.
+      derived = null;
+      await logError({
+        req: null,
+        contractorId,
+        error: new Error(`[pipelineSync] capture failed for client ${client.id}, referrer-visible status left underived: ${capErr.message}`),
+        source: 'pipelineSync — capture',
+        alert: false,
+      });
+    }
+  }
+  // ⚠ null WHEN UNDERIVED, AND THE UPSERT READS THAT AS "DO NOT TOUCH THE STATUS COLUMNS".
+  // ⚠ NO classifyPipelineStatus CALL REMAINS ON ANY pipeline_cache PATH, AND THE FENCE IN
+  // server/test/oneStatusDerivation.test.js IS STRICT WITH NO CARVE-OUT FOR THIS ONE.
+  const status = derived ? derived.status : null;
+  const statusDerivedAt = derived ? new Date() : null;
 
   // ── PRE-UPSERT STATUS CAPTURE (#1 first-referral, #2/#3/#5/#33 transitions) ──
   // Capture old status before upsert so we can detect transitions afterward.
@@ -259,7 +337,9 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
     console.error('[pipelineSync] pre-upsert status check failed:', preCheckErr.message);
   }
 
-  const paidAt = status === 'paid' ? new Date() : null;
+  // ⚠ THE EARLIEST PAID INVOICE'S OWN DATE, NEVER `new Date()` (Danny ruling 4, 2026-09-29).
+  // See server/utils/referredStatus.js for why earliest rather than latest or triggering.
+  const paidAt = derived ? derived.paidAt : null;
 
   // RETURNING created_at gives us the referral anchor for the attribution engine's grace-window
   // checks (see attributionEngine.js) straight from the row Postgres actually persisted — created_at
@@ -269,23 +349,49 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
   const upsertResult = await pool.query(
     `INSERT INTO pipeline_cache
        (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status,
-        pre_start_date, jobber_created_at, last_synced_at, updated_at, paid_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), $8)
+        pre_start_date, jobber_created_at, last_synced_at, updated_at, paid_at,
+        status_derived_at)
+     -- ⚠ COALESCE($5, 'lead') — A NEW ROW WHOSE CAPTURE FAILED GETS THE ENTRY STAGE, NEVER NULL
+     -- (Danny's ruling, 2026-09-29). 'lead' is simply TRUE of it: a referral exists. And because it
+     -- is the LOWEST stage, the next successful derivation can only move it FORWARD — so no
+     -- referrer ever sees a stage go backwards because a capture failed once.
+     -- ⚠ NULL WOULD CRASH THE REFERRER'S CARD: STATUS_CONFIG has no null key and StatusBadge has
+     -- no null guard, so an unmapped value throws rather than rendering. Recorded because "write
+     -- NULL and let the surface decide" is the obvious alternative and it is not available.
+     VALUES ($1, $2, $3, $4, COALESCE($5, 'lead'), $6, $7, NOW(), NOW(), $8, $9)
      ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
+       -- ⚠ THE REFERRAL RECORD IS THE SYNC'S OWN JOB AND IS ALWAYS REFRESHED. These four do not
+       -- depend on the derivation at all: the names come from the client payload and
+       -- 'pre_start_date' is arithmetic on its createdAt against the programme start date. That is
+       -- what 'oneEngineFromFacts' (v) means by "the referral record must still be written".
        client_name      = EXCLUDED.client_name,
        referred_by      = EXCLUDED.referred_by,
-       pipeline_status  = EXCLUDED.pipeline_status,
        pre_start_date   = EXCLUDED.pre_start_date,
        last_synced_at   = NOW(),
        updated_at       = NOW(),
+       -- ⚠ $5, NOT EXCLUDED.pipeline_status, AND THE DIFFERENCE IS THE WHOLE RULING. EXCLUDED
+       -- carries the COALESCE above, so it is NEVER null — reading it here would write 'lead' over
+       -- a real stage whenever a capture failed, which is the backwards flip this forbids. The raw
+       -- parameter is null exactly when the derivation did not run, so the existing value stands.
+       pipeline_status  = COALESCE($5, pipeline_cache.pipeline_status),
+       -- ⚠ paid_at FROM THE EARLIEST PAID INVOICE'S OWN DATE, NEVER NOW() (ruling 4). NOW() dated a
+       -- payability by when a sync happened to notice it, so a late detection recorded the wrong
+       -- month and a re-detection could move it again.
+       -- ⚠ STILL WRITE-ONCE: only filled on the transition into 'paid', so an existing date is
+       -- never overwritten. And gated on $5 IS NOT NULL, so a failed capture cannot trigger the
+       -- transition at all.
        paid_at          = CASE
-         WHEN EXCLUDED.pipeline_status = 'paid' AND pipeline_cache.pipeline_status != 'paid'
-         THEN NOW()
+         WHEN $5 IS NOT NULL AND $5 = 'paid' AND pipeline_cache.pipeline_status != 'paid'
+         THEN COALESCE($8::timestamptz, pipeline_cache.paid_at)
          ELSE pipeline_cache.paid_at
-       END
+       END,
+       -- ⚠ THE MARKER. NULL means "never derived from facts". A failed capture keeps whatever was
+       -- there, so a row derived last week still reads as derived-as-of-then rather than being
+       -- downgraded to unknown.
+       status_derived_at = COALESCE($9::timestamptz, pipeline_cache.status_derived_at)
      RETURNING created_at`,
     [contractorId, client.id, clientName, referredBy, status,
-     isPreStart, createdAt, paidAt]
+     isPreStart, createdAt, paidAt, statusDerivedAt]
   );
   const referralAnchor = upsertResult.rows[0].created_at;
 
@@ -356,8 +462,18 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
   // Fail-safe: an attribution error must never abort the sync or block notifications.
   try {
     if (contractorId) {
+      // ⚠ `forCapture`, NOT `captureClient` (N4 commit 7b). `captureClient` is null for both sync
+      // callers, so passing it made this function FETCH THE CLIENT A SECOND TIME — once for the
+      // status derivation above and once here, two ~3,515-reservation calls per referred client
+      // per sync. The capture-shape client is already in hand; reusing it halves the Jobber cost
+      // and guarantees both steps decided from the same fetch rather than from two snapshots
+      // taken moments apart.
+      // ⚠ AND ON THE FAILURE PATH `forCapture` IS null, WHICH IS DELIBERATE RATHER THAN A GAP:
+      // `attributeReferredClient` then fetches for itself, so a transient failure gets a second
+      // chance here, and if that one fails too the catch below logs it and the sync still finishes.
+      // The status stays underived either way — the upsert above has already run.
       await attributeReferredClient({
-        contractorId, jobberClientId: client.id, referralAnchor, captureClient, token,
+        contractorId, jobberClientId: client.id, referralAnchor, captureClient: forCapture, token,
       });
     }
   } catch (err) {

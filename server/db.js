@@ -2777,6 +2777,31 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE crm_invoice_facts
     ADD COLUMN IF NOT EXISTS waiting_for_financed_payment BOOLEAN`);
 
+  // ── THE NOT-YET-DERIVED MARKER (N4 commit 7b, Danny's ruling on the undecidable case) ────────
+  //
+  // ⚠ NULL MEANS "THIS STATUS HAS NEVER BEEN DERIVED FROM FACTS", AND IT IS A MARKER, NOT A DATE
+  // ANYONE DISPLAYS. `pipeline_cache.pipeline_status` is what a referrer sees. Since 7b it comes
+  // from saved facts — but a capture can fail, and on a brand-new referred client there is then no
+  // fact-derived status to write at all.
+  //
+  // ⚠ THE RULED BEHAVIOUR, AND WHY EACH HALF IS WHAT IT IS:
+  //   · EXISTING row + failed capture → `pipeline_status` and `paid_at` are left ALONE. The
+  //     referral record is still refreshed; the status is the derivation's to write and the
+  //     derivation did not run.
+  //   · NEW row + failed capture → `'lead'`, the entry stage, which is simply TRUE (a referral
+  //     exists), plus this marker NULL so the next pass derives it. From `'lead'` the only way is
+  //     forward, so no referrer can ever see a stage go backwards because of it.
+  //   · NEVER NULL for the status, and NEVER a live classify.
+  //
+  // ⚠ THE REASON A LIVE-CLASSIFY FALLBACK WAS REJECTED (Danny, 2026-09-29): a TRANSIENT Jobber
+  // failure must never flip a referrer-visible stage BACKWARDS. The live object is truncated
+  // (`jobs(first: 50)`, an unpaged `invoices`), so classifying from it on the failure path could
+  // downgrade a `'paid'` client to `'sold'` for no reason but a bad afternoon at Jobber — which is
+  // exactly what the forward-only principle behind §2.1a exists to prevent. `server/test/oneStatusDerivation.test.js`
+  // stays strict with NO carve-out for this path.
+  await pool.query(`ALTER TABLE pipeline_cache
+    ADD COLUMN IF NOT EXISTS status_derived_at TIMESTAMPTZ`);
+
   await backfillAssignedAt(pool);
   await applyAssignedAtNotNull(pool);
 

@@ -173,7 +173,7 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     let relatedDataCalled = false;
     _setTestOverrides({
       fetchFullClient: async () => ({
-        id: 'jc-rename-cc',
+        id: 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1yZW5hbWUtY2M=',
         firstName: 'Rename', lastName: 'Safety',
         createdAt: new Date().toISOString(),
         customFields: [{ label: 'Referred by', valueText: 'Some Referrer' }],
@@ -182,14 +182,14 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     });
 
     const resp = await post('/webhooks/jobber/client-create', {
-      data: { webHookEvent: { itemId: 'jc-rename-cc', accountId: RENAMED_ACCOUNT_ID } },
+      data: { webHookEvent: { itemId: 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1yZW5hbWUtY2M=', accountId: RENAMED_ACCOUNT_ID } },
     });
     assert.equal(resp.status, 200);
 
     await waitFor(async () => {
       const { rows } = await pool.query(
         'SELECT * FROM pipeline_cache WHERE contractor_id = $1 AND jobber_client_id = $2',
-        [RENAMED_ID, 'jc-rename-cc']
+        [RENAMED_ID, 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1yZW5hbWUtY2M=']
       );
       return rows.length > 0;
     });
@@ -210,7 +210,7 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     let relatedDataCalled = false;
     _setTestOverrides({
       fetchFullClient: async () => ({
-        id: 'jc-rename-cu',
+        id: 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1yZW5hbWUtY3U=',
         firstName: 'Rename', lastName: 'Safety',
         createdAt: new Date().toISOString(),
         customFields: [{ label: 'Referred by', valueText: 'Some Referrer' }],
@@ -219,14 +219,14 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     });
 
     const resp = await post('/webhooks/jobber/client-update', {
-      data: { webHookEvent: { itemId: 'jc-rename-cu', accountId: RENAMED_ACCOUNT_ID } },
+      data: { webHookEvent: { itemId: 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1yZW5hbWUtY3U=', accountId: RENAMED_ACCOUNT_ID } },
     });
     assert.equal(resp.status, 200);
 
     await waitFor(async () => {
       const { rows } = await pool.query(
         'SELECT * FROM pipeline_cache WHERE contractor_id = $1 AND jobber_client_id = $2',
-        [RENAMED_ID, 'jc-rename-cu']
+        [RENAMED_ID, 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1yZW5hbWUtY3U=']
       );
       return rows.length > 0;
     });

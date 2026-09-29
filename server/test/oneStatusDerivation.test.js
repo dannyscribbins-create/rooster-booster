@@ -222,12 +222,6 @@ const SANCTIONED_CALLER = 'server/utils/attributionDecide.js :: function ' + FN_
 
 // ── THE EXPIRING INVENTORY — each entry names the commit that DELETES it ──────
 const EXPIRING_CLASSIFIERS = [
-  {
-    key: 'server/crm/pipelineSync.js :: function syncSingleClient',
-    spans: 1,
-    removedBy: 'N4 commit 4 — syncSingleClient decides from the facts it already captured',
-    why: 'classifies from the LIVE object ten lines above a capture that already happened',
-  },
 ];
 
 // ── PERMANENT CARVE-OUTS — ruled, with the ruling named ──────────────────────
@@ -261,21 +255,22 @@ const SANCTIONED_WRITERS = [
   // from captureClientFacts + decideFromFacts inside withClientLock, so it is a sanctioned
   // door rather than a live classifier awaiting conversion.
   { key: 'server/cron/jobs/jobberIncrementalSync.js :: function runForContractor', spans: 1 },
-  { key: 'server/routes/webhooks/jobber.js :: function upsertAndTagClient', spans: 1 },
+  // ⚠ RETIRED FROM THE EXPIRING LIST BY N4 COMMIT 7b — THE SECOND ENTRY TO CLOSE.
+  // TWO spans: the pipeline_cache upsert, whose status now comes from captureClientFacts +
+  // deriveReferredStatus inside withClientLock, AND the flagged_referrals insert, which COPIES the
+  // value into another table rather than deriving it. The count is pinned so a THIRD write cannot
+  // hide behind this entry.
+  { key: 'server/crm/pipelineSync.js :: function syncSingleClient', spans: 2 },
+  // ⚠ TWO SPANS SINCE N4 COMMIT 7b, NOT ONE. It writes the jobber_clients stage as before, and now
+  // ALSO the referrer-visible pipeline_cache status for a referred client — the fifth caller of the
+  // shared derivation (Danny's ruling), opt-in via `alsoDeriveReferredStatus` so the two doors that
+  // already call syncSingleClient do not write it twice.
+  { key: 'server/routes/webhooks/jobber.js :: function upsertAndTagClient', spans: 2 },
   { key: 'server/routes/webhooks/jobber.js :: function handleStageWebhook', spans: 1 },
   { key: 'server/utils/requestAttribution.js :: function writeStage', spans: 1 },
 ];
 
 const EXPIRING_WRITERS = [
-  {
-    key: 'server/crm/pipelineSync.js :: function syncSingleClient',
-    spans: 2,
-    removedBy: 'N4 commit 4',
-    why: 'TWO spans: the pipeline_cache upsert (the live-classified status, which commit 4 '
-      + 'repoints at the facts) AND the flagged_referrals insert, which COPIES the value '
-      + 'into another table rather than deriving it. The count is pinned so a THIRD write '
-      + 'cannot hide behind this entry.',
-  },
 ];
 
 const PERMANENT_WRITERS = [

@@ -116,7 +116,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
     let relatedDataCalled = false;
     _setTestOverrides({
       fetchFullClient: async () => ({
-        id: 'jc-c2-new',
+        id: 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMi1uZXc=',
         firstName: 'New', lastName: 'Client',
         createdAt: new Date().toISOString(),
         customFields: [{ label: 'Referred by', valueText: 'Some Referrer' }],
@@ -125,14 +125,14 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
     });
 
     const resp = await post('/webhooks/jobber/client-create', buildEnvelope({
-      topic: 'CLIENT_CREATE', accountId: 'JACCT_A', itemId: 'jc-c2-new',
+      topic: 'CLIENT_CREATE', accountId: 'JACCT_A', itemId: 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMi1uZXc=',
     }));
     assert.equal(resp.status, 200, 'client-create must ack 200');
 
     await waitFor(async () => {
       const { rows } = await pool.query(
         'SELECT * FROM pipeline_cache WHERE contractor_id = $1 AND jobber_client_id = $2',
-        [TENANT_A, 'jc-c2-new']
+        [TENANT_A, 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMi1uZXc=']
       );
       return rows.length > 0;
     });
@@ -160,7 +160,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
       await waitFor(async () => {
         const { rows } = await pool.query(
           'SELECT 1 FROM jobber_clients WHERE jobber_client_id = $1',
-          ['jc-c2-new']
+          ['Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMi1uZXc=']
         );
         return rows.length > 0;
       }, { timeout: 3000 });
@@ -169,7 +169,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
     // Inspect the real table the handler actually writes for a brand-new client.
     const { rows: clientRows } = await pool.query(
       'SELECT contractor_id FROM jobber_clients WHERE jobber_client_id = $1',
-      ['jc-c2-new']
+      ['Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMi1uZXc=']
     );
     assert.equal(clientRows.length, 1, 'jobber_clients row must exist for the new client');
     assert.equal(clientRows[0].contractor_id, TENANT_A, 'jobber_clients row must be under contractor A, resolved via accountId');
@@ -180,7 +180,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
   it('C3 client-update — accountId primary path resolves and processes an existing client under A', async () => {
     await seedContractors();
     await seedToken(pool, { contractorId: TENANT_A });
-    await seedJobberClient(pool, { contractorId: TENANT_A, jobberClientId: 'jc-c3-existing', name: 'Existing Client' });
+    await seedJobberClient(pool, { contractorId: TENANT_A, jobberClientId: 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMy1leGlzdGluZw==', name: 'Existing Client' });
     await pool.query(
       `INSERT INTO contractor_crm_settings (contractor_id, jobber_account_id) VALUES ($1, $2)`,
       [TENANT_A, 'JACCT_A']
@@ -189,7 +189,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
     let relatedDataCalled = false;
     _setTestOverrides({
       fetchFullClient: async () => ({
-        id: 'jc-c3-existing',
+        id: 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMy1leGlzdGluZw==',
         firstName: 'Existing', lastName: 'Client',
         createdAt: new Date().toISOString(),
         customFields: [{ label: 'Referred by', valueText: 'Some Referrer' }],
@@ -198,14 +198,14 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
     });
 
     const resp = await post('/webhooks/jobber/client-update', buildEnvelope({
-      topic: 'CLIENT_UPDATE', accountId: 'JACCT_A', itemId: 'jc-c3-existing',
+      topic: 'CLIENT_UPDATE', accountId: 'JACCT_A', itemId: 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMy1leGlzdGluZw==',
     }));
     assert.equal(resp.status, 200, 'client-update must ack 200');
 
     await waitFor(async () => {
       const { rows } = await pool.query(
         'SELECT * FROM pipeline_cache WHERE contractor_id = $1 AND jobber_client_id = $2',
-        [TENANT_A, 'jc-c3-existing']
+        [TENANT_A, 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMy1leGlzdGluZw==']
       );
       return rows.length > 0;
     });
@@ -219,7 +219,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
      'the 2-contractor-row tripwire quarantines instead of consulting local data)', async () => {
     await seedContractors(); // 2 rows — makes today's getDefaultContractorId() fail closed regardless
     await seedToken(pool, { contractorId: TENANT_A });
-    await seedJobberClient(pool, { contractorId: TENANT_A, jobberClientId: 'jc-c3-fallback', name: 'Fallback Client' });
+    await seedJobberClient(pool, { contractorId: TENANT_A, jobberClientId: 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMy1mYWxsYmFjaw==', name: 'Fallback Client' });
     // Deliberately NO contractor_crm_settings row at all — accountId has nothing to match
     // against, so the only path to a correct resolution is C3's local-data fallback
     // (SELECT contractor_id FROM jobber_clients WHERE jobber_client_id = $1), which does
@@ -228,7 +228,7 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
     let relatedDataCalled = false;
     _setTestOverrides({
       fetchFullClient: async () => ({
-        id: 'jc-c3-fallback',
+        id: 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMy1mYWxsYmFjaw==',
         firstName: 'Fallback', lastName: 'Client',
         createdAt: new Date().toISOString(),
         customFields: [{ label: 'Referred by', valueText: 'Some Referrer' }],
@@ -237,14 +237,14 @@ describe('webhook tenant derivation via accountId — resolveWebhookContractorId
     });
 
     const resp = await post('/webhooks/jobber/client-update', buildEnvelope({
-      topic: 'CLIENT_UPDATE', accountId: 'JACCT_UNMAPPED', itemId: 'jc-c3-fallback',
+      topic: 'CLIENT_UPDATE', accountId: 'JACCT_UNMAPPED', itemId: 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMy1mYWxsYmFjaw==',
     }));
     assert.equal(resp.status, 200, 'client-update must ack 200 regardless of resolution outcome');
 
     await waitFor(async () => {
       const { rows } = await pool.query(
         'SELECT * FROM pipeline_cache WHERE contractor_id = $1 AND jobber_client_id = $2',
-        [TENANT_A, 'jc-c3-fallback']
+        [TENANT_A, 'Z2lkOi8vSm9iYmVyL0NsaWVudC9qYy1jMy1mYWxsYmFjaw==']
       );
       return rows.length > 0;
     });

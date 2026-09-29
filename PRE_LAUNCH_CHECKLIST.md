@@ -537,6 +537,32 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         `referrer.js`'s stale-cache fallback**, or the fallback quietly keeps paying the old
         way. ⚠ The resident non-negotiable is unchanged and this finally obeys it: **no bonus
         dollar amount at `'sold'`; the amount comes from the conversion row.**
+      - [ ] **N4 COMMITS 7c AND 7d — THE CONVERSION CREDIT, AND THE BLOCKER THAT SPLIT COMMIT 7
+        INTO FOUR. NOT BUILT (filed 2026-09-29, after 7b).** 7b put the referrer-visible status on
+        saved facts; **it writes no conversion and credits no money.** Two commits remain, in this
+        order, and the order is forced:
+        · **7c — capture the Job Type custom field.** `evaluateReferral`
+        (`server/referralRules.js`) picks a payout SCHEDULE from the Job Type custom field on the
+        client's jobs, and **no fact table carries it**, so a facts-driven conversion cannot choose
+        a schedule at all. ⚠ **This was found BEFORE writing 7d rather than after**, which is the
+        only reason a gate that could never have fired was not shipped: a conversion derived from
+        facts would have returned `no_job_type_found` for every client, forever, and paid nothing
+        while reporting success. ⚠ **AND THE FIELD IS PER-CONTRACTOR, so the capture must read the
+        contractor's configured mapping** (`contractor_crm_settings.work_category`), not a literal.
+        · **7d — write the conversion from facts.** Only after 7c, and only against ruling 3b's
+        already-recorded shape (the card shows the credited `bonus_amount`, nothing before a
+        conversion exists — 7a shipped the display half).
+        ⚠ **AND A LATENT DEFECT FOUND ON THE WAY, REAL TODAY AND INDEPENDENT OF N4: the two
+        readers of that field DISAGREE ABOUT HOW TO FIND IT.** `deriveAndSaveTags` honours the
+        contractor's `work_category` mapping; **`referralRules.js` hard-codes the label
+        `'Job Type'`.** So a contractor who RENAMES the field in Jobber keeps their tags working —
+        visibly fine — and **silently loses payout qualification**, because `evaluateReferral` then
+        finds nothing and returns `no_job_type_found`. ⚠ **The failure is silent and it is on the
+        money path**: nothing surfaces, the tags look right, and the schedule lookup simply stops
+        finding a schedule. Fix the hard-coded label when 7c lands, since 7c has to read the
+        mapping anyway — **but it is a defect in its own right, not a 7c sub-task**, and it is
+        reachable today by any contractor renaming a custom field.
+
       - **THE OVER-PAYMENT DECISION — WRITTEN IN PLAIN LANGUAGE SO IT CAN BE DECIDED IN THE
         MONEY PHASE. Ruled 2026-09-29 to STAY OPEN until then. NOT BUILT.**
 
