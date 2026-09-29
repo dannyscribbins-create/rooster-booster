@@ -916,34 +916,36 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
       [data.paidCount, userId]
     );
 
-    // BUSINESS RULE: one conversion per referred client, ever. A returning client does not
-    // generate a second bonus for the original referrer. The UNIQUE constraint on
-    // (user_id, jobber_client_id) enforces this automatically — duplicate inserts are silently ignored.
+    // ── A GET NEVER WRITES A MONEY ROW (Danny's ruling, 2026-09-28) ─────────────
     //
-    // SCALABLE: currently conversions are recorded when a referrer loads their pipeline.
-    // The production-grade version is a Jobber webhook that fires the moment an invoice
-    // is marked paid in Jobber — writes the conversion row, triggers Stripe ACH payout,
-    // updates balance, and fires a push notification immediately. Build this during the
-    // Stripe ACH session. Until then Danny should periodically view referrers in the admin
-    // panel near period end dates to ensure all syncs are current before prize decisions are made.
-    for (const item of data.pipeline) {
-      // Hard gate: pre-start-date referrals never earn bonuses, regardless of pipeline_status.
-      // This is enforced at sync time (pre_start_date=true in pipeline_cache) and here as a
-      // double-check before writing to referral_conversions.
-      if (item.pre_start_date) {
-        console.log(`[pipeline] Skipping pre-start-date referral: ${item.name} (contractor: ${contractorId || 'unknown'})`);
-        continue;
-      }
-      if (!item.bonusEarned) continue;
-      // bonus_amount stored at sync time — source of truth for all period-filtered earnings queries.
-      // Full real-time accuracy requires Jobber webhook (Stripe ACH session).
-      await pool.query(
-        `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, converted_at, bonus_amount)
-         VALUES ($1, $2, $3, NOW(), $4)
-         ON CONFLICT (user_id, jobber_client_id) DO NOTHING`,
-        [userId, contractorId, item.id, item.payout]
-      );
-    }
+    // ⚠ WHAT WAS HERE INSERTED INTO referral_conversions WHENEVER A REFERRER OPENED THIS
+    // SCREEN, WITH `bonus_amount` TAKEN FROM `item.payout` — the SPECULATIVE `500 + boost`
+    // ladder computed in fetchPipelineForReferrer (server/crm/jobber.js), which reads no
+    // invoice, no job and no referral_schedules row. It was finding 3 of the payout audit.
+    //
+    // ⚠ AND `ON CONFLICT (user_id, jobber_client_id) DO NOTHING` MADE IT PERMANENT, WHICH IS
+    // WHAT MADE IT WORSE THAN A DISPLAY BUG. The UNIQUE constraint means the FIRST writer wins
+    // forever, so this path RACED the invoice-paid webhook — the one place a payout is
+    // computed from a schedule and an invoice — and whichever arrived first fixed the amount
+    // beyond correction. A referrer loading their own screen could therefore decide their own
+    // bonus, in advance, at a number nothing had derived.
+    //
+    // ⚠ MEASURED: both production conversion rows carry ladder-shaped amounts, one on a
+    // synthetic `jobber_client_id`, and `SUM(paid_count)` was 1 against 2 rows — this path
+    // writes no activity_log row and does not increment paid_count, while the webhook does
+    // both. `activity_log` holds ZERO `referral_conversion` events, so the webhook has never
+    // booked one and these rows did not come from it.
+    //
+    // ⚠ THE RESPONSE IS DELIBERATELY UNCHANGED. What this endpoint DISPLAYS — `payout`,
+    // `conversion_bonus`, `balance` — still comes from the adapter exactly as before. Removing
+    // the write does not fix the speculative LADDER, which is its own filed item; it removes
+    // only the part that persisted a guess into the money ledger.
+    //
+    // ⚠ CONVERSIONS ARE NOW WRITTEN IN EXACTLY ONE PLACE: the invoice-paid webhook
+    // (server/routes/webhooks/jobber.js), from evaluateReferral's schedule-driven figure.
+    // ⚠ server/test/getNeverWritesMoney.test.js FAILS if any GET route in server/ issues an
+    // INSERT, UPDATE or DELETE against referral_conversions or cashout_requests, naming
+    // file:line. If you are about to add one, that fence is the argument against it.
 
     await checkAndAwardBadges(userId, data.pipeline.length);
 

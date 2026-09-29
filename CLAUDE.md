@@ -424,7 +424,54 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2095 server tests across 346 suites, and 1358 React tests across 82 files** (measured 2026-09-29 by the payout-audit commit (1), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2095 · suites 346 · pass 2095 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2103 server tests across 347 suites, and 1358 React tests across 82 files** (measured 2026-09-29 by the payout-audit commit (3), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2103 · suites 347 · pass 2103 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3) ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2095 → 2103 is **+8**, one new file (`getNeverWritesMoney.test.js`); suites 346 → 347
+  is that file's single top-level describe. React did not move — no `src/` file was touched —
+  and was re-measured. **All four predicted before the run and matched.** Counted with an
+  anchored `^\s*it\(` (8); the file has **nine** loops and **none wraps a case** — six sit in the
+  fence's helper bodies (the directory walk, the paren matcher, the needle pairs) and three
+  inside `it()` bodies — so 8 is exact rather than 8 × anything.
+  ⚠ **THE GET-TIME WRITE IS GONE, AND THE FENCE THAT REPLACES IT NAMES `file:line`.** A GET
+  loading the referrer pipeline used to INSERT a `referral_conversions` row with
+  `bonus_amount` from the speculative `500 + boost` ladder, under `ON CONFLICT DO NOTHING` —
+  so the FIRST writer won forever and this path RACED the webhook that derives a payout from
+  a schedule. Conversions are now written in exactly one place.
+  ⚠ **THE TWO WIDTHS, BOTH CONFIRMED OBSERVABLE RATHER THAN MERELY RED.** (i) the removed
+  write restored → **3 red**, and the fence's message named
+  `server\routes\referrer.js:898 — INSERT INTO referral_conversions`; (ii) a money write added to a
+  DIFFERENT GET route (`admin/cashouts.js`'s list handler) → **exactly 1 red**, naming
+  `server\routes\admin\cashouts.js:25 — UPDATE cashout_requests`. **(ii) exists because (i) only
+  proves the fence sees the route this commit edited**; a fence claiming "any GET route" has
+  to be shown to reach one it was not written against.
+  ⚠ **AND A GUARD-PROOF MEASURED ONE OF THIS COMMIT'S OWN CASES NON-DISCRIMINATING, WHICH IS
+  THE ENTRY WORTH KEEPING.** *"a GET does not MODIFY an existing conversion row either"* stayed
+  **GREEN** under injection (i) — correctly, because the restored statement carries
+  `ON CONFLICT … DO NOTHING`, so an existing row is spared by construction. The case is kept
+  deliberately, for the writer shape it DOES cover (a future `DO UPDATE SET bonus_amount =
+  EXCLUDED.bonus_amount`, which "the table stays empty" could never see), and its comment now
+  records the measurement instead of the reasoning it was written on.
+  ⚠ **AND THE FIRST WRITING OF THIS FILE WAS VACUOUS IN THE MOST ORDINARY WAY: THE ROUTE
+  RETURNED 503 AND TWO ABSENCE CASES WENT GREEN BECAUSE NOTHING RAN.** The fixture omitted a
+  `contractor_crm_settings` row, so `getCRMAdapter` threw *'No connected CRM'* before the
+  handler body. **Only the case that asserts the removed code's own trigger condition was MET
+  — `item.bonusEarned === true` on the response itself — could tell the difference.** That is
+  this file's vacuity shape #9 (a fixture establishing a proxy rather than the precondition),
+  and it is why an absence assertion needs its precondition asserted in the same case.
+  ⚠ **THE FIXTURE USES `connection_method = 'api_key'`, NOT `'oauth'`,** because the oauth
+  branch calls `refreshTokenIfNeeded` and reaches Jobber. `fetchPipelineForReferrer` reads
+  `pipeline_cache` only, so the whole route runs offline against real code with no stub.
+  ⚠ **THE FENCE STRIPS COMMENTS, AND THAT IS A LIVE INSTANCE RATHER THAN A PRECAUTION.**
+  `routes/referrer.js` now carries a comment naming both the verb and the table it removed, so
+  an unstripped fence would flag the very comment recording the fix. **Rewording was NOT the
+  right fix here** — the comment has to be able to name what it removed — which is the one
+  shape where this file's *"reword, never exempt"* rule needs the parser to change instead.
+  ⚠ **AND THE FENCE'S BLIND SPOT IS WRITTEN DOWN RATHER THAN ASSUMED AWAY:** it matches SQL
+  written DIRECTLY inside a GET handler, so a GET calling a helper that writes is invisible to
+  it. The closure was checked BY HAND once, at this commit — every remaining write to either
+  money table sits in a POST, PATCH or DELETE handler or in the invoice-paid webhook.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (1) ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2095 / 346 / 1358 / 82**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (1) ITSELF, BECAUSE IT SHIPS TESTS.**
   ⚠ **THE GATE WAS RUN TWICE AND THE SECOND RUN IS THE ONE CITED**, because markdown-only edits
   landed after the first — this block, and ten citations in `PRE_LAUNCH_CHECKLIST.md` converted to
