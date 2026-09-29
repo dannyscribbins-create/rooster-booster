@@ -1435,15 +1435,16 @@ router.post('/jobber/invoice-paid', async (req, res) => {
               [result.referrerId, contractorId, result.jobberClientId, result.bonusAmount]
             );
 
-            // Non-blocking Active Referrer tag write — paid_count increment lives here too
-            // so concurrent duplicate deliveries where one INSERT returns rowCount=0 don't
-            // double-increment the referrer's boost tier.
+            // Non-blocking Active Referrer tag write.
+            // ⚠ THE `paid_count + 1` INCREMENT THAT LIVED HERE IS RETIRED (Danny, 2026-09-29).
+            // `users.paid_count` now has exactly ONE writer: an absolute recompute in the pipeline
+            // sync (server/utils/referrerProgress.js). The old comment argued the `rowCount > 0`
+            // guard made the increment safe against duplicate deliveries, and it did — **but only
+            // against duplicates that reach THIS branch.** An increment cannot self-heal: any
+            // divergence from the real count, from any cause, is permanent, and a second writer
+            // (the GET, now also removed) meant two mechanisms disagreed about the same column.
+            // A recompute is idempotent and corrects drift on every tick.
             if (conversionInsert.rowCount > 0) {
-              await pool.query(
-                `UPDATE users SET paid_count = paid_count + 1, paid_count_updated_at = NOW()
-                 WHERE id = $1`,
-                [result.referrerId]
-              );
               ;(async () => {
                 try {
                   const referrerEmailRes = await pool.query(

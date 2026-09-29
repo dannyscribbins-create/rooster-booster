@@ -464,6 +464,32 @@ mode proves no harm was done; it proves nothing about whether the logic is right
       defect this document's own header names as the failure that went unrecorded for four
       commits — it is now recorded.)*
 
+- [ ] **FUTURE FEATURE — PUSH NOTIFICATIONS FOR BADGE ANNOUNCEMENTS.** Planned by Danny
+      2026-09-29, **not built, and deliberately not fenced against.**
+      **The design, so it is not re-derived later:** push fires at **EARNING** time — the moment
+      the pipeline sync awards the badge — while the **in-app celebration still happens only on
+      the Profile tab**, one badge at a time. The two are separate events on purpose: a referrer
+      who is not in the app learns by push, and the celebration is still waiting for them when
+      they next open Profile.
+      ⚠ **EARNING AND SHOWING WERE SEPARATED IN THE BADGE-EARNING COMMIT PRECISELY SO THIS CAN
+      BE ADDED WITHOUT MOVING ANYTHING.** Awarding lives in
+      `server/utils/referrerProgress.js`; a push send belongs beside it.
+      ⚠ **NO FENCE FORBIDS A NOTIFICATION AT EARNING TIME, AND THAT IS A RULING RATHER THAN AN
+      OVERSIGHT.** `server/test/referrerProgressEarning.test.js` carries one case named
+      *"CURRENT STATE: awarding a badge sends no email, push or SMS today"*, labelled as the
+      state of things rather than as a rule. **Adding push means updating that one clearly-named
+      case** — a deliberate, visible change — instead of arguing with a guard that forbade the
+      feature.
+      ⚠ **AND THE AWARDER IS ALREADY IDEMPOTENT, WHICH IS WHAT MAKES A PUSH SAFE.** It reads
+      what is earned AND the insert carries `ON CONFLICT DO NOTHING`, so the 30-minute sync
+      cannot re-award — and therefore cannot re-notify. **A push hung off an incremental awarder
+      would have sent duplicates**, which is the second reason `paid_count` moved to an absolute
+      recompute in the same commit.
+      ⚠ **ONE OPEN QUESTION TO SETTLE WHEN IT IS BUILT:** what a referrer who earns several
+      badges in one sync receives — one push per badge, or one naming the highest. The in-app
+      celebration shows them in succession, so either is consistent with the experience; the
+      choice is about a notification tray, not about the app.
+
 - [ ] **`GET /api/pipeline` HAS SIDE EFFECTS ON A PAGE VIEW — decide before launch whether badge
       awarding belongs on a write path.** Filed 2026-09-29 at Danny's instruction, after commit (3)
       removed the money write from this same handler. What remains: it `UPDATE`s

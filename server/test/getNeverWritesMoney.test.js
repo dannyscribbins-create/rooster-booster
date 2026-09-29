@@ -70,7 +70,16 @@ function httpGet(port, p, token) {
 // ── THE FENCE ────────────────────────────────────────────────────────────────
 // ⚠ NEEDLES ASSEMBLED FROM PIECES so this file cannot match itself, and the money-table
 // names are never written whole here.
+// ⚠ WIDENED BEYOND MONEY TABLES (Danny, 2026-09-29). `users` and `user_badges` are added
+// because `GET /api/pipeline` wrote BOTH on a page view: `users.paid_count` and a badge row.
+// Neither is money, and the earlier scope was correct for the earlier ruling — but the
+// underlying defect is the same one, and the fence's name is about a GET writing rather than
+// about money specifically.
+// ⚠ `users` IS THE RISKY ADDITION AND IS WHY THE PAIRED NEGATIVE BELOW EXISTS: a GET route
+// legitimately SELECTs from `users` constantly. The needle is verb-anchored
+// (INSERT INTO / UPDATE / DELETE FROM immediately followed by the table), so a read cannot trip it.
 const MONEY_TABLES = ['referral' + '_conversions', 'cashout' + '_requests'];
+const WRITE_TABLES = MONEY_TABLES.concat(['users', 'user' + '_badges']);
 const WRITE_VERBS = ['INSERT' + ' INTO', 'UPDATE', 'DELETE' + ' FROM'];
 
 /** Every .js file under server/, excluding server/test — walked, never a typed list. */
@@ -133,8 +142,13 @@ function getRouteBodies() {
 
 /** Does this text write one of the money tables? Returns the offending descriptions. */
 function moneyWritesIn(text) {
+  return writesIn(text, MONEY_TABLES);
+}
+
+/** Does this text write one of `tables`? Returns the offending descriptions. */
+function writesIn(text, tables) {
   const hits = [];
-  for (const table of MONEY_TABLES) {
+  for (const table of tables) {
     for (const verb of WRITE_VERBS) {
       // The verb and the table in the same statement, in either order for UPDATE
       // (`UPDATE cashout_requests SET`) vs INSERT/DELETE (`INSERT INTO referral_conversions`).
@@ -337,6 +351,53 @@ describe('payout commit (3) — a GET request never writes a money row', () => {
     );
     const hits = moneyWritesIn(stripComments(webhook));
     assert.ok(hits.length >= 1, `the needle must detect the webhook's conversion insert; got ${JSON.stringify(hits)}`);
+  });
+
+  it('⚠ a GET does not write users.paid_count or award a badge', async () => {
+    // ⚠ THE PRECONDITION IS ASSERTED, FOR THE SAME REASON AS THE CONVERSION CASE ABOVE: the
+    // removed code fired when `item.bonusEarned` was true, so an empty result proves nothing
+    // unless that condition was actually met on the response.
+    await seedPaidPipelineRow();
+    await pool.query('UPDATE users SET paid_count = 7 WHERE id = $1', [userId]);
+
+    const res = await httpGet(port, '/api/pipeline', TOKEN);
+    assert.equal(res.status, 200);
+    const item = (res.body.pipeline || []).find(p => p.id === 'gid-pay3-001');
+    assert.ok(item, 'the seeded client must appear in the response');
+    assert.equal(item.bonusEarned, true, 'and must satisfy the removed writes\' condition');
+
+    const { rows: u } = await pool.query('SELECT paid_count FROM users WHERE id = $1', [userId]);
+    assert.equal(u[0].paid_count, 7, 'paid_count must be UNTOUCHED by a GET');
+    const { rows: b } = await pool.query('SELECT badge_id FROM user_badges WHERE user_id = $1', [userId]);
+    assert.deepEqual(b, [], 'and NO badge may be awarded by a GET');
+  });
+
+  it('⚠ FENCE: no GET route writes users or user_badges either', async () => {
+    // ⚠ THE WIDENED SCOPE. `GET /api/pipeline` wrote both on a page view; neither is a money
+    // table, so the original fence was correct for its ruling and blind to this.
+    const offenders = [];
+    for (const b of getRouteBodies()) {
+      const hits = writesIn(b.body, ['users', 'user' + '_badges']);
+      if (hits.length) offenders.push(`${b.file}:${b.line} — ${hits.join(', ')}`);
+    }
+    assert.deepEqual(
+      offenders, [],
+      'a GET route writes users or user_badges at:\n' + offenders.map(o => `  ${o}`).join('\n') +
+      '\nA read must not mutate. Move it to the sync or the webhook that changes the fact.'
+    );
+  });
+
+  it('⚠ PAIRED NEGATIVE: the widened needle does NOT flag a GET that merely READS users', async () => {
+    // ⚠ THIS IS THE CASE THAT KEEPS THE `users` ADDITION ALIVE. Almost every GET route SELECTs
+    // from `users`; a needle that flagged a read would be carved out within a week. The needle
+    // is verb-anchored, so this proves a SELECT cannot trip it while an UPDATE can.
+    const readOnly = "await pool.query('SELECT full_name FROM users WHERE id=$1', [id]);";
+    assert.deepEqual(writesIn(readOnly, ['users']), [], 'a SELECT must not be flagged');
+    const write = "await pool.query('UPDATE users SET paid_count = 1 WHERE id=$1', [id]);";
+    assert.ok(writesIn(write, ['users']).length >= 1, 'but an UPDATE must be');
+    // And the GET bodies actually DO contain user reads, so the negative is not vacuous.
+    const anyUserRead = getRouteBodies().some(b => /FROM\s+users\b/i.test(b.body));
+    assert.ok(anyUserRead, 'harness: some GET route must read users, or this proves nothing');
   });
 
   it('⚠ FENCE: no GET route anywhere in server/ writes referral_conversions or cashout_requests', async () => {

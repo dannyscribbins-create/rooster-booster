@@ -235,7 +235,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
   });
 
   // ── TEST 4 ──────────────────────────────────────────────────────────────────
-  it('qualified referral → referral_conversions row + paid_count increment + bonus + first-milestone emails', async () => {
+  it('qualified referral → referral_conversions row + bonus + first-milestone emails, and paid_count untouched', async () => {
     await seedTestContractor();
     await seedToken(pool, { contractorId: 'test-roofing' });
     await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
@@ -270,10 +270,17 @@ describe('invoice-paid webhook (characterization suite)', () => {
     assert.equal(parseFloat(rcRows[0].bonus_amount), 250, 'bonus_amount = 250');
     assert.equal(rcRows[0].jobber_client_id, 'jobber-c1', 'jobber_client_id recorded');
 
+    // ⚠ INVERTED BY A RULING, NOT BY A BUG (Danny, 2026-09-29). This asserted
+    // `paid_count === 1` — the webhook's `paid_count + 1`. That increment is RETIRED:
+    // `users.paid_count` now has exactly ONE writer, an absolute recompute in the pipeline sync
+    // (server/utils/referrerProgress.js). An increment double-counts a redelivered delivery and
+    // can never self-heal; a recompute is idempotent and corrects drift on every tick.
+    // ⚠ SO THE WEBHOOK MUST NOW LEAVE IT ALONE, and that is what is asserted instead. The
+    // absolute recompute has its own coverage in server/test/referrerProgressEarning.test.js.
     const { rows: userRows } = await pool.query(
       "SELECT paid_count FROM users WHERE LOWER(full_name) = 'jane referrer'"
     );
-    assert.equal(userRows[0].paid_count, 1, 'paid_count incremented to 1');
+    assert.equal(userRows[0].paid_count, 0, 'the webhook must NOT touch paid_count — the sync owns it');
 
     const subjects = emails.map(e => e.subject);
     assert.ok(subjects.some(s => s.includes('250')), 'bonus email subject contains amount');
@@ -281,10 +288,16 @@ describe('invoice-paid webhook (characterization suite)', () => {
   });
 
   // ── TEST 5 ──────────────────────────────────────────────────────────────────
-  it('duplicate webhook delivery — paid_count increments exactly once, no second conversion row', async () => {
-    // Fires the same invoice twice. First delivery records the conversion and increments
-    // paid_count. Second delivery is blocked by evaluateReferral's dupe check (qualified:false)
-    // and by the rowCount guard added in Session 79.5 — paid_count stays at 1.
+  it('duplicate webhook delivery — no second conversion row, and paid_count untouched throughout', async () => {
+    // Fires the same invoice twice. The first records the conversion; the second is blocked by
+    // evaluateReferral's dupe check (qualified:false) and by the rowCount guard.
+    // ⚠ THIS CASE'S SUBJECT CHANGED WITH THE RULING. It was *"paid_count increments exactly
+    // once"* — an assertion about an increment that no longer exists. The webhook does not touch
+    // `paid_count` at all now, so what is worth pinning here is that the DUPLICATE writes no
+    // second conversion row, and that `paid_count` stays where the sync left it either way.
+    // ⚠ IDEMPOTENCE OF `paid_count` DID NOT STOP MATTERING — IT MOVED. It is proven where the
+    // writer now lives: referrerProgressEarning.test.js asserts a re-run cannot double-count AND
+    // that a wrong stored value self-heals, which an increment could never do.
 
     await seedTestContractor();
     await seedToken(pool, { contractorId: 'test-roofing' });
@@ -321,7 +334,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
     const { rows: userRows1 } = await pool.query(
       "SELECT paid_count FROM users WHERE LOWER(full_name) = 'jane referrer'"
     );
-    assert.equal(userRows1[0].paid_count, 1, 'paid_count = 1 after first delivery');
+    assert.equal(userRows1[0].paid_count, 0, 'the webhook leaves paid_count alone');
 
     // Second delivery (same invoice) — evaluateReferral returns qualified:false.
     const resp2 = await post({
@@ -341,8 +354,8 @@ describe('invoice-paid webhook (characterization suite)', () => {
       "SELECT paid_count FROM users WHERE LOWER(full_name) = 'jane referrer'"
     );
     assert.equal(
-      userRows2[0].paid_count, 1,
-      'paid_count still 1 — duplicate delivery did not double-increment'
+      userRows2[0].paid_count, 0,
+      'and still untouched after a duplicate — the webhook is not a paid_count writer'
     );
 
     assert.equal(emails.length, 2, 'no extra emails from duplicate delivery');

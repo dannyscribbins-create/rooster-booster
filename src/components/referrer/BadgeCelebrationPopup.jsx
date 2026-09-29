@@ -20,7 +20,16 @@ const MUTED = 0.72;
 // Props:
 //   badges    — array of unseen earned badge objects (from /api/referrer/badges)
 //   onDismiss — called when the user closes the final card
-export default function BadgeCelebrationPopup({ badges, onDismiss }) {
+// ⚠ SUCCESSION WAS ALREADY CORRECT AND IS UNCHANGED (Danny's ruling, 2026-09-29): one badge
+// at a time, the next appearing only after the previous is dismissed. What CHANGED is how a card
+// is dismissed — the button read "Next"/"Done" and the scrim had no handler at all.
+//   · the button now reads "Awesome!" on every card, including the last;
+//   · tapping anywhere OUTSIDE the card dismisses the current badge too.
+// ⚠ AND EACH BADGE IS ACKNOWLEDGED AS IT IS DISMISSED, not all of them at the end.
+// `onBadgeSeen` fires per card. Before this, a referrer who dismissed the first of three and
+// then closed the tab would see that first badge celebrate again on their next visit, because
+// nothing had been marked seen yet.
+export default function BadgeCelebrationPopup({ badges, onBadgeSeen, onDismiss }) {
   const [currentIndex, setCurrentIndex] = useState(0);
 
   if (!badges || badges.length === 0) return null;
@@ -29,14 +38,30 @@ export default function BadgeCelebrationPopup({ badges, onDismiss }) {
   const isLast   = currentIndex === badges.length - 1;
   const isSecret = badge.tier === 'secret';
 
+  // ⚠ ONE PATH FOR BOTH DISMISSAL GESTURES, so the button and the outside tap can never
+  // diverge — a second copy is how one of them stops acknowledging.
+  const dismissCurrent = () => {
+    if (onBadgeSeen) onBadgeSeen(badge.id);
+    if (isLast) onDismiss();
+    else setCurrentIndex(i => i + 1);
+  };
+
   return (
-    <div style={{
-      position: 'fixed', inset: 0,
-      background: 'rgba(0,0,0,0.6)',
-      zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '0 20px',
-    }}>
+    <div
+      data-badge-scrim
+      onClick={(e) => {
+        // ⚠ ONLY A TAP ON THE SCRIM ITSELF. Without the target check, every click INSIDE the
+        // card bubbles up here and dismisses the badge the referrer is still reading — which
+        // would make the "Awesome!" button's own click dismiss twice.
+        if (e.target === e.currentTarget) dismissCurrent();
+      }}
+      style={{
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,0.6)',
+        zIndex: 1000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 20px',
+      }}>
       {/* key={currentIndex} remounts the card on each Next click, re-triggering the entrance animation */}
       <div key={currentIndex} style={{
         background: SURFACE,
@@ -91,9 +116,12 @@ export default function BadgeCelebrationPopup({ badges, onDismiss }) {
           {isSecret ? 'Check your badge gallery.' : badge.description}
         </p>
 
-        {/* Next / Done button */}
+        {/* ⚠ "Awesome!" ON EVERY CARD, INCLUDING THE LAST. It read "Next" then "Done", which
+            made the last card a different interaction from the others for no reason the
+            referrer can see. One label, one gesture. */}
         <button
-          onClick={isLast ? onDismiss : () => setCurrentIndex(i => i + 1)}
+          data-badge-dismiss
+          onClick={dismissCurrent}
           style={{
             width: '100%', background: PRIMARY, color: ON_PRIMARY,
             border: 'none', borderRadius: 10,
@@ -101,7 +129,7 @@ export default function BadgeCelebrationPopup({ badges, onDismiss }) {
             cursor: 'pointer', fontFamily: fontVar('body'),
           }}
         >
-          {isLast ? 'Done' : 'Next'}
+          Awesome!
         </button>
       </div>
 

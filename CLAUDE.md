@@ -424,7 +424,70 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2105 server tests across 347 suites, and 1387 React tests across 84 files** (measured 2026-09-29 by the payout-audit commit (3e), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2105 · suites 347 · pass 2105 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2119 server tests across 348 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the badge-earning commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2119 · suites 348 · pass 2119 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE BADGE-EARNING COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2105 → 2119 is **+14 = 11 + 3**: eleven in one new file
+  (`referrerProgressEarning.test.js`) and three APPENDED to the existing
+  `getNeverWritesMoney.test.js` (8 → 11). Suites 347 → 348 is the new file's single describe —
+  the three appended cases landed in a describe that already existed. React 1387 → 1397 is
+  **+10**, one new file (`badgeCelebrationSuccession.test.jsx`), and 84 → 85 is that file.
+  **All four predicted before the run and matched.**
+  ⚠ **NO PHANTOM, ASKED BEFORE THE RUN:** the new React file is a `.test.` file (skipped by
+  `adminBranding.test.jsx`'s walker) and the new server file is under `server/test/`, so neither
+  walked root gained a sweepable non-test file.
+  ⚠ **EARNING MOVED OFF A PAGE VIEW; SHOWING DID NOT MOVE AT ALL.** `GET /api/pipeline` wrote
+  `users.paid_count` and awarded badges, so whether a referrer earned anything depended on
+  whether they opened the app — and a refresh re-ran it. **The catalogue already declared
+  `trigger: "pipeline_sync"` for those four badges; only the code disagreed.** Awarding now
+  happens in the sync, quietly; the celebration still fires only on the Profile tab.
+  ⚠ **AND THE THREE-WAY SEPARATION IS THE RULING RATHER THAN A REFACTOR:** EARN where the fact
+  changes, SHOW on the page the referrer lands on, mark SEEN by an explicit act. Two of the
+  three were already right — `BadgeCelebrationPopup` is mounted inside `ProfileTab` and nowhere
+  else, and `POST /api/referrer/badges/acknowledge` already existed — which is why only earning
+  moved. **A fence pins the mount site**, because "never on app entry" is structural: the entry
+  popups live in `ReferrerApp`, and the badge popup being absent from that tree is what makes
+  the guarantee checkable rather than asserted.
+  ⚠ **`paid_count` HAS ONE WRITER AND IT IS AN ABSOLUTE RECOMPUTE.** The webhook's
+  `paid_count + 1` is retired. The old comment argued the `rowCount > 0` guard made the
+  increment safe against duplicate deliveries, and it did — **but only against duplicates that
+  reached that branch.** An increment cannot self-heal: any divergence is permanent. A case
+  proves the recompute **corrects a deliberately wrong stored value**, which is the argument for
+  absolute over incremental stated as a test rather than as prose.
+  ⚠ **TWO EXISTING WEBHOOK CASES WERE INVERTED BY THE RULING, AND ONE OF THEM HAD THE
+  INCREMENT AS ITS SUBJECT.** *"paid_count increments exactly once"* was an assertion about a
+  mechanism that no longer exists; it now pins that the webhook leaves the column alone, and
+  the idempotence it used to prove is proven where the writer now lives. **Neither was a bug
+  — both were correct about the old design.**
+  ⚠ **AND THE EDIT THAT UPDATED THEM PRODUCED `tests 1 · suites 0 · fail 1` — THE MODULE-LOAD
+  SIGNATURE THIS FILE NAMES, HIT BY THE SESSION THAT HAD READ IT.** An apostrophe inside a
+  single-quoted test name (*"the webhook's job"*) closed the string: `SyntaxError: missing )
+  after argument list`. **Reworded, not escaped.** The tell was the `suites 0` reading, exactly
+  as recorded — a non-zero test count beside zero suites.
+  ⚠ **FIVE WIDTHS.** (i) the GET writing `paid_count` and a badge again → **2 red** (the
+  behavioural case and the widened fence); (ii) the sync no longer awarding `first_referral` →
+  **4 red**; (iii) the webhook increment restored → **1 red**, the source fence; (iv) the popup
+  naming every badge in one card → **4 red**, including the INSIDE-tap negative; (v) Total
+  Balance Owed summing signed balances → **1 red**.
+  ⚠ **THE FENCE WIDENED TO `users` AND `user_badges`, AND `users` NEEDED A PAIRED NEGATIVE.**
+  Almost every GET route SELECTs from `users`, so a needle that flagged a read would be carved
+  out within a week. It is verb-anchored, and a case proves a `SELECT` cannot trip it while an
+  `UPDATE` can — plus a floor asserting some GET route really does read `users`, or that
+  negative proves nothing.
+  ⚠ **AND NO FENCE FORBIDS A NOTIFICATION AT EARNING TIME — THAT IS A RULING.** Push
+  notifications for badges are a planned feature (filed on `PRE_LAUNCH_CHECKLIST.md`): push will
+  fire at EARNING time while the celebration stays on the Profile tab. The suite carries ONE
+  case named *"CURRENT STATE: awarding a badge sends no email, push or SMS today"* — labelled as
+  the state of things, so adding push means updating a clearly-named case rather than arguing
+  with a guard that forbade the feature. **The awarder is idempotent, which is what will make a
+  push safe from duplicates.**
+  ⚠ **`client_badge` STAYS UNAWARDED AND A CASE SAYS SO.** The catalogue marks it
+  `pipeline_sync`, but it has never had a qualifying rule — it was commented out in the old
+  GET-time awarder, and **moving code does not invent one.** Recorded so its absence reads as
+  known rather than as this commit dropping it.
+  ⚠ **THE DEAD AWARDER WAS DELETED, NOT LEFT ORPHANED.** `checkAndAwardBadges`'s only caller
+  was the GET; once earning moved it had none.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3e) ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2105 / 347 / 1387 / 84**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3e) ITSELF, BECAUSE IT SHIPS TESTS.**
   React 1382 → 1387 is **+5 = 4 + 1 PHANTOM**, and the phantom was PREDICTED before the run
   rather than reconciled after it. Four cases were appended to the renamed

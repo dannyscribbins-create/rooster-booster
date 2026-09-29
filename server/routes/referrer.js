@@ -242,38 +242,12 @@ const ROOFMILES_DEFAULTS = BRANDING_THEME_DEFAULTS;
 // Called after every pipeline sync. Checks pipeline_sync-triggered badges and
 // inserts any newly qualifying ones. Returns array of newly awarded badge ids
 // so the caller can surface the celebration popup.
-async function checkAndAwardBadges(userId, totalReferralCount) {
-  const existing = await pool.query(
-    'SELECT badge_id FROM user_badges WHERE user_id=$1',
-    [userId]
-  );
-  const earned = new Set(existing.rows.map(r => r.badge_id));
-
-  const candidates = [
-    { id: 'first_referral', qualifies: totalReferralCount >= 1 },
-    { id: 'milestone_5',    qualifies: totalReferralCount >= 5  },
-    { id: 'milestone_10',   qualifies: totalReferralCount >= 10 },
-    { id: 'milestone_25',   qualifies: totalReferralCount >= 25 },
-    // MVP shortcut: full trigger via Jobber webhook in Stripe ACH session
-    // { id: 'client_badge', qualifies: ... },
-    // MVP shortcut: full trigger via Jobber webhook in Stripe ACH session
-    // { id: 'yearly_winner', qualifies: ... },
-  ];
-
-  const newlyAwarded = [];
-  for (const { id, qualifies } of candidates) {
-    if (qualifies && !earned.has(id)) {
-      await pool.query(
-        `INSERT INTO user_badges (user_id, badge_id, seen)
-         VALUES ($1, $2, false)
-         ON CONFLICT (user_id, badge_id) DO NOTHING`,
-        [userId, id]
-      );
-      newlyAwarded.push(id);
-    }
-  }
-  return newlyAwarded;
-}
+// ⚠ `checkAndAwardBadges` WAS HERE AND IS DELETED, NOT LEFT ORPHANED. It was the GET-time
+// awarder: its only caller was `GET /api/pipeline`, so once earning moved to the pipeline sync
+// it had none. Its logic lives in `server/utils/referrerProgress.js` as `awardPipelineBadges`,
+// with two changes worth naming: the badge list is derived from the same `pipeline_sync` trigger
+// the catalogue declares, and `client_badge` stays absent because it still has no qualifying
+// rule — it was commented out here too, and moving code does not invent one.
 
 // ── PUBLIC LANDING RESOLUTION ─────────────────────────────────────────────────
 // The call the landing page makes to learn who it is rendering for. Also the SPA's
@@ -910,11 +884,13 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
     contractorId = session.contractorId;
     const adapter = await getCRMAdapter(contractorId);
     const data = await adapter.fetchPipelineForReferrer(referrerName);
-    // MVP: update this to cron-based sync at scale
-    await pool.query(
-      'UPDATE users SET paid_count=$1, paid_count_updated_at=NOW() WHERE id=$2',
-      [data.paidCount, userId]
-    );
+    // ⚠ THE `paid_count` WRITE IS GONE FROM THIS GET (Danny, 2026-09-29). It lived here as an
+    // "MVP: update this to cron-based sync at scale" note, and the scale argument was never the
+    // real problem: a READ that writes makes behaviour depend on who opened the app and when,
+    // and a refresh re-ran it. `paid_count` now has exactly ONE writer — an absolute recompute
+    // in the pipeline sync (server/utils/referrerProgress.js). The invoice-paid webhook's
+    // `paid_count + 1` is retired in the same commit, because an increment double-counts a
+    // redelivered delivery and can never self-heal.
 
     // ── A GET NEVER WRITES A MONEY ROW (Danny's ruling, 2026-09-28) ─────────────
     //
@@ -947,7 +923,15 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
     // INSERT, UPDATE or DELETE against referral_conversions or cashout_requests, naming
     // file:line. If you are about to add one, that fence is the argument against it.
 
-    await checkAndAwardBadges(userId, data.pipeline.length);
+    // ⚠ BADGE AWARDING IS GONE FROM THIS GET TOO, AND THIS ROUTE IS NOW READ-ONLY apart from
+    // the booking-request read below. The pipeline-driven badges are awarded where the fact
+    // changes — the pipeline sync — which is what the catalogue's own
+    // `trigger: "pipeline_sync"` has always said.
+    // ⚠ SHOWING IS UNCHANGED AND STAYS UNCHANGED: the celebration still happens only when the
+    // referrer lands on the Profile tab, one badge at a time, because BadgeCelebrationPopup is
+    // mounted inside ProfileTab and nowhere else. Earning moved; showing did not.
+    // ⚠ server/test/getNeverWritesMoney.test.js NOW ALSO FENCES `users` AND `user_badges`
+    // against a GET, naming file:line.
 
     // Fetch pending booking requests submitted by this referrer's peer-referred users
     // and append them as booking_pending pipeline items.

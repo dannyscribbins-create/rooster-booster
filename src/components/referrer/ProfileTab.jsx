@@ -113,9 +113,11 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleBadgeDismiss = safeAsync(async () => {
-    const ids = newBadges.map(b => b.id);
-    setNewBadges([]); // clears immediately — fire-and-forget
+  // ⚠ ONE ACKNOWLEDGEMENT PER DISMISSED BADGE (Danny, 2026-09-29), not one for all of them at
+  // the end. This used to collect every id and POST them together when the LAST card closed, so
+  // a referrer who dismissed the first of three and then closed the tab had nothing marked seen
+  // — and that first badge celebrated again on their next visit.
+  const handleBadgeSeen = safeAsync(async (badgeId) => {
     try {
       await fetch(`${BACKEND_URL}/api/referrer/badges/acknowledge`, {
         method: 'POST',
@@ -123,11 +125,19 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
           'Content-Type': 'application/json',
           Authorization: `Bearer ${getReferrerToken()}`,
         },
-        body: JSON.stringify({ badgeIds: ids }),
+        body: JSON.stringify({ badgeIds: [badgeId] }),
       });
     } catch {
-      // swallow
+      // ⚠ SWALLOWED, AND THE FAILURE DIRECTION IS THE SAFE ONE: an unacknowledged badge
+      // celebrates once more, which is a repeat rather than a loss.
     }
+  }, 'ProfileTab');
+
+  // ⚠ CLEARING THE QUEUE IS SEPARATE FROM ACKNOWLEDGING, because the last card does both and
+  // the earlier cards do only the first. Folding them together is what produced the all-at-end
+  // behaviour this replaces.
+  const handleBadgeDismiss = safeAsync(async () => {
+    setNewBadges([]);
   }, 'ProfileTab');
 
   const fetchBadges = safeAsync(async () => {
@@ -1014,7 +1024,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
       </div>
 
       {newBadges.length > 0 && (
-        <BadgeCelebrationPopup badges={newBadges} onDismiss={handleBadgeDismiss} />
+        <BadgeCelebrationPopup badges={newBadges} onBadgeSeen={handleBadgeSeen} onDismiss={handleBadgeDismiss} />
       )}
       <MissingReferralModal
         isOpen={showMissingModal}

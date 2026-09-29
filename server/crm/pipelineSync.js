@@ -3,6 +3,7 @@ const { pool } = require('../db');
 const { refreshTokenIfNeeded } = require('./jobber');
 const { logError } = require('../middleware/errorLogger');
 const { isInvoicePaid } = require('../utils/invoicePaid');
+const { refreshReferrerProgress } = require('../utils/referrerProgress');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry, resendShouldRetry } = require('../utils/retryHelpers');
 const { Resend } = require('resend');
@@ -287,6 +288,25 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
      isPreStart, createdAt, paidAt]
   );
   const referralAnchor = upsertResult.rows[0].created_at;
+
+  // ── EARNING LIVES HERE NOW, NOT ON A PAGE VIEW (Danny, 2026-09-29) ─────────
+  // ⚠ `users.paid_count` AND THE PIPELINE-DRIVEN BADGES USED TO BE WRITTEN BY
+  // `GET /api/pipeline`, so whether a referrer earned anything depended on whether they opened
+  // the app. The catalogue already marked those badges `trigger: "pipeline_sync"`; only the code
+  // disagreed. This is the fact changing, so this is where the record is written.
+  // ⚠ IT IS PLACED AFTER THE UPSERT DELIBERATELY: the counts are read FROM `pipeline_cache`,
+  // so it must see the row this sync just wrote rather than the previous state.
+  // ⚠ AND IT RUNS ON EVERY SYNC OF A REFERRED CLIENT, not only when a notification fires. The
+  // notification block further down is gated on `shouldFireAny`; hanging earning off that would
+  // make a badge depend on whether an email happened to be due.
+  // ⚠ NON-FATAL BY CONSTRUCTION. A badge is not worth failing a sync over — the next tick
+  // recomputes from scratch, because the awarder is idempotent rather than incremental.
+  try {
+    await refreshReferrerProgress(pool, { contractorId, referredBy });
+  } catch (progressErr) {
+    await logError({ req: null, error: progressErr, contractorId,
+      source: 'pipelineSync — refreshReferrerProgress' });
+  }
 
   // ── APP_USER_ PLACEHOLDER CLEANUP ──────────────────────────────────────────
   // If a peer-signup placeholder row exists for this client (written at signup when
