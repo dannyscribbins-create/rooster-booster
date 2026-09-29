@@ -424,8 +424,58 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2159 server tests across 358 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 3 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2159 · suites 358 · pass 2159 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 3 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2177 server tests across 361 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 4 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2177 · suites 361 · pass 2177 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 4 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2159 → 2177 is **+18**, one new file (`referredCaptureBackfill.test.js`); suites 358 →
+  361 is that file's **three** top-level describes. React did not move — no `src/` file was
+  touched — and was re-measured. **All four predicted before the run and matched.** Counted with
+  an anchored `^\s*it\(` (18); the isolated run's own `tests 18` agrees, and every loop sits
+  inside an `it()` body iterating fixtures or needles, so none wraps a case.
+  ⚠ **THE GATE WENT RED FIRST ON THE 6c RESET-COVERAGE FENCE, AND IT WAS RIGHT.**
+  `referredCaptureBackfill.test.js touches referral_conversions but never clears it` — the suite
+  only ever READS that table (the facts-only case asserts the backfill wrote none), and that is
+  exactly the shape the fence exists for: **an absence assertion over an uncleared table starts
+  measuring a prior case's leftovers.** Added to the reset in FK order; `KNOWN_GAPS` was NOT
+  widened, as the fence's own message instructs.
+  ⚠ **AND A GUARD-PROOF FOUND THIS COMMIT'S VERB ANCHOR ENTIRELY INERT — WIDTH 0 — WHICH IS THE
+  ENTRY WORTH KEEPING.** The facts-only fence scans the job's source for five forbidden write
+  targets, verb-anchored so a legitimate SELECT is not flagged. Replacing the anchor with `true`
+  changed **nothing**, because after comment-stripping the job mentions **none** of the five
+  needles, so the loop never ran. ⚠ **The fence still fired when a forbidden write was ADDED**
+  (injections i-a and i-b), so it was not broken — its DISCRIMINATOR was simply never exercised,
+  and *a check whose failure mode has never been observed is a claim, not a check.*
+  ⚠ **AND MY OWN NON-VACUITY CASE WAS THE MISLEADING PART: it asserted `pipeline_cache` was
+  present "so the needles CAN match" — and `pipeline_cache` is not one of the needles.** The
+  write detection is now an extracted function driven on SYNTHETIC input in **both** directions:
+  a synthetic `UPDATE` of each of the five IS flagged, and a synthetic `SELECT` of each is NOT.
+  Injection (v) now reds **exactly 1**, naming the READ discriminator.
+  ⚠ **THE JOB WRITES FACTS AND NOTHING ELSE, AND THE ABSENCE IS FENCED RATHER THAN ASSERTED
+  ONCE.** No `pipeline_stage`, no `pipeline_status`, no `client_rep_assignments`, no
+  `flagged_assignments`, no `referral_conversions` — and it never calls `decideFromFacts` or
+  `classifyPipelineStatus` either, because a job that derived a status and discarded it would be
+  one edit from writing it. **Ordering is the reason this is commit 4 and not commit 8:** run
+  after the derivation, the referred clients with no facts today would derive `'lead'` for want
+  of data, on the one surface where a stage must only move forward.
+  ⚠ **`capturePost` GAINED AN OPTIONAL `onCost` HOOK, AND IT IS A PACING HOOK RATHER THAN A
+  SECOND LOG.** `logCaptureCost` writes the throttle figures to the console, which nothing can
+  read back — so a caller issuing captures in a LOOP had no way to pace against them. It is
+  wrapped in try/catch for the same reason the cost LINE is: an observation must never fail a
+  capture. Forwarded to the paging queries too, so a client with 200 quotes is paced on all four
+  round trips rather than the first.
+  ⚠ **SIX GUARD-PROOFS, EVERY REVERT AN INVERSE PATCH IN A `finally` PROVEN BYTE-IDENTICAL BY
+  sha256 ACROSS ALL THREE WATCHED FILES.** (i-a) the job also writes the displayed stage → **2**;
+  (i-b) it also writes a conversion → **5**; (ii) the client selection returns an empty set →
+  **8**, which is the non-vacuity proof that every case is driven by a real population;
+  (iii) a per-run row added to a fact table → **2**, including the idempotence case, which
+  compares the ROWS rather than the count — a count would also be satisfied by a run that
+  deleted one row and inserted another; (iv) the script stops refusing a missing contractor id →
+  **exactly 1**; (v) the fence's verb anchor neutralised → **exactly 1**.
+  ⚠ **INJECTION (v)'s ANCHOR IS ESCAPE-FREE ON PURPOSE.** The obvious anchor is the regex line,
+  and writing it into a JS string turns every `\b` into a BACKSPACE byte — the trap that cost
+  commit 3 two debugging passes. Every changed file is checked for stray control bytes (0).
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 3 COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2159 / 358 / 1397 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE N4 COMMIT 3 COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2149 → 2159 is **+10**, one new file (`syncCaptureThenDecide.test.js`); suites 355 → 358
   is that file's **three** top-level describes. React did not move — no `src/` file was touched —
   and was re-measured. **All four predicted before the run and matched.** Counted with an

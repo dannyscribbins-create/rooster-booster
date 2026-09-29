@@ -268,6 +268,15 @@ async function capturePost(query, variables, token, meta = {}) {
     { retries: 2, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
   );
   logCaptureCost(response, meta);
+  // ⚠ OPTIONAL AND ADDITIVE (N4 commit 4), AND IT IS A PACING HOOK, NOT A SECOND LOG.
+  // A caller that issues captures in a LOOP has to pace itself against Jobber's returned
+  // figures, and the cost extension is only visible here. `logCaptureCost` writes it to the
+  // console, which nothing can read back. ⚠ IT IS WRAPPED BECAUSE A PACING CALLBACK MUST NEVER
+  // FAIL A CAPTURE — the same reasoning the cost LINE carries: an observation is not a
+  // precondition. Every existing caller keeps working unchanged; `onCost` is simply absent.
+  if (typeof meta.onCost === 'function') {
+    try { meta.onCost(response?.data?.extensions?.cost); } catch { /* never fail a capture */ }
+  }
   return response;
 }
 
@@ -414,7 +423,16 @@ async function fetchFullClient(clientId, token, costMeta = {}) {
   // that knows its door and contractor passes them so the cost line can be attributed. It is
   // the DOOR that makes the log useful — an untagged cost line cannot tell a webhook burst
   // from the sweep, which is the only question the numbers are being read to answer.
-  const meta = { door: costMeta.door || 'fetchFullClient', contractorId: costMeta.contractorId || null, label: 'GetClient' };
+  const meta = {
+    door: costMeta.door || 'fetchFullClient',
+    contractorId: costMeta.contractorId || null,
+    label: 'GetClient',
+    // ⚠ FORWARDED TO EVERY PAGE, NOT ONLY THE FIRST. `meta` is handed to pageClientConnection
+    // below, so a caller pacing on cost sees the follow-up pages too — which is the point: a
+    // client with 200 quotes costs four round trips, and pacing on the first alone would
+    // under-count exactly the clients that matter.
+    onCost: costMeta.onCost,
+  };
 
   const response = await capturePost(BASE_QUERY, { id: clientId }, token, meta);
   assertNoJobberGraphQLErrors(response, label);
