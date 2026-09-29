@@ -424,8 +424,62 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2133 server tests across 351 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 1 fence commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2133 · suites 351 · pass 2133 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 1 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2149 server tests across 355 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2149 · suites 355 · pass 2149 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 2 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2133 → 2149 is **+16**, one new file (`derivableClient.test.js`); suites 351 → 355 is
+  that file's **four** top-level describes. React did not move — no `src/` file was touched —
+  and was re-measured. **All four predicted before the run and matched.** Counted with an
+  anchored `^\s*it\(` (16); the file's ten loops were each checked for POSITION and **all ten
+  sit inside `it()` bodies** (iterating fixtures and assertions) or inside the walk helper, so
+  none wraps a case.
+  ⚠ **THE GATE WENT RED FIRST AT `fail 120` ACROSS 12 SUITES, AND THE CAUSE WAS MY OWN
+  DEVIATION FROM THE PLAN — WHICH IS THE ENTRY WORTH KEEPING.** The plan said commit 2 ships
+  "a shared predicate and its tests, no behaviour change yet". I wired the new
+  `assertDerivableJobberClientId` into `decideFromFacts` as well, reasoning that a utility with
+  no consumer is this file's vacuity shape #8. **Every existing fixture uses a synthetic client
+  id — `"c1"`, `"client-1"` — which is correct for its own test and is not a Jobber
+  EncodedId**, so the guard threw for all of them. **120 cases, 12 suites**, and the React half
+  never ran at all because the gate chains with `&&`.
+  ⚠ **BACKED OUT RATHER THAN "FIXED", AND THE DISTINCTION IS THE CHARACTERIZATION RULE.**
+  Migrating 120 fixtures would have been changing tests to satisfy new code, inside a commit
+  whose stated purpose is no behaviour change. The guard is RIGHT and PREMATURE: nothing today
+  feeds `decideFromFacts` a non-derivable id, so it buys no protection in exchange for that
+  migration. **The 120/12 figure is now recorded IN a test case** (*"decideFromFacts does NOT
+  yet enforce this, and the reason is measured"*), which asserts the absence and names every
+  affected suite — so the next session sizes the work instead of rediscovering it, and
+  guard-proof (i) re-wires the guard and takes exactly that case red.
+  ⚠ **AND A GUARD-PROOF FOUND ONE OF THIS COMMIT'S OWN CASES VACUOUS, MEASURED AT WIDTH 0.**
+  *"rejects a string that base64-decodes leniently"* inserted a `!` into a valid id — which the
+  **charset regex** rejects three lines before the round-trip check is ever reached. Removing
+  the round-trip left the case GREEN. The discriminating fixture has to PASS charset and length
+  and still fail the round-trip: base64 ignores the unused low bits of the final character, so
+  `…C8xMR==` decodes to `gid://Jobber/Client/11` and re-encodes as `…C8xMQ==`. Rewritten with
+  four harness assertions proving it reaches the round-trip; (iv) now reds **exactly 1**.
+  ⚠ **THE PREDICATE IS WIDER THAN THE RULING'S WORDING, DELIBERATELY, AND (iii) IS WHY.** Danny
+  ruled *"`'app_user'` is excluded"*; a predicate matching that literal passes
+  **`test-client-002`**, a synthetic id live in production with a `'paid'` status and a real
+  `referral_conversions` row. The question is not what a row's status says but whether a Jobber
+  client exists behind its id, so the check is *decodes to `gid://Jobber/Client/`*. Injection
+  (iii) writes the naive reading and reds **3**.
+  ⚠ **MEASURED AGAINST PRODUCTION BEFORE BEING WRITTEN, IN THE DIRECTION THAT MATTERS.** All
+  **19,565** stored `jobber_clients` ids satisfy it — **zero** false negatives — and the only
+  rows rejected anywhere are the three `app_user_*` placeholders and the one synthetic id, none
+  of which carries a single row in any of the five fact tables. **A predicate that silently
+  EXCLUDES a real client is permanent and invisible; one that admits a stray string fails at
+  the next query** — so the URL-safe base64 alphabet is accepted too, chosen for the failure
+  mode rather than for strictness.
+  ⚠ **SEVEN GUARD-PROOFS, SIX OF THEM EXACTLY 1 RED.** (i) the guard re-wired into
+  `decideFromFacts` → 1; (ii) the client-type check dropped so any Jobber gid passes → 1;
+  (iii) the naive `app_user`-literal predicate → 3; (iv) the round-trip removed → 1; (v) the
+  SQL fragment decoding before it checks length, which makes Postgres `decode()` RAISE and
+  abort the statement rather than filter → 1; (vi) the interpolated identifier no longer
+  validated → 1; (vii) a second file spelling the exclusion for itself → 1. Every revert an
+  inverse patch in a `finally`, all three watched files proven byte-identical by sha256.
+  ⚠ **NO DATABASE, SO NOTHING JOINS ANY RESET LIST** — pure unit assertions plus one source
+  fence.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 1 COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2133 / 351 / 1397 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE N4 COMMIT 1 COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2119 → 2133 is **+14**, one new file (`oneStatusDerivation.test.js`); suites 348 → 351
   is that file's **three** top-level describes. React did not move — **no `src/` file was touched
   at all**, and the only non-test files this commit edits are markdown — and was re-measured

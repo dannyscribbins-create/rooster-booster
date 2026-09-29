@@ -449,6 +449,24 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         launch** (ruling 8). ⚠ **Ruling 8 DOES require one thing before launch: capture facts for
         the REFERRED population only** (`pipeline_cache`, ~20 rows today), so every stage a
         referrer sees is fact-derived from day one. **That is a build item, tracked here.**
+      - [ ] **N4 BUILD RULINGS THAT WOULD OTHERWISE LIVE ONLY IN AN UNTRACKED FILE.** Both are
+        instructions for commits not yet built, so they are recorded here as well as in
+        `N4_STATUS_DESIGN.md` — this repo's recurring failure is a deferral that exists only in
+        a document git has never seen.
+        · **Ruling 1 copy (Danny, 2026-09-29), for the referrer backwards-move note:
+        `This job is no longer active.`** Subtle, muted body text, the same treatment as the
+        §2.10 balance note — never an alert. ⚠ **It deliberately does NOT name the cause**; the
+        two candidates that did were rejected, because naming a cancellation puts the platform
+        in the position of explaining a contractor's decision to their referrer. Do not
+        "improve" it back into naming one.
+        · **Ruling 3b (Danny, 2026-09-29), for the money commit:** once conversions are written
+        from facts, the referrer's pipeline card must show the bonus **actually credited** —
+        the `referral_conversions` row's `bonus_amount` — and **nothing before a conversion
+        exists**. The speculative `500 + boost` that `fetchPipelineForReferrer` derives from
+        `pipeline_cache = 'paid'` is retired, **and so is its second inlined copy in
+        `referrer.js`'s stale-cache fallback**, or the fallback quietly keeps paying the old
+        way. ⚠ The resident non-negotiable is unchanged and this finally obeys it: **no bonus
+        dollar amount at `'sold'`; the amount comes from the conversion row.**
       - **THE OVER-PAYMENT DECISION — WRITTEN IN PLAIN LANGUAGE SO IT CAN BE DECIDED IN THE
         MONEY PHASE. Ruled 2026-09-29 to STAY OPEN until then. NOT BUILT.**
 
