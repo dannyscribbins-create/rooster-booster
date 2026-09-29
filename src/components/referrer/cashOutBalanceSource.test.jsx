@@ -75,28 +75,93 @@ describe('payout commit (3b) — the Cash Out screen reads the server balance', 
   beforeEach(() => { vi.restoreAllMocks(); });
   afterEach(() => { delete global.fetch; });
 
-  it('⚠ DANNY\'S SHAPE: a server balance of −500 does NOT display $500', async () => {
+  // ⚠ THE THREE CASES BELOW WERE **INVERTED BY A RULING**, NOT CORRECTED FOR A BUG, AND THE
+  // OLD ASSERTIONS ARE QUOTED SO THE CHANGE IS REVIEWABLE RATHER THAN SILENT.
+  // Commit (3b) made this screen say "$500 over-paid — nothing available", and these cases
+  // ASSERTED that wording. Danny then ruled (§2.9, 2026-09-29) that a zero or negative balance
+  // shows on every referrer surface as a plain $0 with **no message of any kind** — never
+  // "over-paid", "overpaid", "negative", or a minus sign. So:
+  //   · toMatch(/over-paid/) on the balance line      → now the exact opposite
+  //   · toMatch(/[$]500 over-paid/)                   → retired; the figure is not shown at all
+  //   · getByText(/No balance available to cash out/)  → that copy was REMOVED
+  // ⚠ THE PREVIOUS WORDING WAS HONEST AND IS NOW FORBIDDEN. That is a product decision about
+  // what a referrer should be told, not a discovery that the old text was wrong — and the
+  // distinction matters, because the TRUE value is still what the server returns and what the
+  // admin panel shows.
+  it('⚠ DANNY\'S SHAPE: a server balance of −500 displays a plain $0', async () => {
     mount({ available: -500 });
     await waitFor(() => expect(balanceLine().textContent).not.toMatch(/Checking/));
     const text = balanceLine().textContent;
-    // The exact defect: the old client-side sum rendered "$500 available" here.
-    expect(text).not.toMatch(/\$500 available/);
-    expect(text).toMatch(/over-paid/);
-    expect(text).toMatch(/nothing available/);
+    expect(text).toMatch(/\$0 available/);
+    // The original finding-6 defect: the client-side sum rendered $500 here.
+    expect(text).not.toMatch(/\$500/);
+    // The §2.9 prohibitions, on the balance line itself.
+    expect(text).not.toMatch(/over-?paid/i);
+    expect(text).not.toMatch(/negative/i);
+    expect(text).not.toMatch(/-\$/);
   });
 
-  it('a negative balance shows the amount owed rather than hiding or clamping it', async () => {
-    mount({ available: -500 });
-    await waitFor(() => expect(balanceLine().textContent).toMatch(/over-paid/));
-    // ⚠ ANCHORED ON THE SURROUNDING PHRASE, NOT THE BARE VALUE. `toContain('500')` would be
-    // satisfied by "$1,500" or "$5000" — CLAUDE.md's toContain-on-a-bare-value trap.
-    expect(balanceLine().textContent).toMatch(/\$500 over-paid/);
-  });
-
-  it('a ZERO balance says so and does not offer a request', async () => {
-    mount({ available: 0 });
+  it('⚠ a negative balance shows NO message anywhere on the screen', async () => {
+    const { container } = mount({ available: -500 });
     await waitFor(() => expect(balanceLine().textContent).toMatch(/\$0 available/));
-    expect(screen.getByText(/No balance available to cash out/)).toBeTruthy();
+    // ⚠ THE WHOLE RENDERED TREE, NOT JUST THE BALANCE LINE. The ruling is that no message of
+    // any kind appears — a sibling paragraph saying "nothing available" would satisfy a
+    // balance-line-only assertion and still break it.
+    const all = container.textContent;
+    expect(all).not.toMatch(/over-?paid/i);
+    expect(all).not.toMatch(/No balance available/i);
+    expect(all).not.toMatch(/nothing available/i);
+    expect(all).not.toMatch(/negative/i);
+    // ⚠ A MINUS SIGN IMMEDIATELY BEFORE A DOLLAR FIGURE — not a bare hyphen, which appears
+    // legitimately in hyphenated copy elsewhere on the screen.
+    expect(all).not.toMatch(/-\s*\$\s*\d/);
+    expect(all).not.toMatch(/\$-\d/);
+  });
+
+  it('a ZERO balance displays a plain $0 and no message', async () => {
+    const { container } = mount({ available: 0 });
+    await waitFor(() => expect(balanceLine().textContent).toMatch(/\$0 available/));
+    expect(container.textContent).not.toMatch(/No balance available/i);
+    expect(container.textContent).not.toMatch(/over-?paid/i);
+  });
+
+  // ⚠ RENAMED: this read "no method button is offered", which stated the opposite of what it
+  // now asserts. A name that misdescribes its own assertion is the inverted-record failure.
+  it('⚠ a non-positive balance DISABLES the request — every method button is disabled', async () => {
+    // ⚠ THE OTHER HALF OF THE RULING, AND THE HALF THAT PROTECTS THE REFERRER. Silence about
+    // the balance is only acceptable because the control is blocked; a screen that said $0 and
+    // still let a request through would be worse than the wording it replaced.
+    mount({ available: -500 });
+    await waitFor(() => expect(balanceLine().textContent).toMatch(/\$0 available/));
+    expect(screen.queryByText(/Minimum cashout amount/i)).toBeNull();
+    // ⚠ DISABLED, NOT ABSENT — AND THE FIRST WRITING OF THIS CASE ASSERTED ABSENCE AND FAILED
+    // AGAINST CORRECT CODE. Danny's ruling is that the request is BLOCKED (button disabled),
+    // which is a different claim from the chooser not rendering: a screen that hid its controls
+    // entirely would leave a referrer with a $0 and no explanation of what the screen is even
+    // for. `queryByText('Venmo')` also returns the label `<p>` INSIDE the button, so asserting
+    // on the text could never have reached the button's own state — the enclosing control is
+    // what carries it.
+    const methodButtons = Array.from(document.querySelectorAll('button'))
+      .filter(b => /Venmo|Check/.test(b.textContent));
+    expect(methodButtons.length).toBeGreaterThan(0);
+    for (const b of methodButtons) {
+      expect(b.disabled).toBe(true);
+    }
+  });
+
+  it('⚠ PAIRED POSITIVE: a healthy balance is unchanged and the request IS enabled', async () => {
+    // ⚠ WITHOUT THIS, EVERY ASSERTION ABOVE IS SATISFIED BY A SCREEN THAT SHOWS $0 AND OFFERS
+    // NOTHING TO ANYONE — which is an outage, not a clamp. This is the case that fails if the
+    // clamp over-reaches.
+    mount({ available: 640 });
+    await waitFor(() => expect(balanceLine().textContent).toMatch(/\$640 available/));
+    const methodButtons = Array.from(document.querySelectorAll('button'))
+      .filter(b => /Venmo|Check/.test(b.textContent));
+    expect(methodButtons.length).toBeGreaterThan(0);
+    for (const b of methodButtons) {
+      expect(b.disabled).toBe(false);
+    }
+    expect(screen.queryByText(/Minimum cashout amount/i)).toBeNull();
   });
 
   it('a positive balance renders the SERVER\'s figure', async () => {
@@ -196,6 +261,92 @@ describe('payout commit (3b) — the Cash Out screen reads the server balance', 
     expect(seen).toBeGreaterThan(50);
     const synthetic = `const b = list.${REDUCE}(s, p) => s + p.${PAYOUT}, 0);`;
     expect(synthetic.includes(REDUCE) && synthetic.includes(PAYOUT)).toBe(true);
+  });
+
+  it('⚠ FENCE: no referrer-facing file contains the forbidden balance wording', () => {
+    // ⚠ A SOURCE FENCE ACROSS THE WHOLE REFERRER TREE, BECAUSE THE RENDER TESTS ABOVE COVER
+    // ONE SCREEN. Danny's §2.9 ruling is about EVERY referrer surface, and `ProfileTab.jsx`
+    // shows a Balance row too. Mounting ProfileTab means standing up six unrelated fetches, so
+    // its coverage here is deliberately STRUCTURAL — stated rather than implied, because a
+    // source fence cannot see a word assembled at runtime.
+    // ⚠ NEEDLES BUILT FROM PIECES so this file cannot match itself.
+    const OVER = 'over' + '-paid';
+    const OVER2 = 'over' + 'paid';
+    const NEG = 'neg' + 'ative';
+    const root = path.join(process.cwd(), 'src', 'components', 'referrer');
+    const offenders = [];
+    for (const name of fs.readdirSync(root)) {
+      if (!/\.jsx?$/.test(name) || /\.test\./.test(name)) continue;
+      const raw = fs.readFileSync(path.join(root, name), 'utf8');
+      // ⚠ COMMENTS STRIPPED. Both CashOutTab and ProfileTab now carry comments EXPLAINING the
+      // ruling, which necessarily name the forbidden words — the "a guard that fires on the
+      // prose beside it" case where the prose must be allowed to say what it forbids.
+      const src = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+      src.split(/\r?\n/).forEach((line, i) => {
+        const l = line.toLowerCase();
+        // "over-paid" / "overpaid" have no legitimate non-copy use in this tree, so they are
+        // flagged wherever they appear.
+        if (l.includes(OVER) || l.includes(OVER2)) {
+          offenders.push(`${name}:${i + 1} — ${line.trim().slice(0, 80)}`);
+          return;
+        }
+        // ⚠ "negative" IS FLAGGED ONLY INSIDE USER-VISIBLE COPY, AND THE FIRST WRITING OF THIS
+        // FENCE GOT THAT WRONG. A bare word match reported `ExperiencePopup.jsx`'s
+        // `direction === 'negative'` twice — the experience flow's own positive/negative
+        // branch, nothing to do with a balance. **A heuristic that reports plausible findings is
+        // worse than none**, and a fence flagging two correct lines would have been switched off
+        // or carved out within a month.
+        // ⚠ THE DISCRIMINATOR IS A SPACE INSIDE THE STRING. Copy has spaces ("your balance is
+        // negative"); an enum value or identifier does not ('negative'). Validated in BOTH
+        // directions: it spares the ExperiencePopup lines and catches the synthetic copy in the
+        // harness floor below.
+        for (const span of line.match(/'[^']*'|"[^"]*"|`[^`]*`/g) || []) {
+          const inner = span.slice(1, -1);
+          if (inner.toLowerCase().includes(NEG) && /\s/.test(inner)) {
+            offenders.push(`${name}:${i + 1} — ${line.trim().slice(0, 80)}`);
+            return;
+          }
+        }
+      });
+    }
+    expect(offenders, 'forbidden balance wording on a referrer surface:\n  ' +
+      offenders.join('\n  ')).toEqual([]);
+  });
+
+  it('HARNESS FLOOR: the wording fence reads real referrer files and its needles work', () => {
+    // ⚠ WITHOUT THIS THE FENCE ABOVE PASSES BECAUSE THE DIRECTORY LISTING FOUND NOTHING.
+    const root = path.join(process.cwd(), 'src', 'components', 'referrer');
+    const files = fs.readdirSync(root).filter(n => /\.jsx?$/.test(n) && !/\.test\./.test(n));
+    expect(files).toContain('CashOutTab.jsx');
+    expect(files).toContain('ProfileTab.jsx');
+    // ⚠ BOTH DIRECTIONS. It must catch forbidden COPY and spare the legitimate identifier —
+    // the exact pair the first writing of the fence got wrong on `ExperiencePopup.jsx`.
+    const NEG = 'neg' + 'ative';
+    const copy = `"your balance is ${NEG}"`;
+    const identifier = `direction === '${NEG}'`;
+    const flags = (line) => (line.match(/'[^']*'|"[^"]*"|`[^`]*`/g) || [])
+      .some(sp => sp.slice(1, -1).toLowerCase().includes(NEG) && /\s/.test(sp.slice(1, -1)));
+    expect(flags(copy)).toBe(true);        // catches the defect
+    expect(flags(identifier)).toBe(false); // spares the idiom
+    const synthetic = 'label: "You are over-paid"';
+    expect(synthetic.toLowerCase().includes('over' + '-paid')).toBe(true);
+  });
+
+  it('⚠ ProfileTab clamps its Balance row and keeps the true value for the admin', () => {
+    // ⚠ STRUCTURAL, AND THE LIMIT IS STATED: this reads source rather than rendering, so it
+    // proves the clamp is WRITTEN, not that it paints. The wording fence above is what covers
+    // ProfileTab's copy; between them the ruling is covered on that screen without standing up
+    // its six unrelated fetches.
+    const src = fs.readFileSync(
+      path.join(process.cwd(), 'src', 'components', 'referrer', 'ProfileTab.jsx'), 'utf8'
+    );
+    // The Balance row must clamp at zero...
+    expect(src).toMatch(/Math\.max\(0,\s*serverBalance\)/);
+    // ...and must still READ the server's own figure rather than computing one.
+    expect(src).toMatch(/api\/cashout\/balance/);
+    // ⚠ AND THE OLD CLIENT-SIDE SUM MUST BE GONE, which is the other half of finding 6 on this
+    // screen — it summed `conversion_bonus ?? payout` and subtracted no cashouts at all.
+    expect(src).not.toMatch(/reduce\([^)]*conversion_bonus/);
   });
 
   it('CashOutTab no longer takes the pipeline prop at all', () => {

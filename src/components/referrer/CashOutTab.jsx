@@ -162,10 +162,24 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
   // ⚠ THERE IS NO BALANCE ARITHMETIC LEFT IN THIS FILE, AND
   // src/components/referrer/cashOutBalanceSource.test.jsx FAILS IF ANY RETURNS.
   const balanceKnown = Number.isFinite(serverBalance);
-  const balance = balanceKnown ? serverBalance : 0;
-  // ⚠ THE ONE GATE EVERY CONTROL BELOW READS. A zero or negative balance is honest and
-  // blocking: there is nothing to request, and the server would refuse it anyway.
-  const canRequest = balanceKnown && balance >= 20;
+  // ⚠ CLAMPED FOR DISPLAY ONLY, BY DANNY'S §2.9 RULING (2026-09-29). A zero or NEGATIVE
+  // available balance shows on every referrer screen as a plain `$0`, with NO message of any
+  // kind. Never "over-paid", "overpaid", "negative", or a minus sign.
+  // ⚠ THE SERVER STILL RETURNS THE TRUE VALUE AND MUST KEEP DOING SO. `serverBalance` holds
+  // it; only `displayBalance` is clamped. The admin referrer view shows the real figure and
+  // FLAGS it — clamping at the source would destroy the evidence, and until the policy-B
+  // write-off exists that admin flag is the only place an over-payment is visible to anyone.
+  // ⚠ AND THE CLAMP IS **NOT** POLICY B. B is "the contractor absorbs the shortfall and the
+  // balance restarts at zero". The stored arithmetic is still `earned − cashouts`, so a
+  // referrer at −$500 who then earns $300 computes to −$200 and still SEES $0 — their $300
+  // silently absorbed, which is the policy Danny REJECTED. The write-off record that makes B
+  // real is filed under the money-phase launch gate on PRE_LAUNCH_CHECKLIST.md.
+  // **Do not read this clamp as the policy, and do not push it into the server.**
+  const displayBalance = balanceKnown && serverBalance > 0 ? serverBalance : 0;
+  // ⚠ THE GATE READS THE TRUE VALUE, NOT THE CLAMPED ONE. Reading `displayBalance` here would
+  // work today only because both are 0 when non-positive; the true value is what the server's
+  // own gate compares against, so this is the one that cannot drift from it.
+  const canRequest = balanceKnown && serverBalance >= 20;
 
   const filteredMethods = ALL_METHODS.filter(m => enabledMethods.includes(m.id));
 
@@ -359,28 +373,34 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
             Dashboard card and the Profile rows, white here. V3's "the same number
             paints the same colour" holds everywhere the ground allows it, and this
             is the only place it does not. */}
-        {/* ⚠ THREE DISTINCT STATES, RENDERED DISTINCTLY. Not-yet-known is not $0, and a
-            NEGATIVE balance is shown as owed rather than hidden or clamped — an over-paid
-            account is a real state (measured in production) and the screen that refuses the
-            request has to say why. */}
+        {/* ⚠ A NON-POSITIVE BALANCE IS A PLAIN `$0 available` AND NOTHING ELSE (§2.9). The
+            previous writing of this line said "$500 over-paid — nothing available", which was
+            honest and is now FORBIDDEN on a referrer surface by ruling. `balanceError` still
+            distinguishes "we could not read it" from "it is zero", because that is not a
+            balance claim — it is the absence of one, and inventing $0 there would be the
+            manufactured-answer failure rather than the clamp. */}
         <p style={{ margin: "4px 0 0", fontSize: 15, color: ON_SECONDARY }} data-cashout-balance>
           {!balanceKnown
             ? (balanceError ? "Balance unavailable" : "Checking balance…")
-            : balance < 0
-              ? `$${Math.abs(balance).toLocaleString()} over-paid — nothing available`
-              : `$${balance.toLocaleString()} available`}
+            : `$${displayBalance.toLocaleString()} available`}
         </p>
         {/* ⚠ A STATUS MESSAGE ON A BRAND FILL, which the token set still has no pair
             for — the gap Palette-4b filed. Held on the literal here rather than
             routed to statusVar, whose LIGHT tone would mount at 2.87:1 on this navy.
             Reported; the fix is a ground move, and this hero has no room for one. */}
+        {/* ⚠ NO MESSAGE OF ANY KIND BESIDE A NON-POSITIVE BALANCE (§2.9). The only copy that
+            may appear here is the $20 minimum — which is about the REQUEST, not the balance —
+            and the read-failure notice, which is the absence of a balance rather than a claim
+            about one. "No balance available to cash out" was removed: it is a message beside a
+            $0, which is exactly what the ruling forbids. The button is disabled either way, so
+            the silence costs the referrer nothing they can act on. */}
         {!canRequest && (
           <p style={{ margin: "6px 0 16px", fontSize: 13, color: "#fca5a5", fontFamily: fontVar('body') }}>
             {!balanceKnown
               ? (balanceError ? "We could not read your balance — please try again shortly" : " ")
-              : balance <= 0
-                ? "No balance available to cash out"
-                : "Minimum cashout amount is $20"}
+              : displayBalance > 0
+                ? "Minimum cashout amount is $20"
+                : " "}
           </p>
         )}
         {canRequest && <div style={{ marginBottom: 16 }} />}
@@ -433,13 +453,23 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
               1. Choose payout method
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {/* ⚠ THE METHOD BUTTONS ARE DISABLED WHEN THERE IS NOTHING TO REQUEST (§2.9).
+                  Gating only the final continue button was NOT enough: a referrer at a
+                  non-positive balance could still pick a method and type an amount, and was
+                  stopped three steps later — which, with the balance message now removed by
+                  ruling, would be a dead end carrying no information at all. Measured: the
+                  case asserting the request is blocked failed against exactly that. */}
               {filteredMethods.map(m => (
-                <button key={m.id} onClick={() => { setMethod(m.id); if (step === 1) advanceStep(2); }} style={{
+                <button key={m.id} disabled={!canRequest}
+                  onClick={() => { if (!canRequest) return; setMethod(m.id); if (step === 1) advanceStep(2); }}
+                  style={{
+                  opacity: canRequest ? 1 : 0.45,
+                  cursor: canRequest ? "pointer" : "not-allowed",
                   background: method === m.id ? STATUS_TINT.danger : SURFACE,
                   border: `1.5px solid ${method === m.id ? PRIMARY : elevationVar('border')}`,
                   borderRadius: 14, padding: "14px 16px",
                   display: "flex", alignItems: "center", gap: 16,
-                  cursor: "pointer", textAlign: "left",
+                  textAlign: "left",
                   boxShadow: elevationVar(method === m.id ? 'shadowMd' : 'shadow'),
                   transition: "border-color 0.2s, box-shadow 0.2s, background 0.2s",
                 }}
@@ -503,7 +533,7 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
                     are dropped, Max is the balance itself, and duplicates are removed so a
                     balance of exactly 500 does not render two buttons with the same React key
                     (which the old expression did). */}
-                {[...new Set([500, 1000, balance].filter(v => v > 0 && v <= balance))].map(v => (
+                {[...new Set([500, 1000, displayBalance].filter(v => v > 0 && v <= displayBalance))].map(v => (
                   <button key={v} onClick={() => setAmount(String(v))} style={{
                     flex: 1, background: RECESS, border: `1px solid ${elevationVar('border')}`,
                     borderRadius: 8, padding: "8px", color: TEXT,
@@ -541,7 +571,7 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
             </div>
             {/* ⚠ canRequest GATES THIS TOO, so an unknown or non-positive balance cannot
                 reach the confirm step even if an amount was typed before the fetch landed. */}
-            {canRequest && amount && parseFloat(amount) >= 20 && parseFloat(amount) <= balance && (
+            {canRequest && amount && parseFloat(amount) >= 20 && parseFloat(amount) <= serverBalance && (
               <button onClick={() => advanceStep(3)} style={{
                 width: "100%", marginTop: 16,
                 background: `linear-gradient(135deg, ${PRIMARY} 0%, ${PRIMARY_DARK} 100%)`,
@@ -571,7 +601,7 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
                 ["Amount",    `$${parseFloat(amount).toLocaleString()}`],
                 ["Method",    ALL_METHODS.find(m => m.id === method)?.label],
                 ["Sent to",   detail || "—"],
-                ["Remaining", `$${(balance - parseFloat(amount)).toLocaleString()}`],
+                ["Remaining", `$${(displayBalance - parseFloat(amount)).toLocaleString()}`],
               ].map(([k, v]) => (
                 <div key={k} style={{
                   display: "flex", justifyContent: "space-between",

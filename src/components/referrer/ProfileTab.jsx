@@ -385,10 +385,14 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
               { label: "Referrals Sent", val: String(pipeline.length),                               icon: "ph-users"     },
               { label: "Deals Sold",      val: String(soldCount),                                    icon: "ph-handshake" },
               { label: "Next Payout",     val: `$${nextPayout.total} (+$${nextPayout.boost} boost)`, icon: "ph-trend-up"  },
-              // ⚠ AN EM DASH WHILE UNKNOWN, NOT "$0" — a figure the screen has no basis for is
-              // worse than visibly absent, and 0 is itself a real answer. A negative balance
-              // renders with its sign rather than being clamped.
-              { label: "Balance",         val: Number.isFinite(serverBalance) ? `$${serverBalance.toLocaleString()}` : "—", money: true,           icon: "ph-wallet"    },
+              // ⚠ CLAMPED FOR DISPLAY, BY DANNY'S §2.9 RULING (2026-09-29): a zero or NEGATIVE
+              // balance shows as a plain `$0` on every referrer screen, with no message and no
+              // minus sign. An em dash still stands for NOT-YET-KNOWN, which is not a balance
+              // claim — clamping that to $0 would state a figure the screen has no basis for.
+              // ⚠ THE CLAMP IS NOT POLICY B. `serverBalance` holds the true value and the admin
+              // referrer view shows it with a flag; the write-off that makes the balance a TRUE
+              // zero is filed under the money-phase launch gate. Do not clamp the server.
+              { label: "Balance",         val: Number.isFinite(serverBalance) ? `$${Math.max(0, serverBalance).toLocaleString()}` : "—", money: true,           icon: "ph-wallet"    },
             ].map((item, i, arr) => (
               <div key={item.label} style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",

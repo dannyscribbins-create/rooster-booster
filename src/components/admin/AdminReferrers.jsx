@@ -253,6 +253,54 @@ export default function AdminReferrers({ setLoggedIn }) {
           </>
         ) : detail ? (
           <>
+            {/* ── CASH-OUT BALANCE, AND THE OVER-PAYMENT FLAG ────────────────────
+                ⚠ THIS IS THE ONLY PLACE AN OVER-PAYMENT IS VISIBLE TO ANYONE. Danny's §2.9
+                ruling clamps every REFERRER screen to a plain $0 with no message, so if this
+                card is removed — or if the clamp is ever pushed into
+                GET /api/cashout/balance — an over-paid account becomes invisible to everyone.
+                ⚠ IT SHOWS THE TRUE SIGNED VALUE. `cashoutBalance.available` comes from the one
+                shared definition (earned minus every non-denied cashout) and is deliberately
+                not clamped here.
+                ⚠ AND IT IS NOT `detail.balance`, WHICH IS A DIFFERENT NUMBER — that field is
+                the adapter's speculative `500 + boost` sum and subtracts no cashouts at all.
+                ⚠ UNTIL THE POLICY-B WRITE-OFF EXISTS (filed under the money-phase launch gate)
+                there is no action to offer here, so this card reports and does not resolve. */}
+            {detail.cashoutBalance && (
+              <div data-admin-cashout-balance style={{
+                background: detail.cashoutBalance.over_paid ? AD.red2Bg : AD.bgCard,
+                border: `1px solid ${detail.cashoutBalance.over_paid ? AD.red2 + '55' : AD.border}`,
+                borderRadius: 16, padding: '18px 24px', marginBottom: 20, boxShadow: AD.shadowSm,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: AD.textSecondary, fontFamily: AD.fontSans, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    Cash-out balance
+                  </span>
+                  <span data-admin-balance-value style={{
+                    fontSize: 20, fontWeight: 700, fontFamily: "'Roboto Mono', monospace",
+                    color: detail.cashoutBalance.over_paid ? AD.red2Text : AD.textPrimary,
+                  }}>
+                    {detail.cashoutBalance.available < 0
+                      ? `-$${Math.abs(detail.cashoutBalance.available).toLocaleString()}`
+                      : `$${detail.cashoutBalance.available.toLocaleString()}`}
+                  </span>
+                  {detail.cashoutBalance.over_paid && (
+                    <span data-admin-overpaid-flag style={{
+                      background: AD.red2, color: '#fff', borderRadius: 20,
+                      padding: '3px 12px', fontSize: 11, fontWeight: 700, fontFamily: AD.fontSans,
+                    }}>
+                      <i className="ph ph-warning-circle" style={{ marginRight: 4 }} />
+                      OVER-PAID
+                    </span>
+                  )}
+                </div>
+                <p style={{ margin: '8px 0 0', fontSize: 12, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+                  ${Number(detail.cashoutBalance.earned).toLocaleString()} earned − $
+                  {Number(detail.cashoutBalance.deducted).toLocaleString()} cashed out (pending, approved and paid)
+                  {detail.cashoutBalance.over_paid && ' — this referrer has been paid more than they earned. The referrer app shows them $0.'}
+                </p>
+              </div>
+            )}
+
             {/* ── Account Info card ── */}
             <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, padding: '24px', marginBottom: 20, boxShadow: AD.shadowSm }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>

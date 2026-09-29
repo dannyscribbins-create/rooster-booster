@@ -424,7 +424,70 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2103 server tests across 347 suites, and 1369 React tests across 83 files** (measured 2026-09-29 by the payout-audit commit (3b), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2103 · suites 347 · pass 2103 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2103 server tests across 347 suites, and 1380 React tests across 84 files** (measured 2026-09-29 by the payout-audit commit (3c), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2103 · suites 347 · pass 2103 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3c) ITSELF, BECAUSE IT SHIPS TESTS.**
+  React 1369 → 1380 is **+11 = 5 + 6**: five APPENDED to the existing
+  `cashOutBalanceSource.test.jsx` (11 → 16) and six in one new file
+  (`adminOverpaidFlag.test.jsx`), which is also the 83 → 84. Server held at 2103 / 347 and was
+  **re-measured**. **All four predicted before the run and matched.**
+  ⚠ **THE SERVER HALF HELD ALTHOUGH A SERVER FILE CHANGED** — `routes/admin/referrers.js`
+  gained an import and a response key. No route was added, so no route-count fence moved; the
+  new key is asserted from the React side against a fixture, which is the honest place for it.
+  ⚠ **NO PHANTOM, ASKED BEFORE THE RUN.** The new file lives in `src/components/admin`, which
+  **IS** one of `adminBranding.test.jsx`'s four walked roots — but that walker skips
+  `.test.` files, so a new TEST file there adds nothing. This is the case the arc's earlier
+  entries distinguish: a new UTIL in a walked root DOES add one.
+  ⚠ **THREE EXISTING CASES WERE INVERTED BY A RULING RATHER THAN BY A BUG, AND THE OLD
+  ASSERTIONS ARE QUOTED IN THE FILE SO THE CHANGE IS REVIEWABLE.** Commit (3b) had the screen
+  say *"$500 over-paid — nothing available"* and three cases ASSERTED that wording. Danny then
+  ruled (§2.9) that a referrer sees a plain `$0` with **no message of any kind**. **The old
+  copy was HONEST and is now FORBIDDEN** — a product decision about what a referrer is told,
+  not a discovery that the text was wrong, and the true value is still what the server returns
+  and what the admin panel shows. **Writing that distinction down is what stops the next reader
+  'restoring' the clearer wording.**
+  ⚠ **AND THE CLAMP IS NOT POLICY B — SAID IN THE CODE, THE TESTS, THE DECISIONS RECORD AND
+  THE CHECKLIST, BECAUSE A READER SEEING `$0` CANNOT TELL B FROM A.** The stored arithmetic is
+  still `earned − cashouts`, so a referrer at −$500 who then earns $300 computes to −$200 and
+  still sees `$0` — their $300 silently absorbed, which is the policy Danny REJECTED. The
+  write-off record that makes B real is filed under the money-phase launch gate.
+  ⚠ **FOUR WIDTHS.** (i) the "over-paid" wording restored → **6 red**, including the wording
+  fence; (ii) a message beside a `$0` balance → **2 red**; (iii-a) the admin card reading the
+  SPECULATIVE `detail.balance` instead of the true available → **2 red**, one of them the
+  PAIRED POSITIVE; (iii-b) the admin card CLAMPING like the referrer → **1 red**. **(iii-b) is
+  the one worth keeping: it is the failure where the referrer rule leaks onto the admin surface
+  and an over-payment becomes invisible to everyone** — the fixture deliberately sets
+  `detail.balance` to 500 against a true −500 so reading the wrong field is observable rather
+  than coincidentally right.
+  ⚠ **A CASE NAME MISSTATED ITS OWN ASSERTION AND WAS RENAMED.** *"no method button is
+  offered"* asserted ABSENCE; the ruling is that the request is **disabled**, which is a
+  different claim — hiding the controls would leave a referrer with a `$0` and no idea what the
+  screen is for. It now reads *"every method button is disabled"*.
+  ⚠ **AND THE FIRST WRITING OF THAT CASE FAILED AGAINST CORRECT CODE FOR A SECOND REASON:
+  `queryByText('Venmo')` RETURNS THE LABEL `<p>` INSIDE THE BUTTON**, so a text assertion could
+  never reach the button's own `disabled` state. The enclosing control is what carries it.
+  ⚠ **GATING THE FINAL CONTINUE BUTTON WAS NOT ENOUGH, AND A TEST IS WHAT SAID SO.** A
+  referrer at a non-positive balance could still pick a method and type an amount, and was
+  stopped three steps later — which, with the balance message now removed by ruling, is a dead
+  end carrying no information. The method chooser itself is disabled now.
+  ⚠ **THE WORDING FENCE'S FIRST NEEDLE REPORTED TWO CORRECT LINES, AND NARROWING IT WAS THE
+  FIX RATHER THAN EXEMPTING THE FILE.** A bare `negative` match flagged
+  `ExperiencePopup.jsx`'s `direction === 'negative'` twice — the experience flow's own
+  positive/negative branch, nothing to do with a balance. **A heuristic that reports plausible
+  findings is worse than none**, and a fence flagging correct code gets carved out within a
+  month. `negative` is now flagged only inside a STRING CONTAINING A SPACE — copy has spaces,
+  an enum value does not — and the harness floor validates that discriminator in **BOTH**
+  directions: it catches synthetic copy and spares the identifier.
+  ⚠ **`ProfileTab.jsx`'s COVERAGE IS STRUCTURAL, AND THE LIMIT IS STATED RATHER THAN IMPLIED.**
+  Mounting it means standing up six unrelated fetches, so the clamp is asserted from SOURCE
+  (`Math.max(0, serverBalance)` present, the old `reduce` over `conversion_bonus` absent) while
+  the wording fence covers its copy. **A source assertion proves the clamp is WRITTEN, not that
+  it paints.**
+  ⚠ **AND THE ADMIN TEST'S FIRST HELPER FAILED EVERY CASE WITH "expected null to be truthy",
+  WHICH READS LIKE A MISSING CARD AND WAS A DETAIL VIEW THAT NEVER OPENED.** It passed
+  `on401` as a prop — `on401` is a LOCAL helper built from `setLoggedIn` — and clicked the
+  referrer's NAME, which is plain text with no handler. The detail opens from a "View" button.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3b) ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2103 / 347 / 1369 / 83**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3b) ITSELF, BECAUSE IT SHIPS TESTS.**
   ⚠ **THE REACT HALF MOVED AND THE SERVER HALF DID NOT, WHICH IS THE MIRROR OF THE LAST
   THREE ENTRIES.** React 1358 → 1369 is **+11**, one new file

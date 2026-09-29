@@ -6,6 +6,7 @@ const { verifyAdminSession } = require('../../middleware/auth');
 const { requirePermission } = require('../../middleware/permissions');
 const bcrypt = require('bcrypt');
 const { logError } = require('../../middleware/errorLogger');
+const { getCashoutBalance } = require('../../utils/cashoutBalance');
 
 // ── ADMIN: REFERRERS ──────────────────────────────────────────────────────────
 router.get('/api/admin/users', requirePermission('referrers'), async (req, res) => {
@@ -203,7 +204,26 @@ router.get('/api/admin/referrer/:name', requirePermission('referrers'), async (r
       ),
     ]);
     const userInfo = userResult.rows[0] || null;
-    res.json({ ...pipelineData, userInfo });
+
+    // ── THE TRUE AVAILABLE BALANCE, FOR THE ADMIN ONLY ────────────────────
+    // ⚠ NEGATIVE INCLUDED, AND DELIBERATELY NOT CLAMPED. Danny's §2.9 ruling clamps the
+    // REFERRER's screens to a plain $0 with no message; the admin panel must show the real
+    // figure and flag it, because an over-payment nobody can see is how it stays unresolved.
+    // Until the policy-B write-off exists (filed under the money-phase gate), this flag is the
+    // ONLY place an over-payment is visible to anyone.
+    // ⚠ `pipelineData.balance` IS A DIFFERENT NUMBER AND IS NOT THIS ONE. That field is the
+    // adapter's speculative `500 + boost` sum and subtracts no cashouts; it is left untouched
+    // so nothing else that reads it changes meaning. The two coexisting is the reason this key
+    // is named `cashoutBalance` rather than overwriting `balance`.
+    let cashoutBalance = null;
+    if (userInfo?.id) {
+      const bal = await getCashoutBalance(pool, userInfo.id);
+      cashoutBalance = { ...bal, over_paid: bal.available < 0 };
+    }
+    // ⚠ null WHEN THERE IS NO APP ACCOUNT, NOT A ZEROED OBJECT. A CRM-side referrer with no
+    // `users` row has no balance to speak of, and a manufactured `{ available: 0 }` would read
+    // as "settled up" — the getStripeRow() failure shape CLAUDE.md records.
+    res.json({ ...pipelineData, userInfo, cashoutBalance });
   } catch (err) {
     await logError({ req, error: err });
     if (err.message && (err.message.includes('No CRM connected') || err.message.includes('No connected CRM'))) {
