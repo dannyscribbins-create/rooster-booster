@@ -449,9 +449,14 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         imported in `server/` production code. The exposure is the React test environment.
         **Why it was not fixed in the commit that found it:** a dependency bump inside a
         money-path commit is unreviewable, and Danny's standing rule is that a package change is
-        flagged to him before it is made. `fixAvailable: true`, so `npm audit fix` should resolve
-        it — **run it as its own commit, with the gate re-run afterwards**, because `jsdom` is the
-        React suite's environment and a bump there can move 1,397 tests.
+        flagged to him before it is made.
+        ⚠ **RULED BY DANNY 2026-09-29 — IT GETS ITS OWN DEPENDENCY COMMIT, AFTER N4 COMMIT 7b, AND
+        IT IS IN NO MONEY COMMIT.** The requirements, all four: **the SMALLEST bump that clears the
+        advisory** (not a blanket `npm audit fix` that drags unrelated packages), **a full gate**,
+        **a report to Danny BEFORE pushing**, and **not bundled with anything else**.
+        ⚠ **THE REASON IT CANNOT RIDE ALONG IS MEASURABLE, NOT CAUTION:** `jsdom` is the React
+        suite's ENVIRONMENT, so a bump there can move all **1,397** React tests at once. Mixed into
+        another commit, a red React suite would be indistinguishable from that commit's own defect.
         Recorded 2026-09-29 by N4 commit 6, which extracted the conversion writer and did **not**
         fix this — deliberately, because a behaviour change inside a no-behaviour-change commit
         would have made its guard-proof meaningless.
