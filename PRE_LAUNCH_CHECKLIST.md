@@ -385,6 +385,60 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         **not checked** — the same boundary `CLAUDE.md` records for OAuth scopes. **Observed: no
         invoice delivery in eleven days while five other topics arrived in volume. Ask Danny; do
         not infer it.**
+        ⚠ **ANSWERED AND THE INFERENCE WAS WRONG IN BOTH DIRECTIONS (Danny, 2026-09-29, N4).**
+        `INVOICE_UPDATE` **IS** subscribed, pointing at `/webhooks/jobber/invoice-paid`. And the
+        table's silence was never evidence about even those eleven days: **the invoice-paid route
+        does not call `claimWebhookDelivery` at all** — it has only two call sites, the shared
+        request handler and the shared stage handler — so `jobber_webhook_events` cannot record an
+        invoice delivery by construction. **Measured instead: `error_log` holds four
+        `POST /webhooks/jobber/invoice-paid — fetchInvoiceWithJobs` rows, 244 occurrences,
+        2026-06-01 to 2026-07-17 — so invoice webhooks demonstrably arrived and were processed.**
+        ⚠ The 241-occurrence 401 row among them belongs to contractor **`accent-roofing`**, the
+        8-client tenant, **not** to production `accent-roofing-dev`; reading it as production's
+        would be wrong. **This paragraph's "no invoice delivery" sentence is not stale — it was
+        never measuring what it appeared to measure.**
+      - [ ] **🔴 MONEY PHASE — A PAID INVOICE CAN BE PERMANENTLY MISSED, AND NOTHING REPORTS IT.**
+        Found 2026-09-29 during N4. **NOT FIXED — filed, not built.**
+        `/webhooks/jobber/invoice-paid` (`server/routes/webhooks/jobber.js`, the invoice-paid
+        route) is the only definitive trigger for a referral bonus. It does **not** call
+        `claimWebhookDelivery`, so there is no delivery record to replay from; on a failed Jobber
+        fetch it logs and returns with **no queue and no retry beyond one forced token refresh**.
+        Its own comment names the 30-minute pipeline sync as the backstop — but `runIncrementalSync`
+        (`server/crm/pipelineSync.js`) discovers clients by **`Client.updatedAt`**, so a client
+        whose ONLY change is a payment may never be re-fetched.
+        ⚠ **AND THE WEBHOOK NEVER WRITES `pipeline_cache.pipeline_status` AT ALL.** The
+        referrer-visible stage comes solely from `syncSingleClient`, i.e. from polling, not from
+        the trigger. Measured on `accent-roofing-dev`: two referred clients with paid invoices
+        (2026-05-13, $1,142; 2026-07-29, $20,784) still read `inspection` and `sold`, cache last
+        synced 2026-05-08 and 2026-07-01, `paid_at` null.
+        ⚠ **NO MONEY WAS LOST, AND THE REASON MATTERS FOR SIZING THIS.** Neither referrer has a
+        `users` row — they are free-text values in Jobber's "Referred by" field — so
+        `evaluateReferral` exits `referrer_not_found` (`server/referralRules.js`) and the rows are
+        displayed to nobody. **All six `users` rows for this contractor are Danny, family, staff or
+        a test account; there are no real external referrers yet.** After launch the same shape is
+        a silently unpaid bonus.
+        ⚠ **UNDER DANNY'S EARNING/PAYOUT RULING (2026-09-29) THIS IS SHARPER, NOT SOFTER.** Earning
+        is automatic on detection with no admin review, so a missed detection is a bonus that never
+        credits and that no human is in a position to notice — the cash-out approval gate protects
+        against wrong MONEY MOVEMENT, not against an earning that never happened.
+        **Fix (not built): a watermark-driven invoice sweep, in the shape of
+        `server/cron/jobs/repRequestSweep.js`.** N4 commit 4 narrows this — the stage becomes
+        fact-derived — but does **not** close it, because capture still depends on a webhook
+        arriving. Detail: `N4_STATUS_DESIGN.md` §2 and its 2026-09-29 rulings note.
+      - [ ] **N4 CONVERGING STATE — ACCEPTED, NOT A DEFECT (Danny ruling 7, 2026-09-29).**
+        After the N4 arc, `jobber_clients.pipeline_stage` is *decided* from saved facts at every
+        live door, but for **12,384 of 19,557 clients (63.3%, measured 2026-09-29 on
+        `accent-roofing-dev`)** the *stored* value is still whatever the live import last said,
+        because those clients have **zero saved facts**. Cause is not a bug: `fullJobberImport`
+        writes no `crm_*` facts itself, it delegates to `runRepScope`, whose scope is the
+        **12-month rep window**. **No bulk `UPDATE` is ever run** — deriving wholesale would move
+        11,074 clients backwards, 10,629 to `'lead'` purely for want of data.
+        **The three convergence routes:** (1) any webhook touching the client captures its full
+        history and decides — self-healing, already live; (2) the incremental sync, once N4
+        commit 3 makes it capture; (3) a deliberate capture backfill, **not scheduled before
+        launch** (ruling 8). ⚠ **Ruling 8 DOES require one thing before launch: capture facts for
+        the REFERRED population only** (`pipeline_cache`, ~20 rows today), so every stage a
+        referrer sees is fact-derived from day one. **That is a build item, tracked here.**
       - **THE OVER-PAYMENT DECISION — WRITTEN IN PLAIN LANGUAGE SO IT CAN BE DECIDED IN THE
         MONEY PHASE. Ruled 2026-09-29 to STAY OPEN until then. NOT BUILT.**
 

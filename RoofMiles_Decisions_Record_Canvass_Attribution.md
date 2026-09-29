@@ -888,3 +888,83 @@ assignment can be fixed; an absent one is not even noticed.**
 
 **Next build tasks:** 3d (QR/link mint, Add Client, the roster with invite resending)
 and 3e (the Network tab).
+
+---
+
+# PART 11 — EARNING IS AUTOMATIC; MONEY MOVES ONLY THROUGH AN APPROVED CASH-OUT
+
+**Ruled by Danny, 2026-09-29, during the N4 design review. This REPLACES the N4 design's
+own default, which proposed gating the conversion write behind a one-off admin review.**
+
+## 11.1 The ruling
+
+When a referral's invoice is paid **and detected** — by the invoice-paid webhook, by the
+sync, or by a LATE detection weeks or months afterwards — the bonus **credits the
+referrer's balance and the notification fires AUTOMATICALLY.** There is **no admin review
+of earnings**, and no review gate is to be added on the earning path.
+
+**Money moves only through an approved cash-out**: the referrer requests it, an admin
+approves it, and only then is the transfer sent.
+
+## 11.2 Why the review gate the design proposed was the wrong instrument
+
+The design's default existed to satisfy one worry — *"a deploy must never trigger a
+payout."* ⚠ **That guarantee is already provided by the cash-out approval, and providing
+it twice costs something.** A review gate on EARNING would mean a referrer's balance did
+not reflect what they had actually earned until an admin acted, which makes the balance a
+queue rather than a record, and puts a human in a path that has no decision to make: the
+invoice is either paid or it is not, and `isInvoicePaid` already answers that.
+
+**The pre-program protection is a different control and it stays.** The existing start-date
+rule — `invoice_before_start_date` in `evaluateReferral`, and `pre_start_date` on
+`pipeline_cache` — is what stops a pre-program invoice crediting anyone. It is a rule about
+WHICH invoices count, not a human checkpoint, and it is unaffected by this ruling.
+
+## 11.3 What this binds
+
+- **N4 commit 4** (the pipeline-cache status moving onto saved facts) ships **without** an
+  earnings review gate. Where it detects a paid invoice, the credit and the notification
+  fire.
+- **Late detection is explicitly in scope.** A bonus detected months after the invoice
+  settled is still earned and still credits. The only question a late detection raises is
+  the DATE, which §11.4 settles.
+- ⚠ **A missed DETECTION is therefore the whole risk, and it is filed as a money-phase item
+  on `PRE_LAUNCH_CHECKLIST.md`.** The cash-out gate protects against wrong money movement;
+  it cannot protect against an earning that never happened, because nothing is queued for
+  anyone to look at. That is the sharper reading of the invoice-sweep gap, not a softer one.
+
+## 11.4 `paid_at` comes from the fact, not from the clock
+
+**Ruled the same day (ruling 4), on the same principle as the assigned-date ruling (R5):
+dates come from facts.** `paid_at` takes the invoice's own paid date, **not `NOW()`**.
+
+**The field is `crm_invoice_facts.received_date`**, captured from Jobber's
+`Invoice.receivedDate` (selected in `INVOICE_FIELDS`, written by `writeInvoiceFacts`).
+
+**Why `received_date` and not one of its neighbours:**
+- `issued_date` is when the invoice was SENT, not when it was paid. Measured on the two
+  live cases the N4 read surfaced, the two differ by six seconds and by thirty-four seconds
+  — close enough to look interchangeable and wrong in principle, which is exactly the kind
+  of near-miss that survives review.
+- `updated_at` is the row's last touch for ANY reason. On those same two invoices it reads
+  2026-06-10 and 2026-08-11 — **four weeks and two weeks after payment** — so it would
+  overstate the date by an arbitrary amount that grows every time Jobber touches the record.
+- `received_date` is Jobber's own record of when the money arrived, and it is already
+  captured. **Nothing new is fetched to obey this ruling.**
+
+⚠ **THE CONSEQUENCE, SAID PLAINLY BECAUSE IT LOOKS LIKE A BUG THE FIRST TIME IT IS SEEN:**
+a late detection writes a `paid_at` **in the past** — potentially months in the past. That
+is correct and intended. Anything reading `paid_at` as "recently became payable" — the
+engagement cadence is the one to check — is reading it as a write timestamp, which it is
+not, and must be re-derived against this ruling rather than assumed safe.
+
+## 11.5 A confirmed boost tier is never recomputed
+
+**Ruling 5, same day.** Once a tier is written into `referral_conversions`, it stands. A
+later discovery that an earlier referral was in fact paid first does **not** re-index the
+ladder for conversions already booked. **The ledger wins.**
+
+⚠ **This is a deliberate acceptance of a small inconsistency in exchange for a stable
+record.** The alternative — recomputing tiers whenever detection order differs from payment
+order — makes a referrer's already-credited balance change retroactively, which is worse
+than a tier that is one step off.

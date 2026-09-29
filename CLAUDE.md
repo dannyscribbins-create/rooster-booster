@@ -424,8 +424,62 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2119 server tests across 348 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the badge-earning commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2119 · suites 348 · pass 2119 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE BADGE-EARNING COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2133 server tests across 351 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 1 fence commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2133 · suites 351 · pass 2133 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 1 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2119 → 2133 is **+14**, one new file (`oneStatusDerivation.test.js`); suites 348 → 351
+  is that file's **three** top-level describes. React did not move — **no `src/` file was touched
+  at all**, and the only non-test files this commit edits are markdown — and was re-measured
+  rather than carried. **All four predicted before the run and matched.** Counted with an
+  anchored `^\s*it\(` (14), and the runner's own `tests 14` on the isolated run agrees, so no
+  loop wraps a case.
+  ⚠ **NO PHANTOM, ASKED BEFORE THE RUN:** this commit adds no non-test file under
+  `src/components/admin`, `src/constants`, `src/components/superAdmin` or `src/utils` — the four
+  roots `adminBranding.test.jsx` walks — so the arithmetic closes at exactly 14 and 0.
+  ⚠ **THE FENCE SHIPS AN ALLOW-LIST, WHICH IS NORMALLY HOW A FENCE DIES, AND THE THREE THINGS
+  STOPPING THAT ARE THE ENTRY WORTH KEEPING.** `KNOWN_GAPS` lists are recorded in this file as
+  the shape that makes a green run meaningless. Here every EXPIRING entry **names the commit that
+  deletes it**; every entry is asserted **LIVE**, so a stale entry FAILS rather than lingering;
+  and every entry pins its **SPAN COUNT**, so a listed function cannot quietly gain a second
+  write. That third one is what guard-proof (vii) exercises — removing an expiring call site
+  while leaving its entry behind reds **exactly 1**, the CLOSURE case.
+  ⚠ **A LINE-PRESERVING COMMENT STRIP IS NOT A STYLE CHOICE, AND THE FIRST DRAFT GOT IT WRONG.**
+  Deleting comment text shifts every line below it, and the harness reported
+  `pipelineSync.js:215` for a call site that is really at `:235`. **A fence whose findings name
+  the wrong line is worse than none** — the reader follows the number, sees unrelated code, and
+  concludes the fence is broken. Comments become blanks of equal length, so line AND column
+  survive. Caught by comparing the probe's output against a `grep` whose answer was already known.
+  ⚠ **AND A NEEDLE OF MINE REPORTED CORRECT CODE ON THE FIRST RUN — THE SUBSTRING TRAP, SCOPED
+  TOO WIDE.** The `'app_user'` case asserted the string was absent from the whole of
+  `crm/pipelineSync.js`, and that file legitimately contains an `app_user_%` **placeholder
+  cleanup** — it deletes the signup row once the real Jobber client is upserted. **Narrowed to the
+  classifier's own brace-matched body, never exempted**, per this file's reword-don't-exempt rule:
+  an exemption would have removed the fence's reach into the one file it most needs to read.
+  ⚠ **SEVEN GUARD-PROOFS, EVERY REVERT AN INVERSE PATCH IN A `finally` PROVEN BYTE-IDENTICAL BY
+  sha256, ANCHORS CHECKED UNIQUE IN BOTH DIRECTIONS, EMPTY-STRING REPLACEMENTS REFUSED OUTRIGHT,
+  AND EACH FILE RE-READ FROM DISK PER PATCH.** Widths: (i) the classifier needle pointed at a
+  non-existent name → **4**; (ii) the walk stopped from reaching `crm/` → **3**; (iii) a NEW route
+  file calling the classifier → **exactly 1**, the caller fence; (iv) a NEW route file writing
+  `pipeline_stage` → **exactly 1**, the writer fence; (v) the writer needle's verb anchor removed
+  so reads count as writes → **3**, including the `rep.js` PAIRED NEGATIVE; (vi) the call-site
+  needle no longer requiring a paren, so a destructured import counts as a call → **2**;
+  (vii) an expiring call site removed with its entry left behind → **exactly 1**.
+  ⚠ **(vi) IS THE ONE THIS CODEBASE HAS GOT WRONG BEFORE.** `webhooks/jobber.js` **imports the
+  classifier and never calls it**, so a needle without the paren reports a caller that does not
+  exist — the same miscount this file records from the `writeManualSticky(` fence, where "one
+  import plus two call sites" expected 3 and got 2. The discriminator case pins it in both
+  directions: no call site in that file, **and** the import must still be there, or the
+  discriminator is no longer exercising anything.
+  ⚠ **THE BEHAVIOURAL CROSS-SURFACE FENCE IS DELIBERATELY ABSENT AND THAT IS NOT AN OMISSION.**
+  The design's commit-1 sketch named one asserting the rep and referrer surfaces report the same
+  stage. **It cannot be green today** — the two columns legitimately disagree until commit 4,
+  which is N4's whole subject — so shipping it now would mean pinning the defect or marking it
+  skipped, and a skipped test is a failure until explained. It lands in commit 4.
+  ⚠ **NO DATABASE, SO NOTHING JOINS ANY RESET LIST.** The suite reads source text only; it seeds
+  nothing and writes no table. Stated because the 6c reset-coverage fence exists precisely to
+  catch a suite that quietly gains a table.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE BADGE-EARNING COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2119 / 348 / 1397 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE BADGE-EARNING COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2105 → 2119 is **+14 = 11 + 3**: eleven in one new file
   (`referrerProgressEarning.test.js`) and three APPENDED to the existing
   `getNeverWritesMoney.test.js` (8 → 11). Suites 347 → 348 is the new file's single describe —
