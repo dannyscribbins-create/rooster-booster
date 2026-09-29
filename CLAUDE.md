@@ -424,7 +424,55 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2080 server tests across 345 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the payout-audit commit (2), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2080 · suites 345 · pass 2080 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2095 server tests across 346 suites, and 1358 React tests across 82 files** (measured 2026-09-29 by the payout-audit commit (1), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2095 · suites 346 · pass 2095 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (1) ITSELF, BECAUSE IT SHIPS TESTS.**
+  ⚠ **THE GATE WAS RUN TWICE AND THE SECOND RUN IS THE ONE CITED**, because markdown-only edits
+  landed after the first — this block, and ten citations in `PRE_LAUNCH_CHECKLIST.md` converted to
+  role form. It was checked that **no test reads either file** (`readFileSync` over `server/test/`
+  returns nothing for `CLAUDE.md` or the checklist; every mention is in a comment), so a change was
+  not possible — **and "it cannot have changed" is a prediction, not a measurement**, which is this
+  block's own rule from the Commit 7 entry. Both runs read `EXIT=0` and the same seven numbers.
+  Server 2080 → 2095 is **+15**, one new file (`cashoutBalanceSingleSource.test.js`); suites
+  345 → 346 is that file's single top-level describe. React did not move — **no `src/` file was
+  touched at all** — and was re-measured. **All four predicted before the run and matched.**
+  ⚠ **15 FROM 13 `it(` LINES, AND NINE LOOPS OF WHICH EXACTLY ONE MULTIPLIES.** The wrapping one
+  is a three-entry `for` over the deducting states (`pending` · `approved` · `paid`), asserted per
+  state BY NAME. The other eight were each checked for POSITION rather than counted: four sit in
+  the fence's own helper bodies (`serverFiles`, `sqlSpans`, `findLocalBalanceSums`) and four inside
+  `it()` bodies. So 12 × 1 + 1 × 3 = 15.
+  ⚠ **AND ONE EXISTING CASE WAS REWRITTEN AND CONTRIBUTES 0, WHICH IS THE ENTRY WORTH KEEPING:
+  IT WAS INVERTED, NOT STALE, AND IT PINNED THE DEFECT.** `cashout.test.js`'s *"balance formula
+  SQL: pending+approved reduce available; denied excluded"* **re-implemented the old two-query
+  formula inside its own body** and asserted `pending = 150` — i.e. it asserted that a SETTLED
+  cashout does not deduct, which is finding 1. **A test that re-implements the production formula
+  cannot fail when the formula is wrong; it can only agree with it**, and this one agreed for
+  months. Rewritten to drive the shared `getCashoutBalance` — so a regression now reds it instead
+  of being mirrored by it — and its comment's citation *"the exact queries from referrer.js lines
+  846-847"* was **already rotted into a file where those queries no longer exist**; cited by role now.
+  ⚠ **THE THREE WIDTHS, AND (ii) IS THE ONE THAT EARNS ITS PLACE.** (i) the old
+  `status IN ('pending','approved')` gate restored — the defect exactly → **7 red** across BOTH
+  suites, including both Danny's-shape cases (his real numbers: earned $500, two settled $500
+  cashouts, old deduction **0**, so it read $500 available and allowed another request);
+  (ii) the `<> 'denied'` exclusion removed so EVERY cashout deducts → **4 red**, including the
+  DENIED paired positive. **Without (ii) a function that deducted every cashout would have passed
+  the whole three-state loop**, because that loop cannot tell "not denied" from "all of them";
+  (iii) a new file under `server/routes/` computing its own per-user balance → **exactly 1 red**,
+  the single-source fence, and it was confirmed OBSERVABLE rather than merely red — the failure
+  message names `server\routes\_gp_tmp.js:5`, file and line.
+  ⚠ **THE FENCE DISCRIMINATES ON `user_id`, AND THAT IS WHAT KEEPS IT ALIVE.**
+  `routes/admin/metrics.js` sums `cashout_requests` by CONTRACTOR for a dashboard total — a
+  different and correct question. A fence that flagged it would be switched off within a month,
+  which this file already records as the fate of any check that reports plausible findings. There is
+  a paired NEGATIVE asserting metrics.js is not flagged, so the discriminator cannot rot silently.
+  ⚠ **ITS NEEDLES ARE ASSEMBLED FROM CONCATENATED PIECES, AND IT READS SQL SPANS RATHER THAN LINE
+  WINDOWS.** Both are this file's own recorded defects: a stylesheet sweep that walked its own test
+  file and reported itself, and a big/bold heuristic that read neighbouring lines and produced 21
+  false flags. Comments are stripped from every scanned file first.
+  ⚠ **AND THE FENCE HAS A NON-VACUITY FLOOR THAT IS NOT DECORATION:** it asserts the needle
+  actually matches the sum inside `server/utils/cashoutBalance.js`. Without it, a needle matching
+  NOTHING passes identically to a codebase with no second formula.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (2) ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2080 / 345 / 1358 / 82**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (2) ITSELF, BECAUSE IT SHIPS TESTS.**
   Server 2065 → 2080 is **+15**, one new file (`stripeTransferAmountAuthority.test.js`); suites
   344 → 345 is that file's single top-level describe. React did NOT move — and that is the

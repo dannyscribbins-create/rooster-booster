@@ -19,6 +19,7 @@ const { resendShouldRetry } = require('../utils/retryHelpers');
 const { sendAdminNotification, resolveNotificationRecipient } = require('../utils/notificationEmail');
 const { isEmailSuppressed } = require('../utils/emailSuppression');
 const { executeStripeTransfer } = require('../utils/stripeTransfer');
+const { getCashoutBalance } = require('../utils/cashoutBalance');
 const { verifyReferrerSession, verifyAnySession } = require('../middleware/auth');
 const { applyTag } = require('../utils/tags');
 const { runContactMatchingPass } = require('../jobs/contactMatchingPass');
@@ -1758,12 +1759,23 @@ router.post('/api/cashout', cashoutLimiter, [
     const userResult = await pool.query('SELECT full_name, email FROM users WHERE id=$1', [userId]);
     if (userResult.rows.length === 0) return res.status(404).json({ error: 'User not found' });
     const { full_name, email } = userResult.rows[0];
-    const [earnedResult, pendingResult] = await Promise.all([
-      pool.query('SELECT COALESCE(SUM(bonus_amount), 0) AS earned FROM referral_conversions WHERE user_id = $1', [userId]),
-      pool.query("SELECT COALESCE(SUM(amount), 0) AS pending FROM cashout_requests WHERE user_id = $1 AND status IN ('pending', 'approved')", [userId]),
-    ]);
-    const available = parseFloat(earnedResult.rows[0].earned) - parseFloat(pendingResult.rows[0].pending);
-    if (parseFloat(amount) > available) {
+    // ── THE BALANCE GATE ── the ONE definition, never a local formula ───────────
+    // ⚠ WHAT WAS HERE DEDUCTED ONLY `status IN ('pending','approved')`, SO A SETTLED
+    // CASHOUT STOPPED REDUCING THE BALANCE AND THE SAME EARNINGS COULD BE CASHED OUT
+    // AGAIN, INDEFINITELY. It also ran the two sums as separate round trips, so a cashout
+    // inserted between them was counted by neither. `routes/account.js` already had the
+    // correct formula, so the codebase carried both and the money path used the wrong one.
+    // Measured firing in production on a real account — see server/utils/cashoutBalance.js.
+    // ⚠ server/test/cashoutBalanceSingleSource.test.js FAILS if this is ever reverted to a
+    // local sum, naming this file and line.
+    const { available } = await getCashoutBalance(pool, userId);
+
+    // ⚠ THE ZERO-AND-NEGATIVE CASE IS WRITTEN OUT RATHER THAN LEFT IMPLIED. `amount` is
+    // already ≥ 20 by the check above, so `amount > available` alone would refuse a
+    // non-positive balance — but relying on that makes the over-paid-account case an
+    // accident of another validator's threshold. If the minimum ever changes, or a caller
+    // reaches this with a smaller amount, the explicit clause is what still refuses.
+    if (available <= 0 || parseFloat(amount) > available) {
       return res.status(400).json({ error: 'Requested amount exceeds your available balance' });
     }
     const cashoutInsert = await pool.query(

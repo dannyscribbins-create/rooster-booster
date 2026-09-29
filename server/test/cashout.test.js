@@ -7,6 +7,7 @@ const { request: _httpRequest } = require('node:http');
 
 const cashoutsRouter = require('../routes/admin/cashouts');
 const referrerRouter = require('../routes/referrer');
+const { getCashoutBalance } = require('../utils/cashoutBalance');
 
 const {
   seedContractor,
@@ -316,31 +317,30 @@ describe('cashout — balance, request, and approval integrity', () => {
   });
 
   // ── TEST 8 ────────────────────────────────────────────────────────────────────
-  it('balance formula SQL: pending+approved reduce available; denied excluded', async () => {
-    // Runs the exact queries from referrer.js lines 846-847 and pins their results.
+  it('balance formula: pending+approved+PAID reduce available; only denied excluded', async () => {
+    // ⚠ REWRITTEN IN THE PAYOUT-AUDIT COMMIT (1), AND THE OLD VERSION WAS INVERTED RATHER
+    // THAN MERELY STALE. It read *'pending+approved reduce available; denied excluded'*,
+    // RE-IMPLEMENTED the old two-query formula inside the test body, and asserted
+    // `pending = 150` — pinning the exact defect: a SETTLED cashout that does not deduct.
+    // A test that re-implements the production formula cannot fail when the formula is
+    // wrong; it can only agree with it. This one agreed with it for months.
+    // ⚠ ITS OLD COMMENT ALSO CITED *'the exact queries from referrer.js lines 846-847'* —
+    // a line citation that had already rotted, into a file where those queries no longer
+    // exist at all. Cited by ROLE now, per CLAUDE.md.
+    // ⚠ AND IT NOW DRIVES THE SHARED FUNCTION RATHER THAN A COPY OF IT, which is what
+    // makes it capable of failing: `getCashoutBalance` is the production path, so a
+    // regression in the formula reds this case instead of being mirrored by it.
     const { userId } = await setupReferrer();
     await seedConversion(userId, 300);
     await seedCashoutRequest(userId, 100, 'pending');
     await seedCashoutRequest(userId, 50,  'approved');
     await seedCashoutRequest(userId, 200, 'denied');
+    await seedCashoutRequest(userId, 25,  'paid');
 
-    const [earnedRes, pendingRes] = await Promise.all([
-      pool.query(
-        'SELECT COALESCE(SUM(bonus_amount), 0) AS earned FROM referral_conversions WHERE user_id = $1',
-        [userId]
-      ),
-      pool.query(
-        "SELECT COALESCE(SUM(amount), 0) AS pending FROM cashout_requests WHERE user_id = $1 AND status IN ('pending', 'approved')",
-        [userId]
-      ),
-    ]);
-
-    const earned    = parseFloat(earnedRes.rows[0].earned);
-    const pending   = parseFloat(pendingRes.rows[0].pending);
-    const available = earned - pending;
+    const { earned, deducted, available } = await getCashoutBalance(pool, userId);
 
     assert.equal(earned,    300, 'earned = sum of referral_conversions.bonus_amount');
-    assert.equal(pending,   150, 'pending = pending($100) + approved($50); denied($200) excluded');
-    assert.equal(available, 150, 'available = 300 - 150');
+    assert.equal(deducted,  175, 'pending($100) + approved($50) + paid($25); denied($200) excluded');
+    assert.equal(available, 125, 'available = 300 - 175');
   });
 });

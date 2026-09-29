@@ -306,9 +306,11 @@ mode proves no harm was done; it proves nothing about whether the logic is right
             transfer fires only for a cashout in `approved` state owned by the caller, and **at
             most once**.
       - [ ] **(1) — the cashout balance gate must deduct `'paid'` cashouts.**
-            `server/routes/referrer.js:1761` deducts only `status IN ('pending','approved')`, so a
+            `POST /api/cashout`'s balance gate (`server/routes/referrer.js`) deducted only
+            `status IN ('pending','approved')`, so a
             settled cashout stops reducing the balance and **the same earnings can be cashed out
-            repeatedly.** `server/routes/account.js:415` computes the same balance as
+            repeatedly.** `DELETE /api/account/me`'s final-payout balance (`server/routes/account.js`)
+            computes the same balance as
             `status <> 'denied'` — **both formulas are in the codebase and the money path uses the
             wrong one.**
             ⚠ **CONFIRMED FIRING IN PRODUCTION, measured on Danny's own rows** (audit §4a, at his
@@ -330,14 +332,16 @@ mode proves no harm was done; it proves nothing about whether the logic is right
             `WHERE user_id = $1` cannot see them and they are deducted by **neither** formula.
             **Filed here so it is not assumed closed by (1).**
       - [ ] **(3) — a GET request must not write a money row.**
-            `server/routes/referrer.js:936` writes `referral_conversions.bonus_amount` from
-            `item.payout` — the speculative **`500 + boost`** ladder of `server/crm/jobber.js:211`,
+            the conversion-write loop inside `GET /api/pipeline` (`server/routes/referrer.js`) writes
+            `referral_conversions.bonus_amount` from
+            `item.payout` — the speculative **`500 + boost`** ladder computed in
+            `fetchPipelineForReferrer` (`server/crm/jobber.js`),
             which reads **no invoice, no job and no schedule** — and `ON CONFLICT
             (user_id, jobber_client_id) DO NOTHING` makes it **permanent**, racing the webhook
             writer. Measured: both production conversion rows are ladder-shaped, one on a
             synthetic `jobber_client_id` (`test-client-002`), and `SUM(paid_count) = 1` against 2
             rows points at this path rather than the webhook. **Unpinned by any test** — no file in
-            `server/test/` references `bonusEarned` at all. `server/routes/referrer.js:1034` also
+            `server/test/` references `bonusEarned` at all. The pipeline route's stale-cache fallback also
             keeps a **second, inlined copy** of `boostSchedule` rather than importing
             `server/constants/boostSchedule.js`.
 
@@ -346,7 +350,7 @@ mode proves no harm was done; it proves nothing about whether the logic is right
       a later wave — and launch does not happen until that phase is done, because finding 4 runs in
       live code today.**
       - **Finding 4 — every referral payout is computed on ONE invoice, not the sale.**
-        `server/referralRules.js:114` reads `invoiceData.amounts?.total` from the single
+        `evaluateReferral`'s Step 5 (`server/referralRules.js`) reads `invoiceData.amounts?.total` from the single
         webhook-triggering invoice; Step 5's own comment concedes it (*"For MVP single-invoice
         webhook: the batch IS this invoice"*). Danny's amended sale-value ruling requires the **sum
         of the final invoice totals of the DISTINCT invoices linked to any job in the sale**. Three
@@ -357,7 +361,8 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         ever book a conversion, the second invoice's value is **permanently** lost. **A `tiered`
         schedule is ACTIVE in production today.**
       - **Finding 5 — the `percentage` model is 100× too large.**
-        `server/referralRules.js:227` is `invoiceTotal * percentage_rate` with **no `/100`**, while
+        `evaluateReferral`'s Step 9 percentage branch (`server/referralRules.js`) is
+        `invoiceTotal * percentage_rate` with **no `/100`**, while
         `src/components/admin/ScheduleBuilderDrawer.jsx` is unambiguously a percent field
         (`max="100"`, a `%` suffix, its own preview computing `rate / 100`, and a warning above
         10). Production holds a fully-configured **3%** schedule with `percentage_max_cap 950` and
@@ -367,7 +372,8 @@ mode proves no harm was done; it proves nothing about whether the logic is right
       - ⚠ **A MEASUREMENT THE RULING DID NOT HAVE, AND IT STRENGTHENS THE GATE RATHER THAN
         WEAKENING IT: `referralRules` HAS NEVER COMPUTED A PAYOUT IN PRODUCTION.** Zero
         `referral_conversion` rows in `activity_log` (audit §4c) — and
-        `server/routes/webhooks/jobber.js:1468` writes one **unconditionally** on every qualified
+        the invoice-paid handler's referral block (`server/routes/webhooks/jobber.js`) writes one
+        **unconditionally** on every qualified
         conversion, outside the `rowCount > 0` guard, so its absence is proof rather than
         inference. The route is mounted and **has** been entered (one
         `invoice_paid_experience_trigger` row), so the code is live as the ruling says; what is
@@ -386,14 +392,14 @@ mode proves no harm was done; it proves nothing about whether the logic is right
       the other is the error.** Measured 2026-09-28: Accent is `payout_automation = 'threshold'`
       with `payout_review_threshold = 1500.00`, a connected Stripe account, and a test referrer
       holding a bank token — so **every $500 `stripe_ach` request meets `shouldAutoFire` and
-      bypasses admin review entirely** (`server/routes/referrer.js:1846`). Three attempts are
+      bypasses admin review entirely** (`shouldAutoFire` in `server/routes/referrer.js`). Three attempts are
       recorded in `cashout_requests.bank_connection_blocked_reason`; **the most recent reached
       `stripe.transfers.create` and was refused by STRIPE for an empty TEST balance, not by
       RoofMiles.** It sits downstream of finding (1)'s gate, so **(1) and this compose into a
       self-service repeat payout.** Harmless today only because the key is `sk_test_`.
       **Decide deliberately whether `threshold` is the intended production setting before launch.**
 
-- [ ] **`server/routes/account.js:435` — hardcoded ghost `contractor_id = 'accent-roofing'`.**
+- [ ] **`DELETE /api/account/me`'s deletion-email branding lookup (`server/routes/account.js`) — hardcoded ghost `contractor_id = 'accent-roofing'`.**
       Only `'accent-roofing-dev'` exists, so this returns zero rows and the account-deletion
       confirmation email is **always unbranded**; `session.contractorId` is in scope nine lines
       above and simply unused. **No effect on any amount**, but it sits inside the handler that

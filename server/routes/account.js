@@ -10,6 +10,7 @@ const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { resendShouldRetry, twilioShouldRetry } = require('../utils/retryHelpers');
 const { logError } = require('../middleware/errorLogger');
 const { sendAdminNotification } = require('../utils/notificationEmail');
+const { getCashoutBalance } = require('../utils/cashoutBalance');
 const { verifyReferrerSession } = require('../middleware/auth');
 
 // Twilio is optional — only initialised when credentials are present so the
@@ -412,14 +413,14 @@ router.delete('/me', async (req, res) => {
     // Final payout on deletion — minimum threshold intentionally bypassed.
     // Auto-create a final cashout request if the user has an outstanding balance.
     // Balance = total earned from referral_conversions minus total already requested (non-denied).
-    const balanceResult = await pool.query(
-      `SELECT
-         COALESCE((SELECT SUM(bonus_amount) FROM referral_conversions WHERE user_id=$1), 0)
-         - COALESCE((SELECT SUM(amount) FROM cashout_requests WHERE user_id=$1 AND status != 'denied'), 0)
-       AS balance`,
-      [session.userId]
-    );
-    const balance = parseFloat(balanceResult.rows[0]?.balance || 0);
+    // ⚠ THE SHARED DEFINITION, NOT A LOCAL COPY. This formula was already CORRECT here
+    // — `status <> 'denied'`, so pending, approved and paid all deduct — while
+    // `POST /api/cashout` deducted only pending and approved. Two formulas for one question,
+    // and the money path had the wrong one. Extracted rather than left duplicated: had this
+    // stayed inline, the two could drift again and nothing would say so.
+    // ⚠ THE BEHAVIOUR HERE IS UNCHANGED BY THE EXTRACTION, WHICH IS THE POINT — the util
+    // IS this formula. server/test/cashoutBalanceSingleSource.test.js fences it.
+    const { available: balance } = await getCashoutBalance(pool, session.userId);
     if (balance > 0) {
       await pool.query(
         `INSERT INTO cashout_requests (user_id, full_name, email, amount, method, contractor_id, status, requested_at)
