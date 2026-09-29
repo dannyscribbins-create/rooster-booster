@@ -435,6 +435,42 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         **Fix for the residue (not built): a watermark-driven invoice sweep, in the shape of
         `server/cron/jobs/repRequestSweep.js`.** Detail: `N4_STATUS_DESIGN.md` §8 ruling 3a and
         §10.3.
+      - [ ] **`npm audit` HIGH — `undici`, TRANSITIVE UNDER `jsdom`, TEST-ONLY. ACKNOWLEDGED, NOT
+        FIXED (2026-09-29).** A batch of ten advisories against `undici` `7.0.0 - 7.29.0` published
+        during the N4 arc: the audit read **3 moderate** at commit 6 and **2 moderate + 1 HIGH**
+        about thirty minutes later, with **no dependency change in between**.
+        **Measured from disk and the lockfile, never from `npm ls`** (which this repo records as
+        printing a version that is not the installed one): `undici@7.29.0`, a single copy at
+        `node_modules/undici`, required by **`jsdom` `^7.25.0`**. `jsdom` is a **devDependency**
+        (`^29.1.1`); `undici` is not a direct dependency of either kind.
+        ⚠ **IT DOES NOT REACH THE DEPLOYED SERVER.** The only importer anywhere is
+        `src/devServerPipeline.test.js`. Nothing under `server/` or in shipped `src/` imports
+        `undici` or `jsdom`, and CLAUDE.md's standing rule is that devDependencies are never
+        imported in `server/` production code. The exposure is the React test environment.
+        **Why it was not fixed in the commit that found it:** a dependency bump inside a
+        money-path commit is unreviewable, and Danny's standing rule is that a package change is
+        flagged to him before it is made. `fixAvailable: true`, so `npm audit fix` should resolve
+        it — **run it as its own commit, with the gate re-run afterwards**, because `jsdom` is the
+        React suite's environment and a bump there can move 1,397 tests.
+        Recorded 2026-09-29 by N4 commit 6, which extracted the conversion writer and did **not**
+        fix this — deliberately, because a behaviour change inside a no-behaviour-change commit
+        would have made its guard-proof meaningless.
+        `writeReferralConversion` (`server/utils/referralConversion.js`) reads the referrer's prior
+        conversion count and then inserts, as **two statements on the pool**. Two concurrent FIRST
+        conversions for one referrer can both read zero, so both set `isFirstConversion` and both
+        send the **#13 first-milestone** email.
+        ⚠ **THE CREDIT IS UNAFFECTED AND THAT IS THE WHOLE SIZE OF THIS ITEM.**
+        `UNIQUE(user_id, jobber_client_id)` on `referral_conversions` is a resident
+        non-negotiable — one conversion per client ever — and `ON CONFLICT DO NOTHING` absorbs the
+        loser. So the worst case is a duplicate EMAIL, never a duplicate payment and never a
+        double balance.
+        ⚠ **AND IT WAS ALREADY TRUE BEFORE COMMIT 6** — the two statements were inline in the
+        invoice-paid webhook in exactly this shape. The extraction moved the race; it did not
+        introduce it. **Stated because "new code, new race" is the wrong reading and would send
+        someone looking for a regression.**
+        **Fix when the money phase opens:** take the count and the insert in one transaction, or
+        derive "first" from the insert's own result rather than a prior read. N4 commit 7 adds a
+        second caller, which raises the odds without changing the shape.
       - [ ] **🔴 A REFERRED CLIENT DELETED OR MERGED IN JOBBER NEVER LEAVES `pipeline_cache`, AND
         COULD SHOW IN A REFERRER'S "My Referrals" FOREVER.** Found 2026-09-29 by running the N4
         commit 4 backfill. **NOT FIXED — filed, and the measured row is deliberately left in

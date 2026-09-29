@@ -424,8 +424,65 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2199 server tests across 365 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 6 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2199 · suites 365 · pass 2199 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 6 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2210 server tests across 367 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 7a commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2210 · suites 367 · pass 2210 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 7a COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2199 → 2210 is **+11**, one new file (`cardShowsCreditedBonus.test.js`); suites 365 → 367
+  is that file's **two** top-level describes. React did not move — **no `src/` file was touched**,
+  which is worth stating because this commit is about what a referrer SEES: the change is entirely
+  in what the server puts on the payload. Re-measured rather than carried. **All four predicted
+  before the run and matched.**
+  ⚠ **COMMIT 7 SPLIT INTO FOUR BECAUSE A READ-ONLY INVESTIGATION FOUND A BLOCKER NOBODY HAD
+  COSTED — AND THAT INVESTIGATION IS THE ENTRY WORTH KEEPING.** `evaluateReferral` selects a
+  payout schedule from the **"Job Type" CUSTOM FIELD** (`invoiceData.jobs.nodes[].customFields`,
+  label `Job Type`, `valueDropdown`). **No fact table stores it.** `crm_job_facts.job_type` is a
+  DIFFERENT thing with a confusingly identical name — Jobber's own `Job.jobType` enum — and
+  **measured in production it reads `ONE_OFF` for all 6,277 rows**, while the live schedules are
+  keyed on `New Construction` / `Skylight Install` / `Restoration`. A fact-driven
+  `evaluateReferral` would therefore return `no_job_type_found` for **every** client. ⚠ **Had this
+  been discovered during the build rather than before it, the conversion credit would have shipped
+  as a gate that silently never fires** — the same shape as the font columns and
+  `waitingForFinancedPayment`. Capturing the field is now its own commit (7c) and it blocks 7d.
+  ⚠ **AND THE CARD CHANGE HAD TO GO FIRST, WHICH IS THE OPPOSITE OF THE PLAN'S ORDER.** The plan
+  listed card display last. The stage change makes two production clients derive `'paid'`; with the
+  speculative ladder still in place each would have shown **`+$500` against no ledger row**. Nobody
+  would have seen it — neither referrer has a `users` row — but that is a coincidence, and this file
+  already records *"a safety argument resting on another component's current behaviour"* as a defect
+  class. **Retiring the ladder first means the window never opens.**
+  ⚠ **THE LADDER WAS IN TWO PLACES AND THE SECOND ONE IS THE ONE THAT WOULD HAVE BEEN MISSED.**
+  `fetchPipelineForReferrer` (`crm/jobber.js`) and the stale-cache fallback in `GET /api/pipeline`
+  — which also carried its **own inline copy of `boostSchedule`** rather than importing the shared
+  constant, already recorded as a defect on `PRE_LAUNCH_CHECKLIST.md`. That path runs precisely
+  when the adapter has just failed, i.e. when nobody is checking the figures.
+  ⚠ **AND THE FALLBACK IS NOW DRIVEN BEHAVIOURALLY, NOT JUST FENCED.** The first writing covered
+  it with a source fence only, and guard-proof (ii) reported width 2 — both of them text checks.
+  **A source fence proves the ladder is not WRITTEN there; it cannot prove a request travelling
+  that branch shows the right figure.** The branch is reachable: the route falls back on any
+  adapter error whose message is not "No CRM connected", and an `oauth` connection with no `tokens`
+  row produces one. With a behavioural case the same injection reds **3**, and the case asserts
+  `body.stale === true` as its precondition so it cannot quietly become a duplicate of the live
+  path.
+  ⚠ **THE POSITIVE FIXTURES USE 737, 823 AND 611 — DELIBERATELY UNREACHABLE BY `500 + boost`.**
+  A round 500 would have been satisfied by the ladder AND by the ledger, which is the
+  `toContain`-on-a-bare-value trap wearing a currency symbol. An odd value cannot.
+  ⚠ **TWO EXISTING CASES WERE INVERTED BY THE RULING RATHER THAN BY A BUG, AND BOTH ARE QUOTED IN
+  PLACE.** `getNeverWritesMoney.test.js` asserted `typeof item.payout === 'number'`, described in
+  its own comment as *"the speculative payout it would have written"* — the exact thing ruling 3b
+  retires. Inverted to `payout === null`, and its non-vacuity is untouched because the removed
+  GET-write fired on `bonusEarned`, which is asserted separately. Its sibling's PAIRED POSITIVE
+  asserted only that a complete item carried *a number*, which the ladder satisfied for any paid
+  row — **so it proved the field was populated, not that the figure was real.** It now seeds a
+  conversion and asserts the exact amount, which is strictly stronger.
+  ⚠ **FIVE GUARD-PROOFS, EVERY REVERT AN INVERSE PATCH IN A `finally` PROVEN BYTE-IDENTICAL BY
+  sha256.** (i) the ladder restored in the adapter → **8**; (ii) restored in the stale-cache
+  fallback → **3**, one behavioural; (iii) the balance falling back to the speculative figure
+  (`conversionBonus ?? payout`) → **exactly 1**; (iv) the `pre_start_date` gate removed → **exactly
+  1** — a gate this commit must NOT touch, proven untouched by breaking it deliberately; (v) the
+  conversion lookup losing its contractor scope → **exactly 1**.
+  ⚠ **AND (iv) IS THERE BECAUSE "I DID NOT TOUCH THAT" IS A CLAIM.** A commit that rewrites the
+  money line of a payload should prove the eligibility gates beside it still bite, not assert it.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 6 COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2199 / 365 / 1397 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE N4 COMMIT 6 COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2187 → 2199 is **+12 = 11 + 1**: eleven in one new file
   (`referralConversionWriter.test.js`) and **one APPENDED to an existing describe** in
   `invoicePaidWebhook.test.js` (10 → 11 cases). Suites 363 → 365 is the new file's **two**

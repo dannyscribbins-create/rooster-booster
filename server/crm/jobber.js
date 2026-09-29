@@ -3,7 +3,6 @@ const { pool } = require('../db');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../utils/retryHelpers');
 const { logError } = require('../middleware/errorLogger');
-const { boostSchedule } = require('../constants/boostSchedule');
 
 // ── TOKEN AUTO-REFRESH ────────────────────────────────────────────────────────
 // force=true bypasses the expires_at freshness check and always exchanges the refresh
@@ -188,11 +187,13 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
     console.error('[fetchPipeline] conversion lookup failed:', convErr.message);
   }
 
-  // Map pipeline_cache rows to the response shape PipelineTab expects
-  // Bonus schedule: $500 base + boost per tier — see server/constants/boostSchedule.js
-  // paidCount here is the index into boostSchedule — it counts only bonus-eligible
-  // (post-start-date) paid referrals in this result set, NOT the referrer's all-time
-  // paid count. Pre-start-date rows are excluded from tier calculation.
+  // Map pipeline_cache rows to the response shape PipelineTab expects.
+  // ⚠ THE boostSchedule IMPORT IS GONE FROM THIS FILE (N4 commit 7a). It existed only to compute
+  // the speculative ladder retired below; the constant itself stays for the code that genuinely
+  // decides a payout. An unused import is dead code by CLAUDE.md's standard.
+  // ⚠ `paidCount` NO LONGER INDEXES A LADDER. It counts bonus-eligible (post-start-date) paid
+  // referrals in this result set and is returned as `paidCount`, which is what it always meant
+  // to callers; it is no longer used to pick a tier here.
   let paidCount    = 0;
   let totalBalance = 0;
 
@@ -210,14 +211,40 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
     // Bonus only fires when paid AND not pre-start-date
     const bonusEarned = row.pipeline_status === 'paid' && !isPreStart;
 
-    // conversion_bonus: actual amount from referral_conversions (null if record not yet written)
+    // ── THE CARD SHOWS THE BONUS ACTUALLY CREDITED (N4 commit 7a, Danny ruling 3b) ──
+    //
+    // ⚠ THE SPECULATIVE `500 + boost` LADDER IS RETIRED. It computed a payout from
+    // `pipeline_status = 'paid'` alone, WHETHER OR NOT a `referral_conversions` row existed, and
+    // used the confirmed amount only when one happened to be there. So a referrer could be shown
+    // `+$500` that no ledger row supported — and since the payout audit every BALANCE surface
+    // reads one source, `SUM(referral_conversions.bonus_amount)` minus cash-outs. The card was
+    // the last surface still inventing its own figure, which is the same
+    // two-figures-disagreeing defect that arc spent five commits removing, one surface along.
+    //
+    // ⚠ AND IT HAD TO GO BEFORE THE STAGE MOVES ONTO FACTS, NOT AFTER. The next commit makes two
+    // referred clients derive `'paid'` from saved facts; with the ladder still here they would
+    // each have shown `+$500` against no conversion. Nobody would have seen it today — neither
+    // referrer has a `users` row — but "no one can currently see it" is a coincidence, not a
+    // guarantee, and ordering the commits this way means it is never true even briefly.
+    //
+    // ⚠ NOTHING IS SHOWN BEFORE A CONVERSION EXISTS. `payout` is the conversion's own
+    // `bonus_amount` or null; `bonusEarned` still says the invoice is paid, so the card reads
+    // "Complete ✓" with no figure until the ledger has one. That is the ruling, and it is also
+    // the honest reading: the stage is a fact about the job, the amount is a fact about the money.
+    //
+    // ⚠ THE RESIDENT NON-NEGOTIABLE IS UNCHANGED AND THIS FINALLY OBEYS IT: never display a
+    // bonus dollar amount at `'sold'` — the amount comes from `referral_conversions.bonus_amount`.
+    // The rule always said that; the ladder was the thing contradicting it.
     const conversionBonus = bonusEarned ? (conversionMap[row.jobber_client_id] ?? null) : null;
 
-    let payout = null;
+    // ⚠ `payout` AND `conversion_bonus` ARE NOW THE SAME NUMBER, DELIBERATELY. Both keys stay on
+    // the payload because `ProfileTab` and `DashboardTab` read them separately and this commit
+    // changes no component; the point is that neither can be a figure the ledger does not hold.
+    const payout = conversionBonus;
     if (bonusEarned) {
-      const boost = boostSchedule[Math.min(paidCount, boostSchedule.length - 1)];
-      payout        = 500 + boost;
-      totalBalance += conversionBonus ?? payout;
+      // ⚠ THE BALANCE SUMS ONLY CONFIRMED CONVERSIONS. An unconverted paid referral adds nothing
+      // rather than adding a guess.
+      if (conversionBonus !== null) totalBalance += conversionBonus;
       paidCount++;
     }
 

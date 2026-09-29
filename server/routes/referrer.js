@@ -1009,7 +1009,14 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
             await logError({ req, error: staleCacheConvErr });
           }
 
-          const boostSchedule = [0, 100, 200, 250, 300, 350, 400];
+          // ── THE SECOND COPY OF THE LADDER, RETIRED TOO (N4 commit 7a, ruling 3b) ──
+          // ⚠ RETIRING ONLY THE PRIMARY WOULD HAVE LEFT THIS ONE PAYING THE OLD WAY, and this
+          // path runs precisely when the adapter has just failed — the moment nobody is watching
+          // the figures closely. It also carried its own INLINE COPY of `boostSchedule` rather
+          // than importing the shared constant, which `PRE_LAUNCH_CHECKLIST.md` already records
+          // as a defect in its own right. Both are gone: there is no ladder left to drift.
+          // ⚠ THE RULE IS THE SAME HERE AS ON THE LIVE PATH: the card shows the conversion row's
+          // own `bonus_amount` and nothing before a conversion exists.
           let paidCount = 0;
           let totalBalance = 0;
           const pipeline = cacheResult.rows.map(row => {
@@ -1020,11 +1027,9 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
             else status = row.pipeline_status;
             const bonusEarned = row.pipeline_status === 'paid' && !isPreStart;
             const conversionBonus = bonusEarned ? (staleCacheConvMap[row.jobber_client_id] ?? null) : null;
-            let payout = null;
+            const payout = conversionBonus;
             if (bonusEarned) {
-              const boost = boostSchedule[Math.min(paidCount, boostSchedule.length - 1)];
-              payout = 500 + boost;
-              totalBalance += conversionBonus ?? payout;
+              if (conversionBonus !== null) totalBalance += conversionBonus;
               paidCount++;
             }
             return { id: row.jobber_client_id, name: row.client_name || 'Unknown', status, bonusEarned, payout, conversion_bonus: conversionBonus, pre_start_date: isPreStart };

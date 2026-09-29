@@ -251,7 +251,15 @@ describe('payout commit (3) — a GET request never writes a money row', () => {
     const item = (res.body.pipeline || []).find(p => p.id === 'gid-pay3-001');
     assert.ok(item, 'the seeded client must appear in the pipeline response');
     assert.equal(item.bonusEarned, true, 'and must satisfy the removed write\'s condition');
-    assert.equal(typeof item.payout, 'number', 'and carry the speculative payout it would have written');
+    // ⚠ INVERTED BY N4 COMMIT 7a, AND NOT BECAUSE ANYTHING BROKE. This read
+    // `typeof item.payout === 'number'`, described as "the speculative payout it would have
+    // written" — and that speculative figure is exactly what ruling 3b retires. The card now
+    // shows the conversion row's own `bonus_amount`, so with no conversion the payout is null.
+    // ⚠ THE CASE'S NON-VACUITY IS UNAFFECTED, WHICH IS WHY THIS IS SAFE TO INVERT. The removed
+    // GET-write fired on `item.bonusEarned`, asserted on the line above; the payout assertion was
+    // never the trigger condition. Replaced by its opposite rather than deleted, so the
+    // retirement is pinned here too.
+    assert.equal(item.payout, null, 'and carry NO speculative payout — the ladder is retired');
 
     assert.deepEqual(await conversions(), [], 'yet NOTHING may be written to referral_conversions');
   });
@@ -321,9 +329,26 @@ describe('payout commit (3) — a GET request never writes a money row', () => {
     }
     // ⚠ PAIRED POSITIVE: the 'complete' item DOES carry one, so the assertions above are
     // not satisfied by a payload that simply never populates these fields.
-    const complete = (res.body.pipeline || []).find(p => p.status === 'complete');
+    // ⚠ STRENGTHENED BY N4 COMMIT 7a. It used to assert only `typeof payout === 'number'`, which
+    // the retired ladder satisfied for ANY paid row — so it proved the field was populated, not
+    // that the figure was real. A complete row now needs a LEDGER row to carry an amount, so the
+    // positive seeds one and asserts the EXACT value. That makes the pair discriminating in both
+    // directions: 'sold' carries nothing, and 'complete' carries what the ledger holds.
+    const { rows: convRow } = await pool.query(
+      `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, converted_at, bonus_amount)
+       VALUES ($1, $2, 'gid-pay3-paid', NOW(), 737.00) RETURNING id`,
+      [userId, CONTRACTOR]
+    );
+    assert.ok(convRow[0].id, 'precondition: the conversion row was seeded');
+
+    const res2 = await httpGet(port, '/api/pipeline', TOKEN);
+    const complete = (res2.body.pipeline || []).find(p => p.status === 'complete');
     assert.ok(complete, 'a complete item must be present');
-    assert.equal(typeof complete.payout, 'number', 'and it must carry an amount');
+    assert.equal(
+      Number(complete.payout), 737,
+      "and it must carry the CONVERSION's own amount — not a recomputed one"
+    );
+    assert.equal(Number(complete.conversion_bonus), 737, 'the confirmed figure agrees');
   });
 
   // ── THE FENCE ──────────────────────────────────────────────────────────────
