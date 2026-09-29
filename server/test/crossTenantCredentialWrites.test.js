@@ -68,6 +68,22 @@ const ACCT_A = 'acct_w11c_tenant_a';
 // That ordering is what lets these tests observe the account resolution without
 // any network call ever being dispatched to Stripe. The dummy key above is the
 // first guard; this is the second, and they are independent.
+//
+// ⚠ THE SENTINEL MOVED FROM THE REQUEST BODY INTO THE SEEDED ROW, AND THE MECHANISM
+// HAD TO BE RE-DERIVED FROM THE PROPERTY RATHER THAN CARRIED (2026-09-28, the
+// payout-audit commit (2)). THE PROPERTY IS UNCHANGED: **no test in this file may
+// ever reach Stripe.** What changed underneath it is that
+// POST /api/admin/stripe/transfer no longer takes the amount from `req.body` — it
+// reads it from the approved `cashout_requests` row. So passing -1 in the body no
+// longer keeps `amountInCents` non-positive; the ROW's amount decides, and a row
+// seeded at 250 would have been dispatched.
+// ⚠ THE D4 CASHOUTS ARE THEREFORE SEEDED AT THIS AMOUNT (`xferA` / `xferB` below),
+// and the body still sends the same value so the route's new amount-agreement check
+// passes and execution reaches the account resolution exactly as before. Every D4
+// assertion is unchanged.
+// ⚠ DO NOT "TIDY" THIS BY GIVING THE D4 ROWS A REALISTIC AMOUNT. A positive row
+// amount here is a live Stripe call from the test suite, which is the one thing this
+// constant exists to prevent — and it would look like a harmless fixture cleanup.
 const NEVER_DISPATCHED_AMOUNT = -1;
 
 // ── HTTP TRANSPORT ────────────────────────────────────────────────────────────
@@ -144,7 +160,7 @@ describe('Wave 1.1-c — cross-tenant credential and money writes (RED)', () => 
   // "CANCELLED and SKIPPED are FAILURES until explained".
   let pool, app, server, port;
   let tokenA, tokenB;
-  let userA, userB, payoutA, payoutB, cashoutA, cashoutB;
+  let userA, userB, payoutA, payoutB, cashoutA, cashoutB, xferA, xferB;
 
   // Both referrers carry the SAME full_name on purpose. D3 and D6 both match on
   // name, so a cross-tenant collision is the condition under which they leak.
@@ -258,6 +274,20 @@ describe('Wave 1.1-c — cross-tenant credential and money writes (RED)', () => 
     cashoutB = await seedCashout(pool, {
       contractorId: TENANT_B, userId: payoutB, fullName: 'Payout Beta',
       email: 'payout-b@w11c.test', amount: 250,
+    });
+
+    // ⚠ SEPARATE CASHOUTS FOR D4, SEEDED AT THE NON-DISPATCHABLE AMOUNT. D2's
+    // delete tests need cashoutA/cashoutB to exist with a realistic amount (they
+    // assert on the FK that stops a referrer being deleted, not on the money), so
+    // the sentinel could not simply be applied to those rows. See
+    // NEVER_DISPATCHED_AMOUNT above for why the amount has to live on the ROW now.
+    xferA = await seedCashout(pool, {
+      contractorId: TENANT_A, userId: payoutA, fullName: 'Payout Alpha',
+      email: 'payout-a@w11c.test', amount: NEVER_DISPATCHED_AMOUNT,
+    });
+    xferB = await seedCashout(pool, {
+      contractorId: TENANT_B, userId: payoutB, fullName: 'Payout Beta',
+      email: 'payout-b@w11c.test', amount: NEVER_DISPATCHED_AMOUNT,
     });
 
     // Tenant A's pipeline holds a client whose name collides with tenant B's
@@ -483,7 +513,7 @@ describe('Wave 1.1-c — cross-tenant credential and money writes (RED)', () => 
   describe('D4 — POST /api/admin/stripe/transfer', () => {
     it('RED + POSITIVE CONTROL: the connected account resolves from the CALLER\'S contractor', async () => {
       const res = await httpPost(port, '/api/admin/stripe/transfer', tokenA, {
-        cashoutRequestId: cashoutA,
+        cashoutRequestId: xferA,
         userId: payoutA,
         bonusAmount: NEVER_DISPATCHED_AMOUNT,
       });
@@ -513,7 +543,7 @@ describe('Wave 1.1-c — cross-tenant credential and money writes (RED)', () => 
 
     it('FAIL CLOSED: a contractor with NO connected account is rejected explicitly', async () => {
       const res = await httpPost(port, '/api/admin/stripe/transfer', tokenB, {
-        cashoutRequestId: cashoutB,
+        cashoutRequestId: xferB,
         userId: payoutB,
         bonusAmount: NEVER_DISPATCHED_AMOUNT,
       });
@@ -532,7 +562,7 @@ describe('Wave 1.1-c — cross-tenant credential and money writes (RED)', () => 
 
     it('RED: tenant A\'s admin must NOT move money for tenant B\'s cashout and user', async () => {
       const res = await httpPost(port, '/api/admin/stripe/transfer', tokenA, {
-        cashoutRequestId: cashoutB,
+        cashoutRequestId: xferB,
         userId: payoutB,
         bonusAmount: NEVER_DISPATCHED_AMOUNT,
       });

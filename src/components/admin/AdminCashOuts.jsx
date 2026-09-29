@@ -76,6 +76,35 @@ export default function AdminCashOuts({ setLoggedIn }) {
     setTransferringId(c.id);
     setTransferErrors(prev => ({ ...prev, [c.id]: null }));
     try {
+      // ── APPROVE FIRST, THEN TRANSFER — THE ORDER IS REVERSED FROM WHAT IT WAS ──
+      // ⚠ THIS USED TO TRANSFER AND THEN RECORD THE APPROVAL, and the note under the
+      // button said so in terms. The server now refuses to transfer for a cashout that
+      // is not already 'approved' (Danny's ruling), so the old order would 409 on every
+      // click. The transfer is also what marks the row 'paid' now, which is why there is
+      // no PATCH after it any more — a second PATCH would fight the server's own
+      // at-most-once claim.
+      // ⚠ SKIPPED WHEN THE ROW IS ALREADY APPROVED, and that is the retry path rather
+      // than an optimisation: a failed transfer releases its claim and leaves the row
+      // 'approved', and re-approving it would 409 on the duplicate-approval guard in
+      // `admin/cashouts.js` (`payout_announcements` is unique per cashout).
+      if (c.status === 'pending') {
+        const approveRes = await fetch(`${BACKEND_URL}/api/admin/cashouts/${c.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
+          body: JSON.stringify({ status: 'approved' }),
+        });
+        if (approveRes.status === 401) { on401(); return; }
+        if (!approveRes.ok) {
+          const approveData = await approveRes.json().catch(() => ({}));
+          const msg = approveData.error || 'Could not approve this cashout — nothing was sent.';
+          setTransferErrors(prev => ({ ...prev, [c.id]: msg }));
+          return;
+        }
+      }
+      // ⚠ `bonusAmount` IS SENT AS A CROSS-CHECK, NOT AS AN INSTRUCTION. The server
+      // reads the amount from the approved row and REFUSES the request if this value
+      // disagrees with it (422 amount_mismatch). Sending it is what makes a stale list
+      // fail loudly instead of quietly paying a figure the admin never saw.
       const transferRes = await fetch(`${BACKEND_URL}/api/admin/stripe/transfer`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
@@ -89,22 +118,20 @@ export default function AdminCashOuts({ setLoggedIn }) {
           msg = 'This referrer has not connected a bank account yet. They have been notified — check back once they connect.';
         } else if (transferData.error === 'no_stripe_account') {
           msg = 'Contractor Stripe account is not connected. Go to Banking Settings to complete setup.';
+        } else if (transferData.error === 'amount_mismatch') {
+          msg = 'This list is out of date — the approved amount has changed. Nothing was sent. Refresh and try again.';
+        } else if (transferData.error === 'already_processed') {
+          msg = 'This cashout was already transferred. Nothing was sent again.';
+        } else if (transferData.error === 'not_approved') {
+          msg = 'This cashout is not in the approved state. Nothing was sent.';
         } else {
           msg = transferData.message || 'Transfer failed. Please try again.';
         }
         setTransferErrors(prev => ({ ...prev, [c.id]: msg }));
-        return;
-      }
-      const approveRes = await fetch(`${BACKEND_URL}/api/admin/cashouts/${c.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken()}` },
-        body: JSON.stringify({ status: 'approved' }),
-      });
-      if (approveRes.status === 401) { on401(); return; }
-      if (!approveRes.ok) {
-        const approveData = await approveRes.json().catch(() => ({}));
-        const msg = approveData.error || 'Transfer succeeded but approval failed — please approve manually.';
-        setTransferErrors(prev => ({ ...prev, [c.id]: msg }));
+        // ⚠ RELOAD EVEN ON FAILURE. The approval above may have landed, and a failed
+        // transfer releases its claim — so the row's real state is very likely not the
+        // one still on screen, and the retry decision depends on seeing it.
+        load();
         return;
       }
       load();
@@ -140,8 +167,12 @@ export default function AdminCashOuts({ setLoggedIn }) {
                 {transferError}
               </p>
             )}
+            {/* ⚠ THIS NOTE READ "Stripe ACH transfer fires before approval is recorded."
+                That was TRUE and is now INVERTED — the order reversed in this commit, and
+                a note describing the old order would tell an admin the opposite of what
+                the button does on a money screen. */}
             {!transferError && (
-              <p style={noteStyle}>Stripe ACH transfer fires before approval is recorded.</p>
+              <p style={noteStyle}>Approval is recorded first, then the Stripe ACH transfer is sent for the approved amount.</p>
             )}
           </div>
         );
@@ -162,11 +193,45 @@ export default function AdminCashOuts({ setLoggedIn }) {
     }
 
     if (c.status === 'approved') {
+      // ⚠ AN APPROVED stripe_ach ROW NEEDS A TRANSFER BUTTON, AND THAT IS NOT A NEW
+      // FEATURE — IT IS THE RETRY PATH THE REORDER ABOVE CREATES. Before this commit
+      // an approved row could only reach 'paid' by hand, because the transfer always
+      // fired from 'pending'. Now a transfer that fails releases its claim and leaves
+      // the row here, so without this button a failed ACH transfer would be
+      // unretryable and the admin's only option would be to mark it paid manually —
+      // recording money as sent that never left.
+      const isTransferringApproved = transferringId === c.id;
+      const approvedTransferError = transferErrors[c.id];
       return (
         <div style={{ marginTop: 16 }}>
-          <Btn onClick={() => handleAction(c.id, 'paid')} variant="success">
-            <i className="ph ph-check" /> Mark as Paid
-          </Btn>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {isStripeACH && (
+              <Btn
+                onClick={() => !isTransferringApproved && handleStripeTransfer(c)}
+                variant="success"
+                disabled={isTransferringApproved}
+              >
+                <i className="ph ph-bank" /> {isTransferringApproved ? 'Transferring…' : 'Send Transfer'}
+              </Btn>
+            )}
+            {/* ⚠ `outline`, NOT `secondary` — Btn has no `secondary` variant, and an
+                unknown key renders an UNSTYLED button on purpose (AdminComponents.jsx
+                records that as the deliberate loud failure after `accent` was retired).
+                When ACH is available, sending the transfer is the primary action and
+                marking it paid by hand is the secondary one, so it de-emphasises. */}
+            <Btn onClick={() => handleAction(c.id, 'paid')} variant={isStripeACH ? 'outline' : 'success'}>
+              <i className="ph ph-check" /> Mark as Paid
+            </Btn>
+          </div>
+          {approvedTransferError && (
+            <p style={{ ...noteStyle, color: AD.red2Text, marginTop: 8 }}>
+              <i className="ph ph-warning-circle" style={{ marginRight: 4 }} />
+              {approvedTransferError}
+            </p>
+          )}
+          {isStripeACH && !approvedTransferError && (
+            <p style={noteStyle}>Sends the Stripe ACH transfer for the approved amount. Safe to retry — the server sends at most once.</p>
+          )}
         </div>
       );
     }

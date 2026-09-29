@@ -65,6 +65,21 @@ async function getContractorStripeAccountId(pool, contractorId) {
  * @returns {object} { success: true, transferId: string }
  * @throws on any failure
  */
+// ⚠ `bonusAmount` IS TRUSTED ABSOLUTELY HERE, AND THE CALLER OWNS THAT. This function
+// applies `Math.round(x * 100)` and `> 0` and nothing else — no upper bound, and no
+// comparison against `cashout_requests.amount`. That is deliberate rather than an
+// omission: the authority over the amount lives at the route, which knows which row is
+// being paid, and putting a second copy of the rule here would give it two homes.
+// ⚠ THE TWO CALLERS DO NOT OFFER THE SAME GUARANTEE, AND THAT IS A FILED DEFECT.
+//   · POST /api/admin/stripe/transfer (server/routes/stripe.js) reads the amount from
+//     the APPROVED row, refuses a request that disagrees, and claims the row so a
+//     transfer can happen at most once.
+//   · POST /api/cashout's auto-fire (server/routes/referrer.js) passes
+//     `parseFloat(req.body.amount)` — balance-checked, but the request-body value
+//     re-used in memory rather than read back from the row it just inserted, and on a
+//     row that is 'pending' rather than 'approved'.
+// See PRE_LAUNCH_CHECKLIST.md's payout-audit block. **Do not read this function's
+// validation as protection for either caller.**
 async function executeStripeTransfer(pool, { userId, cashoutRequestId, bonusAmount, contractorId }) {
   if (!process.env.STRIPE_SECRET_KEY) {
     throw new Error('STRIPE_SECRET_KEY is not configured');

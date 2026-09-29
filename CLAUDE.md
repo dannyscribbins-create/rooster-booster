@@ -424,7 +424,64 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2065 server tests across 344 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the Phase 1b Commit 6 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2065 · suites 344 · pass 2065 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2080 server tests across 345 suites, and 1358 React tests across 82 files** (measured 2026-09-28 by the payout-audit commit (2), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2080 · suites 345 · pass 2080 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (2) ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2065 → 2080 is **+15**, one new file (`stripeTransferAmountAuthority.test.js`); suites
+  344 → 345 is that file's single top-level describe. React did NOT move — and that is the
+  entry worth reading, because this commit **does** touch `src/`. **All four predicted before the
+  run and matched.**
+  ⚠ **15 FROM 13 `it(` LINES, AND THE GAP IS WHY THE COUNT IS COUNTED RATHER THAN READ.**
+  An anchored `^\s*it\(` reports **13**. The file has two loops and **only one WRAPS an `it()`** —
+  a three-entry `for` over the forbidden cashout states (`pending` · `denied` · `paid`), asserted
+  per state BY NAME; the other iterates matched call sites **inside** an `it()` body and emits
+  nothing. So 12 × 1 + 1 × 3 = 15. **Reading "13 lines" as 13 cases would have been low by two**,
+  which is the direction that looks identical to a suite that partly failed to register.
+  ⚠ **REACT HELD AT 1358 / 82 WHILE `src/components/admin/AdminCashOuts.jsx` CHANGED, AND THE
+  ARITHMETIC WAS ASKED BEFORE THE RUN RATHER THAN RECONCILED AFTER IT.** `src/components/admin` **is**
+  one of `adminBranding.test.jsx`'s four walked roots — but that sweep emits one case per **FILE**,
+  and this commit adds no file there; it edits an existing one. So no phantom, and the React halves
+  were **re-measured** rather than carried.
+  ⚠ **A GUARD-PROOF PROVED ONE OF THIS COMMIT'S OWN TESTS COULD NOT MEASURE WHAT ITS NAME
+  CLAIMED, AND THAT IS THE ENTRY WORTH KEEPING.** Injection (iii) removed `AND status = 'approved'`
+  from the claim `UPDATE` — **the compare-and-swap itself** — and the case named *"two CONCURRENT
+  requests … transfer exactly once"* stayed **GREEN**. Only the source fence fired, so the
+  injection's behavioural width was **0**. Cause: the claim runs BEFORE the transfer, so request 1
+  flips the row to `'paid'` and request 2 is refused by the **state gate**, conditional `UPDATE` or
+  not. The window the CAS protects is between the `SELECT` and the `UPDATE`, and **nothing a test
+  can do from outside the process reliably lands two requests inside it** — a slow stub does not
+  help, because the claim has already happened by the time the stub is entered. Renamed to the
+  property it can actually pin (*two concurrent requests never both transfer*), with the
+  measurement recorded beside it. **The CAS's own proof is therefore the source fence plus
+  injection (iv)**, which removes the gate AND the CAS together and takes it red.
+  ⚠ **THE FOUR WIDTHS, AND (i) vs (ii) IS THE PAIR WORTH SEPARATING.** (i) the pass-through alone
+  (`bonusAmount: amountToSend` → `bonusAmount`) → **3 red**, and crucially the over-ask case stays
+  GREEN, because the mismatch check still refuses it; (ii) the mismatch check disabled **as well**,
+  which is the actual pre-fix state — body decides and nothing compares it — → **6 red**, including
+  *"REFUSES a request asking for MORE than the approved amount"*, which is the guard-proof Danny
+  named; (iii) → **1 red**, the source fence only (see above); (iv) both at-most-once gates removed
+  → **6 red**, including the repeat-request case. **Two injections reintroduce two different halves
+  of one defect, and reporting a single number for "the amount fix" would have hidden that the
+  over-ask case is protected by the CHECK and not by the pass-through.**
+  ⚠ **EVERY REVERT WAS AN INVERSE PATCH IN A `finally`, PROVEN BYTE-IDENTICAL BY sha256**, with
+  anchors checked unique in **BOTH** directions before writing, empty-string replacements refused
+  outright, and the file re-read from disk per patch so two edits to one file could not degrade into
+  the last one only. Final re-run: `tests 2080 · pass 2080 · fail 0`, and the file's sha256 matched
+  the baseline exactly.
+  ⚠ **AND AN EXISTING SUITE'S SAFETY MECHANISM HAD TO BE RE-DERIVED RATHER THAN CARRIED — THE
+  `STRIPE_SECRET_KEY` RULE IN THIS FILE, ARRIVING FOR THE THIRD TIME.**
+  `crossTenantCredentialWrites.test.js`'s stated property is *no test may ever reach Stripe*, and its
+  MECHANISM was a **negative amount in the request body**, which made `amountInCents <= 0` throw
+  before dispatch. This commit makes the body amount non-authoritative, so that mechanism **retired
+  silently** — the row's amount (250) would have been dispatched for real. The sentinel moved into
+  the **ROW** (two new fixtures seeded at `NEVER_DISPATCHED_AMOUNT`), every D4 assertion unchanged,
+  14/14 still green. **The property was preserved; the mechanism could not be.** The new file states
+  the property twice over with two INDEPENDENT guards — a stub that cannot dispatch, and
+  `STRIPE_SECRET_KEY` pinned **empty** so a stub that failed to install throws instead of calling out.
+  ⚠ **AND THE HOOK FAULT AGAIN: deleting `contractors` without clearing `titles` first failed
+  EVERY case inside setup**, including ones with no database dependency — the shape this file already
+  records, where a hook fault fails what cannot depend on it while a subject fault spares it.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 6 COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2065 / 344 / 1358 / 82**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE PHASE 1b COMMIT 6 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
   Server 2056 → 2065 is **+9**, all APPENDED to the EXISTING `assignmentPreview.test.js`;
   suites 341 → 344 is **+3**, the three new top-level describes in that same file. ⚠ **A file

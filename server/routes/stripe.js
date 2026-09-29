@@ -11,6 +11,28 @@ const { executeStripeTransfer } = require('../utils/stripeTransfer');
 
 const router = express.Router();
 
+// ── TEST SEAM FOR THE ONE CALL THAT MOVES MONEY ───────────────────────────────
+// ⚠ THIS EXISTS BECAUSE THE MONEY PATH HAD NO SEAM AT ALL, AND THAT IS PART OF WHY
+// THE UNBOUNDED-AMOUNT DEFECT SURVIVED. Every prior test of this route could only
+// observe which ERROR came back, so the one thing worth asserting — the amount
+// actually handed to Stripe — was unobservable. Nothing could distinguish "sent the
+// approved amount" from "sent whatever the caller asked for".
+//
+// ⚠ INERT IN PRODUCTION: `_executeStripeTransfer` is the real import until a test
+// replaces it, and only `server/test/` ever calls the setter. Same pattern as
+// `_setPipelineSyncEmailsForTest` in server/crm/pipelineSync.js.
+//
+// ⚠ AND IT IS A SAFETY MECHANISM, NOT ONLY A CONVENIENCE. The property
+// `server/test/crossTenantCredentialWrites.test.js` states in its own header —
+// **no test may ever reach Stripe** — was previously enforced by passing a NEGATIVE
+// amount in the request body, so `invalid_amount` threw before dispatch. This commit
+// makes the body amount non-authoritative, which RETIRES that mechanism. A stub is
+// the honest replacement: it cannot dispatch anything. (The other half of that
+// re-derivation is in that file, where the sentinel moved into the ROW.)
+let _executeStripeTransfer = executeStripeTransfer;
+router._setStripeTransferForTest = (fn) => { _executeStripeTransfer = fn; };
+router._resetStripeTransferForTest = () => { _executeStripeTransfer = executeStripeTransfer; };
+
 // ── ⚠ THE MODULE-LEVEL CONTRACTOR LITERAL IS GONE — WAVE 1.1-e ───────────────
 // A module-scope constant used to sit on this line holding the PRE-RENAME GHOST
 // contractor id, with a comment promising to pull it from the session at
@@ -230,8 +252,13 @@ router.post('/api/admin/stripe/transfer', requirePermission('cashout_approve'), 
   if (!adminSession) return;
   const { contractorId } = adminSession;
   const { cashoutRequestId, userId, bonusAmount } = req.body;
-  if (!cashoutRequestId || !userId || !bonusAmount) {
-    return res.status(400).json({ error: 'cashoutRequestId, userId, and bonusAmount are required' });
+  // ⚠ bonusAmount IS NO LONGER REQUIRED, AND THAT IS THE POINT OF THIS COMMIT.
+  // It used to be mandatory AND authoritative: the amount Stripe was told to send
+  // came straight from the request body and was never compared to anything. It is
+  // now ADVISORY ONLY — supplied, it must AGREE with the stored row; omitted, the
+  // row simply decides. The 400 below therefore drops it.
+  if (!cashoutRequestId || !userId) {
+    return res.status(400).json({ error: 'cashoutRequestId and userId are required' });
   }
   try {
     // ── TENANCY, IN THE PREDICATE ─────────────────────────────────────────────
@@ -248,8 +275,15 @@ router.post('/api/admin/stripe/transfer', requirePermission('cashout_approve'), 
     // them to, and the coincidence disappears the moment that read changes. The
     // inner scoping is correct on its own terms; it is not a second gate, and
     // this comment exists so nobody records it as one.
+    //
+    // ⚠ AND IT NOW SELECTS THE AMOUNT AND THE STATUS, WHICH IS THE WHOLE FIX.
+    // The gate always read this exact row — the row that holds the approved
+    // amount — and then threw it away and trusted req.body instead. Selecting two
+    // more columns from a query that was already running is the entire cost of
+    // closing an unbounded money path.
     const owned = await pool.query(
-      `SELECT 1 FROM cashout_requests cr
+      `SELECT cr.amount, cr.status
+         FROM cashout_requests cr
          JOIN users u ON u.id = cr.user_id
         WHERE cr.id = $1 AND cr.user_id = $2
           AND cr.contractor_id = $3 AND u.contractor_id = $3`,
@@ -259,8 +293,120 @@ router.post('/api/admin/stripe/transfer', requirePermission('cashout_approve'), 
       return res.status(404).json({ error: 'not_found', message: 'Cashout request not found' });
     }
 
-    const result = await executeStripeTransfer(pool, { userId, cashoutRequestId, bonusAmount, contractorId });
-    return res.json({ success: true, transferId: result.transferId });
+    const approvedAmount = Number(owned.rows[0].amount);
+
+    // ── THE STATE GATE ────────────────────────────────────────────────────────
+    // ⚠ THE ROUTE USED TO TRANSFER FOR A CASHOUT IN ANY STATE, INCLUDING 'denied'.
+    // Danny's ruling: a transfer happens only for a cashout in 'approved'. The
+    // admin panel's own flow was the inverse — it fired the transfer on a PENDING
+    // row and recorded the approval afterwards — so AdminCashOuts.jsx is reordered
+    // in this same commit to approve first. A stale client that still transfers
+    // first now gets this 409 rather than moving money out of order.
+    if (owned.rows[0].status !== 'approved') {
+      return res.status(409).json({
+        error: 'not_approved',
+        message: `Cashout is '${owned.rows[0].status}' — approve it before transferring`,
+      });
+    }
+
+    // ── THE AMOUNT MUST AGREE, AND A DISAGREEMENT IS LOGGED ───────────────────
+    // ⚠ COMPARED IN CENTS VIA Math.round, NEVER AS FLOATS. `amount` is NUMERIC, so
+    // node-postgres hands back a STRING ('250.00'); a caller sends a JSON number.
+    // `'250.00' !== 250` and `0.1 + 0.2 !== 0.3`, so both a string compare and a
+    // float compare would reject correct requests. Integer cents is the only
+    // comparison that is true for the values this column actually holds.
+    //
+    // ⚠ AND IT IS LOGGED BECAUSE A MISMATCH IS NEVER A TYPO. The only client that
+    // sends this field reads it from the row it is displaying, so a disagreement
+    // means the client is stale, the row moved under it, or the request was
+    // tampered with. Each of those is worth an alert on a money path.
+    if (bonusAmount !== undefined && bonusAmount !== null) {
+      const requested = Number(bonusAmount);
+      const agrees = Number.isFinite(requested)
+        && Math.round(requested * 100) === Math.round(approvedAmount * 100);
+      if (!agrees) {
+        await logError({
+          req,
+          contractorId,
+          error: new Error(
+            `[stripe/transfer] amount_mismatch — cashout ${cashoutRequestId} is approved at ` +
+            `${approvedAmount} but the request asked for ${bonusAmount}. Refused; nothing was sent.`
+          ),
+          source: 'POST /api/admin/stripe/transfer — amount_mismatch',
+        });
+        return res.status(422).json({
+          error: 'amount_mismatch',
+          message: 'The requested amount does not match the approved cashout. Nothing was sent.',
+        });
+      }
+    }
+
+    // ── AT MOST ONCE — A COMPARE-AND-SWAP, NOT A READ-THEN-WRITE ──────────────
+    // ⚠ THE `AND status = 'approved'` IN THIS UPDATE IS THE IDEMPOTENCY CONTROL,
+    // NOT THE CHECK ABOVE IT. The check above is a fast, legible rejection; two
+    // concurrent requests can both pass it. Only one can win this UPDATE, because
+    // the first flips the row out of 'approved' — so `rowCount === 0` here means
+    // "somebody else already claimed it", and that is the reading that makes a
+    // double transfer structurally impossible rather than unlikely.
+    //
+    // ⚠ CLAIM BEFORE TRANSFER, DELIBERATELY, AND THE TRADEOFF IS STATED BECAUSE IT
+    // IS A MONEY DECISION. Claiming first means a hard crash between the claim and
+    // the transfer leaves a row marked 'paid' that was never sent — recoverable by
+    // hand, and visible. Claiming AFTER would let two concurrent callers both send.
+    // "At most once" is the ruling, so the failure direction is UNDER-paying.
+    // A transfer that fails in a way we can observe releases the claim below.
+    const claim = await pool.query(
+      `UPDATE cashout_requests SET status = 'paid', paid_at = NOW()
+        WHERE id = $1 AND contractor_id = $2 AND status = 'approved'
+        RETURNING amount`,
+      [cashoutRequestId, contractorId]
+    );
+    if (claim.rowCount === 0) {
+      return res.status(409).json({
+        error: 'already_processed',
+        message: 'This cashout was already claimed by another transfer. Nothing was sent.',
+      });
+    }
+
+    // ⚠ THE AMOUNT COMES FROM THE CLAIM'S OWN `RETURNING`, NOT FROM THE READ ABOVE
+    // AND NEVER FROM req.body. The read and the claim are two statements, so the
+    // row could in principle have been edited between them; the value that goes to
+    // Stripe is the one belonging to the row this request actually claimed.
+    const amountToSend = Number(claim.rows[0].amount);
+
+    try {
+      const result = await _executeStripeTransfer(pool, {
+        userId, cashoutRequestId, bonusAmount: amountToSend, contractorId,
+      });
+      return res.json({ success: true, transferId: result.transferId, amount: amountToSend });
+    } catch (transferErr) {
+      // ⚠ RELEASE THE CLAIM SO A FAILED TRANSFER CAN BE RETRIED. Scoped
+      // `AND status = 'paid'` so this can only ever undo THIS request's own claim
+      // and never reopen a cashout somebody else has since settled.
+      // ⚠ NOTE WHAT IS NOT DONE HERE: no non-positive-amount check was added to
+      // this route. `executeStripeTransfer` already throws 'invalid_amount' for
+      // that, and duplicating the decision would give it two homes — which is the
+      // shape `server/utils/invoicePaid.js` exists to prevent. The throw arrives
+      // here and is released and reported like any other failure.
+      try {
+        await pool.query(
+          `UPDATE cashout_requests SET status = 'approved', paid_at = NULL
+            WHERE id = $1 AND contractor_id = $2 AND status = 'paid'`,
+          [cashoutRequestId, contractorId]
+        );
+      } catch (releaseErr) {
+        await logError({
+          req,
+          contractorId,
+          error: new Error(
+            `[stripe/transfer] cashout ${cashoutRequestId} is marked 'paid' but the transfer ` +
+            `FAILED and the claim could not be released: ${releaseErr.message}. Needs a manual check.`
+          ),
+          source: 'POST /api/admin/stripe/transfer — claim release failed',
+        });
+      }
+      throw transferErr;
+    }
   } catch (err) {
     if (err.code === 'no_bank_account') {
       return res.status(400).json({
