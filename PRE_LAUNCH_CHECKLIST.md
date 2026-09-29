@@ -435,6 +435,35 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         **Fix for the residue (not built): a watermark-driven invoice sweep, in the shape of
         `server/cron/jobs/repRequestSweep.js`.** Detail: `N4_STATUS_DESIGN.md` §8 ruling 3a and
         §10.3.
+      - [ ] **🔴 A REFERRED CLIENT DELETED OR MERGED IN JOBBER NEVER LEAVES `pipeline_cache`, AND
+        COULD SHOW IN A REFERRER'S "My Referrals" FOREVER.** Found 2026-09-29 by running the N4
+        commit 4 backfill. **NOT FIXED — filed, and the measured row is deliberately left in
+        place (Danny, 2026-09-29) as the reproduction.**
+        `fetchFullClient` throws *"no client returned for id …"* when Jobber accepts the query and
+        returns no client — a **deleted or merged** client. Nothing removes or marks the
+        `pipeline_cache` row, and `syncSingleClient` only ever writes rows it is handed, so the
+        row simply persists. The referrer surface reads `pipeline_cache`, so such a client can sit
+        in "My Referrals" indefinitely at whatever status it last held.
+        **Measured instance:** `Z2lkOi8vSm9iYmVyL0NsaWVudC8xMzcwMjk1ODg=`
+        (`gid://Jobber/Client/137029588`), `client_name` **"referral test"**, `referred_by`
+        **"testing out"**, `pipeline_status` `lead`, **last synced 2026-04-20** and never since. Its
+        cost line read `actual=1` — Jobber answered and returned nothing. It has no
+        `jobber_clients` row, is on no rep's book, and its referrer has no `users` row, **so it is
+        currently invisible to everyone** — which is why it is a safe reproduction rather than a
+        live defect.
+        **Two things to decide and build before launch:**
+        · **What RoofMiles does with such a row** — mark it, hide it from the referrer surface, or
+          remove it. ⚠ **Removal is not obviously right**: `pending_referrals` records are never
+          hard-deleted by standing rule, and a referral that once existed may be part of a
+          referrer's history even if the client is gone.
+        · **Make "client no longer exists in Jobber" ITS OWN OUTCOME, not a failure.** Today the
+          capture path and the sync both record it as a generic capture failure, which means a
+          permanent, expected condition is logged identically to a transient Jobber outage — so
+          the error is unactionable and a real outage hides among stale rows. It needs a distinct
+          outcome from `fetchFullClient` (the GraphQL response already distinguishes it: a clean
+          200 with a null client, versus a thrown error) carried through
+          `referredCaptureBackfill`, `jobberIncrementalSync` and the webhook doors.
+        Detail: `N4_STATUS_DESIGN.md` §10.3 and the commit 4 run record.
       - [ ] **N4 CONVERGING STATE — ACCEPTED, NOT A DEFECT (Danny ruling 7, 2026-09-29).**
         After the N4 arc, `jobber_clients.pipeline_stage` is *decided* from saved facts at every
         live door, but for **12,384 of 19,557 clients (63.3%, measured 2026-09-29 on

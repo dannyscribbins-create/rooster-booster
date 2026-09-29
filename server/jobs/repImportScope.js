@@ -135,6 +135,7 @@ const REP_JOB_FIELDS = `id jobNumber jobStatus jobType title
 
 const REP_INVOICE_FIELDS = `id invoiceNumber invoiceStatus
           createdAt updatedAt issuedDate dueDate receivedDate
+          waitingForFinancedPayment
           client { id }
           amounts { total subtotal invoiceBalance paymentsTotal
                     depositAmount discountAmount taxAmount }

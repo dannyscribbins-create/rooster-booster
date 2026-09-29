@@ -195,6 +195,25 @@ async function writeJobFacts(db, contractorId, nodes) {
  * exactly what a later consumer needs in order to exclude it.
  * ⚠ Same updated_at guard as writeJobFacts, for the same reason.
  */
+// ── `waiting_for_financed_payment` IS THREE-VALUED, AND THAT IS THE POINT (N4 commit 5) ──────
+//
+// ⚠ NULL MEANS "NOBODY ASKED", NOT "NOT FINANCED", AND THE DIFFERENCE IS MONEY.
+// `evaluateReferral`'s Step 4 defers a conversion when Jobber says an invoice is waiting on
+// financed payment. Before this commit the field was selected by ONE query — the webhook's
+// `fetchInvoiceWithJobs` — and stored nowhere, so anything deciding from SAVED FACTS read
+// `undefined`, `undefined === true` was false, the gate did not fire, and **a financed invoice
+// that should have been deferred would have converted.** That is the gap this commit closes.
+//
+// ⚠ SO THE GUARD IS `typeof === 'boolean'`, NOT `|| false` AND NOT `!!`. Both of those collapse
+// an absent field into `false`, which is the wrong answer written confidently — exactly the
+// shape CLAUDE.md's "write the guard the value needs" rule is about, and the reason this note
+// sits beside the four `|| null` siblings that are correct for their own values. A missing
+// boolean is `null`; only a real boolean is stored.
+//
+// ⚠ AND THE 3,881 ROWS CAPTURED BEFORE THIS COMMIT HOLD NULL, WHICH IS TRUE OF THEM. They
+// correct themselves on the client's next capture. Until then the rule for the money path
+// (N4_STATUS_DESIGN.md §8 ruling 3c) is that a NULL is **not eligible** — never
+// `IS NOT TRUE`, which reads unknown as permission.
 async function writeInvoiceFacts(db, contractorId, nodes) {
   const rows = (nodes || []).filter((n) => n?.id);
   if (rows.length === 0) return 0;
@@ -202,18 +221,20 @@ async function writeInvoiceFacts(db, contractorId, nodes) {
     `INSERT INTO crm_invoice_facts
        (contractor_id, jobber_invoice_id, jobber_client_id, invoice_number, invoice_status,
         total, invoice_balance, payments_total, deposit_amount, subtotal, tax_amount,
-        discount_amount, issued_date, due_date, received_date, created_at, updated_at)
+        discount_amount, issued_date, due_date, received_date, created_at, updated_at,
+        waiting_for_financed_payment)
      SELECT $1, v.id, v.client_id, v.invoice_number, v.invoice_status, v.total, v.balance,
             v.payments, v.deposit, v.subtotal, v.tax, v.discount,
-            v.issued_date, v.due_date, v.received_date, v.created_at, v.updated_at
+            v.issued_date, v.due_date, v.received_date, v.created_at, v.updated_at,
+            v.waiting_financed
        FROM unnest($2::text[], $3::text[], $4::text[], $5::text[],
                    $6::numeric[], $7::numeric[], $8::numeric[], $9::numeric[],
                    $10::numeric[], $11::numeric[], $12::numeric[],
                    $13::timestamptz[], $14::timestamptz[], $15::timestamptz[],
-                   $16::timestamptz[], $17::timestamptz[])
+                   $16::timestamptz[], $17::timestamptz[], $18::boolean[])
          AS v(id, client_id, invoice_number, invoice_status, total, balance, payments, deposit,
               subtotal, tax, discount, issued_date, due_date, received_date,
-              created_at, updated_at)
+              created_at, updated_at, waiting_financed)
      ON CONFLICT (contractor_id, jobber_invoice_id) DO UPDATE SET
        jobber_client_id = EXCLUDED.jobber_client_id,
        invoice_number   = EXCLUDED.invoice_number,
@@ -230,6 +251,7 @@ async function writeInvoiceFacts(db, contractorId, nodes) {
        received_date    = EXCLUDED.received_date,
        created_at       = EXCLUDED.created_at,
        updated_at       = EXCLUDED.updated_at,
+       waiting_for_financed_payment = EXCLUDED.waiting_for_financed_payment,
        captured_at      = NOW()
      WHERE COALESCE(EXCLUDED.updated_at, '-infinity'::timestamptz)
         >= COALESCE(crm_invoice_facts.updated_at, '-infinity'::timestamptz)`,
@@ -251,6 +273,8 @@ async function writeInvoiceFacts(db, contractorId, nodes) {
       rows.map((n) => n.receivedDate || null),
       rows.map((n) => n.createdAt || null),
       rows.map((n) => n.updatedAt || null),
+      // GUARD THE VALUE'S OWN SHAPE - see the block above writeInvoiceFacts.
+      rows.map((n) => (typeof n.waitingForFinancedPayment === 'boolean' ? n.waitingForFinancedPayment : null)),
     ]
   );
   return rows.length;

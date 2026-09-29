@@ -2752,6 +2752,31 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
          (contractor_id, (COALESCE(sticky_rep_id, provisional_rep_id)), assigned_at DESC, jobber_client_id DESC)
   `);
 
+  // ── THE FINANCED-PAYMENT FLAG (N4 commit 5) ─────────────────────────────────
+  //
+  // ⚠ NULLABLE WITH NO DEFAULT, AND THAT IS THE OPPOSITE CHOICE FROM
+  // `crm_request_facts.assigned_users_truncated` A FEW HUNDRED LINES ABOVE — SAID HERE BECAUSE
+  // SOMEONE WILL OTHERWISE "CORRECT" IT INTO LINE WITH ITS SIBLING.
+  // That column defaults FALSE because a false there means "not flagged", which is a safe thing
+  // for a pre-existing row to say. **Here FALSE means "not financed", and `evaluateReferral`'s
+  // Step 4 gate reads it as permission to convert.** A defaulted FALSE on the 3,881 invoice rows
+  // captured before this commit would therefore assert, of every one of them, that it is safe to
+  // pay a bonus on — a claim nothing ever checked. NULL says "nobody asked yet", which is the
+  // truth, and it is the money path's job to refuse to decide on it.
+  //
+  // ⚠ WHAT MUST NEVER HAPPEN: `waiting_for_financed_payment IS NOT TRUE` as a conversion gate.
+  // That reads NULL as false and converts on unknown. The rule for commit 7 is recorded in
+  // `N4_STATUS_DESIGN.md` §8 ruling 3c: a NULL is NOT eligible, and the invoice is re-captured
+  // before any conversion decision is taken from it.
+  //
+  // ⚠ IT IS SELECTED BY BOTH INVOICE CAPTURE QUERIES — `INVOICE_FIELDS`
+  // (server/utils/jobberClientFetch.js) and `REP_INVOICE_FIELDS` (server/jobs/repImportScope.js)
+  // — and `captureFetchContract.test.js`'s mechanical reads-vs-selects fence fails if either
+  // stops carrying it. That fence is why this column cannot quietly go unfilled the way the two
+  // font columns did.
+  await pool.query(`ALTER TABLE crm_invoice_facts
+    ADD COLUMN IF NOT EXISTS waiting_for_financed_payment BOOLEAN`);
+
   await backfillAssignedAt(pool);
   await applyAssignedAtNotNull(pool);
 

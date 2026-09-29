@@ -424,8 +424,62 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2177 server tests across 361 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 4 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2177 · suites 361 · pass 2177 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 4 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2187 server tests across 363 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 5 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2187 · suites 363 · pass 2187 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 5 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2177 → 2187 is **+10**, one new file (`financedPaymentCapture.test.js`); suites 361 →
+  363 is that file's **two** top-level describes. React did not move — no `src/` file was touched
+  — and was re-measured. **All four predicted before the run and matched.** Counted with an
+  anchored `^\s*it\(` (10); the isolated run's own `tests 10` agrees.
+  ⚠ **THE COLUMN IS NULLABLE WITH NO DEFAULT, AND THAT IS THE OPPOSITE OF ITS SIBLING ON
+  PURPOSE.** `crm_request_facts.assigned_users_truncated` is `NOT NULL DEFAULT FALSE`, because a
+  false there means "not flagged" — safe for an old row to say. **Here false means "not financed",
+  which `evaluateReferral`'s Step 4 reads as permission to convert**, so a defaulted FALSE would
+  assert of all **3,881** pre-existing invoice rows that they are safe to pay a bonus on. NULL
+  says "nobody asked", which is true of them. **The money rule for commit 7: a NULL is NOT
+  eligible — never `IS NOT TRUE`, which folds unknown in with false and converts on unknown.**
+  A fence walks `server/` and fails on that phrasing, with a non-vacuity check proving the needle
+  can match its own synthetic case.
+  ⚠ **THE THIRD INVOICE SELECTION WAS FOUND BY THE reads-vs-selects FENCE, NOT BY ME, AND THAT IS
+  THE ENTRY WORTH KEEPING.** The commit set out to change `INVOICE_FIELDS` and
+  `REP_INVOICE_FIELDS`. The fence then failed naming **`RELATED_INVOICE_FIELDS`** in
+  `server/routes/webhooks/jobber.js` — a third selection feeding the same writer. Its message was
+  the argument in one line: *"a writer reading a field no query selects stores NULL, and NULL
+  reads as an answer rather than as 'nobody looked'."* **The writer's reads are the authority; a
+  list of queries someone remembered is not** — this is *sweep from the shared utility outward*
+  earning its place, and it is the mechanism that would have caught the two font columns.
+  ⚠ **AND AN EXISTING CROSS-PATH PARITY FENCE CAUGHT THE TEST FIXTURE, WHICH IS A SECOND,
+  DIFFERENT CATCH.** `repImportScope.test.js`'s *"IDENTICAL ROWS — live capture and import capture
+  agree column for column, with no NULLs"* compares the two paths' rows and **fails on any NULL,
+  named**. It went red on `waiting_for_financed_payment` because `FULL_INVOICE` did not supply the
+  field. Repaired in the fixture — and set to **`true`, not `false`, deliberately**: both paths
+  share that fixture, so a coercion bug (`|| false`, `!!undefined`) would make BOTH rows false and
+  they would still agree column-for-column, passing against the defect.
+  ⚠ **SIX GUARD-PROOFS, EVERY REVERT AN INVERSE PATCH IN A `finally` PROVEN BYTE-IDENTICAL BY
+  sha256 ACROSS SIX WATCHED FILES.** (i-a/i-b/i-c) the field dropped from each of the three
+  selections in turn → **2 red each**, its own per-selection fence plus the three-selection case;
+  (ii) the writer storing `!!value` instead of the typeof guard → **5**; (iii) the column given
+  `NOT NULL DEFAULT FALSE` → **5**, including the live-schema case that reads
+  `information_schema` rather than `db.js`'s source text; (iv) the `ON CONFLICT` branch no longer
+  carrying the column → **exactly 1**, the convergence case — without which the 3,881 unknowns
+  could never fill.
+  ⚠ **THE HARNESS REFUSED TWO INJECTIONS ON THE FIRST RUN AND THAT IS THE BOTH-DIRECTIONS CHECK
+  WORKING.** Deleting the field left the reverse anchor `client { id }` matching three times in
+  one file and twice in another; the patcher refused, reverted, and both files stayed
+  byte-identical. Repaired by swapping the field for a duplicate of an already-selected scalar —
+  legal GraphQL, so the query stays valid while the field under test is gone.
+  ⚠ **AND THE HEREDOC ESCAPE TRAP FOR THE THIRD TIME IN THIS ARC, IN THE HARNESS AGAIN.** A `\n`
+  written through a shell one-liner became a REAL newline inside a JS string literal — an
+  unterminated string, caught by `node --check`. The replacement is built with
+  `['…','…'].join('\n')` now, and every harness edit goes through the editor. **Knowing the rule
+  is not the mechanism.** Every changed file is checked for stray control bytes (0 found).
+  ⚠ **MEASURED EXPOSURE, AND IT IS SMALL WHERE IT MATTERS.** The column does not exist in
+  production yet — the `ALTER` runs on the next boot. **3,881** invoice fact rows will hold NULL,
+  but only **4 of them, across 3 clients, belong to the referred population** — and all 4 are
+  PAID, i.e. exactly the rows a conversion decision reads. **So commit 7 needs a re-capture of
+  the referred clients first, and it is one script run.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 4 COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2177 / 361 / 1397 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE N4 COMMIT 4 COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2159 → 2177 is **+18**, one new file (`referredCaptureBackfill.test.js`); suites 358 →
   361 is that file's **three** top-level describes. React did not move — no `src/` file was
   touched — and was re-measured. **All four predicted before the run and matched.** Counted with

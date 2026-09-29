@@ -1000,6 +1000,15 @@ describe('Rep Step 3b — the import writes job and invoice facts (3d Phase 1a C
   const FULL_INVOICE = {
     id: 'inv-up1', invoiceNumber: 9101, invoiceStatus: 'paid',
     createdAt: ago(10), updatedAt: ago(4), issuedDate: ago(10), dueDate: ago(1), receivedDate: ago(2),
+    // ⚠ ADDED BY N4 COMMIT 5, AND THE PARITY FENCE BELOW IS WHAT DEMANDED IT — it failed naming
+    // `waiting_for_financed_payment` the moment the writer began reading the field. That is the
+    // fence working: a fixture that stops supplying what the writer reads produces a NULL column,
+    // and a NULL there reads as "not financed" rather than as "nobody asked".
+    // ⚠ `true` RATHER THAN `false`, DELIBERATELY. Both paths share this fixture, so a coercion
+    // bug (`|| false`, `!!undefined`) would make BOTH rows false and they would still agree
+    // column-for-column — the comparison would pass against the defect. A `true` makes the
+    // coercion observable as a difference from the stored value.
+    waitingForFinancedPayment: true,
     client: { id: 'up-1' },
     amounts: {
       total: 29724.8, subtotal: 27000.5, invoiceBalance: 0, paymentsTotal: 29724.8,
