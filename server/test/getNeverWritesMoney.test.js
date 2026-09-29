@@ -343,14 +343,28 @@ describe('payout commit (3) — a GET request never writes a money row', () => {
 
   it('HARNESS FLOOR: the money-write needle matches a REAL money write', async () => {
     // ⚠ THE OTHER HALF OF THE NON-VACUITY PROOF. The floor above shows the extractor works;
-    // this shows the DETECTOR works. Pointed at the invoice-paid webhook, which legitimately
-    // inserts a conversion, the needle must fire — otherwise "no GET route writes money"
-    // could mean "the needle never matches anything anywhere".
-    const webhook = fs.readFileSync(
-      path.join(__dirname, '..', 'routes', 'webhooks', 'jobber.js'), 'utf8'
+    // this shows the DETECTOR works. Pointed at a file that legitimately writes money, the
+    // needle must fire — otherwise "no GET route writes money" could mean "the needle never
+    // matches anything anywhere".
+    //
+    // ⚠ RE-POINTED BY N4 COMMIT 6, AND IT FAILED LOUDLY ON A MOVED TARGET RATHER THAN QUIETLY
+    // PASSING AGAINST NOTHING — WHICH IS THE FLOOR EARNING ITS PLACE. It read the invoice-paid
+    // webhook, because that was the only file that inserted a conversion. Commit 6 extracted
+    // that INSERT into `server/utils/referralConversion.js` so commit 7 can add a caller rather
+    // than a second copy of the statement, and the webhook now holds no money write at all.
+    // **The property this suite protects is unchanged**: no GET route writes money. Only the
+    // file this floor reads to prove the needle works has moved.
+    // ⚠ AND IT IS RE-POINTED AT THE ONE SANCTIONED WRITER, which is the more durable target:
+    // `referralConversionWriter.test.js` fences that file as the only one allowed to insert, so
+    // this floor now points at something a fence keeps in place.
+    const writer = fs.readFileSync(
+      path.join(__dirname, '..', 'utils', 'referralConversion.js'), 'utf8'
     );
-    const hits = moneyWritesIn(stripComments(webhook));
-    assert.ok(hits.length >= 1, `the needle must detect the webhook's conversion insert; got ${JSON.stringify(hits)}`);
+    const hits = moneyWritesIn(stripComments(writer));
+    assert.ok(
+      hits.length >= 1,
+      `the needle must detect the shared conversion writer's insert; got ${JSON.stringify(hits)}`
+    );
   });
 
   it('⚠ a GET does not write users.paid_count or award a badge', async () => {

@@ -287,6 +287,88 @@ describe('invoice-paid webhook (characterization suite)', () => {
     assert.ok(subjects.some(s => s.toLowerCase().includes('first')), 'first-milestone email sent');
   });
 
+  // ── N4 COMMIT 6 — THE EXTRACTION WROTE EXACTLY THE SAME ROW ─────────────────
+  it('the conversion row is IDENTICAL after the writer was extracted — every column asserted', async () => {
+    // ⚠ THE CASE ABOVE PROVES A ROW EXISTS WITH THE RIGHT BONUS AND CLIENT. That is three
+    // columns out of eight, and a "pure extraction" claim needs more than three: a writer that
+    // dropped `contractor_id`, stamped the wrong `payout_status`, or quietly stopped setting
+    // `converted_at` would pass every assertion in it. This asserts the WHOLE row, so the claim
+    // "no behaviour change" is checkable rather than asserted.
+    // ⚠ AND THE EXPECTED VALUES ARE WRITTEN OUT RATHER THAN READ BACK FROM A CONSTANT. A fixture
+    // that derived them from the same place the writer does could not notice the writer changing.
+    await seedTestContractor();
+    await seedToken(pool, { contractorId: 'test-roofing' });
+    await seedEngagementSettings(pool, { contractorId: 'test-roofing', experienceFlowEnabled: false });
+    await seedUser(pool, { fullName: 'Jane Referrer', email: 'jane@test.com', contractorId: 'test-roofing' });
+    await seedReferralSchedule(pool, {
+      contractorId: 'test-roofing',
+      jobberLabel: 'Roof Replacement',
+      flatAmount: 250,
+    });
+
+    const emails = [];
+    _setTestOverrides({
+      fetchInvoiceWithJobs:   async () => PAID_INVOICE,
+      fetchFullClient:        async () => FULL_CLIENT_WITH_REFERRAL,
+      fetchClientRelatedData: async () => null,
+      sendEmail: async args => { emails.push(args); return { id: 'test-email' }; },
+    });
+
+    const before = new Date();
+    const resp = await post({
+      data: { webHookEvent: { itemId: 'inv-003' } },
+      contractor_id: 'test-roofing',
+    });
+    assert.equal(resp.status, 200);
+    await waitFor(() => emails.length >= 2, { timeout: 5000 });
+
+    const { rows: userRows } = await pool.query(
+      "SELECT id FROM users WHERE LOWER(full_name) = 'jane referrer'"
+    );
+    const expectedUserId = userRows[0].id;
+
+    const { rows } = await pool.query('SELECT * FROM referral_conversions');
+    assert.equal(rows.length, 1, 'exactly one conversion');
+    const row = rows[0];
+
+    assert.equal(row.user_id, expectedUserId, 'user_id is the matched referrer');
+    assert.equal(row.contractor_id, 'test-roofing', 'contractor_id is carried — a conversion is tenant-scoped');
+    assert.equal(row.jobber_client_id, 'jobber-c1', 'jobber_client_id is the invoice\'s client');
+    assert.equal(parseFloat(row.bonus_amount), 250, 'bonus_amount is the schedule\'s flat amount');
+    assert.equal(row.payout_status, 'pending_review', 'payout_status takes the column default — the writer must not set it');
+    assert.ok(row.id, 'the row has an id');
+    assert.ok(row.converted_at instanceof Date, 'converted_at is a timestamp, not a string');
+    assert.ok(row.converted_at >= before, 'converted_at is NOW() at write time, not a fixture value');
+
+    // ⚠ EVERY COLUMN IS ACCOUNTED FOR, so a column ADDED later cannot go silently unasserted —
+    // which is how a writer starts filling something nobody checks.
+    //
+    // ⚠ AND THIS IS NOT A FIXED SET, BECAUSE THE TEST DATABASE AND PRODUCTION GENUINELY DIFFER.
+    // `referral_conversions.job_type` EXISTS in the Railway database and does NOT exist here: its
+    // migration was removed from `server/db.js` in Session 49 and must not be re-added, so a
+    // fresh schema never grows it. A `deepEqual` against one fixed list therefore fails in one
+    // environment or the other — which is what the first writing of this case did, asserting
+    // `job_type === null` and getting `undefined`.
+    // ⚠ THE PROPERTY THAT HOLDS IN BOTH is: the seven columns the writer is responsible for are
+    // present, and anything else is a KNOWN divergence named here. A new unexpected column fails.
+    const REQUIRED = ['bonus_amount', 'contractor_id', 'converted_at', 'id', 'jobber_client_id', 'payout_status', 'user_id'];
+    const KNOWN_ENV_DIVERGENCE = ['job_type'];
+    const present = Object.keys(row).sort();
+    for (const col of REQUIRED) {
+      assert.ok(present.includes(col), `the conversions row lost ${col}`);
+    }
+    assert.deepEqual(
+      present.filter((c) => !REQUIRED.includes(c) && !KNOWN_ENV_DIVERGENCE.includes(c)),
+      [],
+      'the conversions table gained a column — assert it here deliberately rather than leaving '
+      + 'it unchecked, and say whether the writer is meant to fill it'
+    );
+    // If the orphaned column IS present (production-shaped schema), the writer must leave it null.
+    if (present.includes('job_type')) {
+      assert.equal(row.job_type, null, 'this path does not write job_type');
+    }
+  });
+
   // ── TEST 5 ──────────────────────────────────────────────────────────────────
   it('duplicate webhook delivery — no second conversion row, and paid_count untouched throughout', async () => {
     // Fires the same invoice twice. The first records the conversion; the second is blocked by

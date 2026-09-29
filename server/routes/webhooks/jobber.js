@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const { pool } = require('../../db');
 const { syncSingleClient, classifyPipelineStatus } = require('../../crm/pipelineSync');
+const { writeReferralConversion } = require('../../utils/referralConversion');
 const { refreshClientSales } = require('../../utils/clientSales');
 const { logError } = require('../../middleware/errorLogger');
 const { BRANDING_THEME_DEFAULTS } = require('../../utils/brandingTheme');
@@ -1418,23 +1419,24 @@ router.post('/jobber/invoice-paid', async (req, res) => {
           const result = await evaluateReferral(contractorId, invoiceWithJobs, referredBy);
 
           if (result.qualified) {
-            // Count prior conversions before insert — needed for #13 first-milestone detection
-            const priorCountResult = await pool.query(
-              `SELECT COUNT(*) AS cnt FROM referral_conversions WHERE user_id=$1`,
-              [result.referrerId]
-            );
-            const isFirstConversion = parseInt(priorCountResult.rows[0]?.cnt || '0') === 0;
-
-            // Write conversion record — UNIQUE constraint is the DB-level safety net
-            // RETURNING id lets us detect whether a new row was inserted vs duplicate skipped
-            const conversionInsert = await pool.query(
-              `INSERT INTO referral_conversions
-                 (user_id, contractor_id, jobber_client_id, converted_at, bonus_amount)
-               VALUES ($1, $2, $3, NOW(), $4)
-               ON CONFLICT (user_id, jobber_client_id) DO NOTHING
-               RETURNING id`,
-              [result.referrerId, contractorId, result.jobberClientId, result.bonusAmount]
-            );
+            // ── THE CONVERSION WRITE MOVED TO ONE SHARED WRITER (N4 commit 6) ──────
+            // ⚠ A PURE EXTRACTION. The SQL, the ON CONFLICT clause, the parameter order and the
+            // prior-count read are unchanged; they live in server/utils/referralConversion.js so
+            // that commit 7 — which makes a revealed paid invoice credit automatically — adds a
+            // CALLER rather than a second copy of this statement.
+            // ⚠ AND THE ORDERING IS NOW A PROPERTY OF THE WRITER, NOT OF THIS CALL SITE.
+            // `isFirstConversion` is only correct when the count is taken BEFORE the insert, and
+            // left here it was one harmless-looking reordering away from being wrong.
+            // ⚠ server/test/referralConversionWriter.test.js fails if any other file INSERTs into
+            // referral_conversions, naming file and line.
+            const conversion = await writeReferralConversion(pool, {
+              userId: result.referrerId,
+              contractorId,
+              jobberClientId: result.jobberClientId,
+              bonusAmount: result.bonusAmount,
+            });
+            const isFirstConversion = conversion.isFirstConversion;
+            const conversionInsert = { rowCount: conversion.inserted ? 1 : 0 };
 
             // Non-blocking Active Referrer tag write.
             // ⚠ THE `paid_count + 1` INCREMENT THAT LIVED HERE IS RETIRED (Danny, 2026-09-29).

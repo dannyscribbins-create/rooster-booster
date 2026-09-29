@@ -424,8 +424,66 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2187 server tests across 363 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 5 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2187 · suites 363 · pass 2187 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 5 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2199 server tests across 365 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 6 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2199 · suites 365 · pass 2199 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 6 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2187 → 2199 is **+12 = 11 + 1**: eleven in one new file
+  (`referralConversionWriter.test.js`) and **one APPENDED to an existing describe** in
+  `invoicePaidWebhook.test.js` (10 → 11 cases). Suites 363 → 365 is the new file's **two**
+  top-level describes only — the appended case landed in a describe that already existed. React
+  did not move — no `src/` file was touched — and was re-measured. **All four predicted before
+  the run and matched.**
+  ⚠ **A PURE EXTRACTION, AND THE PROOF THAT IT IS PURE IS AN EXISTING SUITE STAYING GREEN.**
+  `invoicePaidWebhook.test.js` drives the whole webhook end to end, including the duplicate
+  delivery; it passed unchanged. The new appended case is the stronger claim: it asserts the
+  conversion row **column for column**, because the old case checked three columns of eight and a
+  writer that dropped `contractor_id`, mis-set `payout_status` or stopped stamping `converted_at`
+  would have passed it.
+  ⚠ **AND THAT COLUMN LIST CANNOT BE A FIXED SET, WHICH IS A SCHEMA FACT WORTH KNOWING.**
+  `referral_conversions.job_type` **exists in the Railway database and does not exist in the test
+  database** — its migration was removed from `db.js` in Session 49 and must not be re-added, so a
+  fresh schema never grows it. A `deepEqual` against one list fails in one environment or the
+  other, which is exactly what the first writing did (`job_type === null` against `undefined`).
+  The case now asserts the seven required columns are present, that any extra is a NAMED
+  divergence, and that `job_type` is left null **if** it exists.
+  ⚠ **THE PRIOR-COUNT READ MOVED INTO THE WRITER WITH THE INSERT, AND THAT IS DELIBERATE RATHER
+  THAN TIDY.** `isFirstConversion` is only correct if the count is taken BEFORE the insert; left
+  at the call site it was one harmless-looking reorder away from being permanently false, which
+  would silently retire the #13 first-milestone email. Guard-proof (ii) does exactly that and
+  reds **5**.
+  ⚠ **AND THE RACE IT DOES NOT FIX IS RECORDED RATHER THAN CARRIED.** The count and the insert
+  are two statements on the pool, so two concurrent first conversions for one referrer could both
+  send a first-milestone email. That race exists today and is **unchanged** — fixing it inside a
+  no-behaviour-change commit would make the guard-proof meaningless. The UNIQUE constraint still
+  makes the conversion itself exactly-once, so the worst case is a duplicate email, never a
+  duplicate credit.
+  ⚠ **TWO EXISTING FENCES WENT RED AND BOTH WERE RIGHT — THIS IS THE ENTRY WORTH KEEPING.**
+  (1) `getNeverWritesMoney.test.js`'s **HARNESS FLOOR** read the invoice-paid webhook to prove its
+  money-write needle fires at all. The extraction moved the only money write out of that file, so
+  the floor **failed loudly on a moved target rather than quietly passing against nothing** —
+  precisely what a non-vacuity floor is for. Re-pointed at `server/utils/referralConversion.js`,
+  which is the more durable target because a fence now keeps that file the only writer. The
+  suite's property — no GET route writes money — is unchanged.
+  (2) `testResetCoverage.test.js` recorded the new suite as **UNREADABLE**, and the cause is a
+  neighbouring-fence interaction worth writing down: a literal `DELETE FROM ${` anywhere in a file
+  makes that scanner treat the whole reset as interpolated, then look for an array of table names
+  to resolve, find none, and give up. My fence's own SYNTHETIC SQL — the paired negative proving a
+  DELETE is not flagged — supplied that string. Rebuilt by concatenation, so the synthetic SQL
+  stays readable to a human and leaves no `DELETE FROM ${` for the scanner. **`UNREADABLE_RESETS`
+  was NOT widened.**
+  ⚠ **SIX GUARD-PROOFS, EVERY REVERT AN INVERSE PATCH IN A `finally` PROVEN BYTE-IDENTICAL BY
+  sha256.** (i) the inline INSERT restored in the webhook → **3**, including the fence naming
+  `file:line`; (ii) the prior count moved after the insert → **5**; (iii) `contractor_id` dropped
+  from the INSERT → **10**, wide because a tenantless conversion breaks every tenancy-scoped read
+  as well; (iv) the `ON CONFLICT` clause dropped → **exactly 1**, the redelivery case; (v) the
+  writer refusing a ZERO bonus → **exactly 1** — a `$0` conversion is real and production holds
+  one, so `if (!bonusAmount)` would silently drop a ledger row; (vi) the fence's verb anchor
+  neutralised → **2**.
+  ⚠ **EVERY REPLACEMENT STRING IN THAT HARNESS IS BUILT BY `array.join`, DELIBERATELY** — the
+  heredoc/escape trap has now cost this arc three separate detours, and a multi-line SQL
+  injection is exactly the shape that triggers it.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 5 COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2187 / 363 / 1397 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE N4 COMMIT 5 COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2177 → 2187 is **+10**, one new file (`financedPaymentCapture.test.js`); suites 361 →
   363 is that file's **two** top-level describes. React did not move — no `src/` file was touched
   — and was re-measured. **All four predicted before the run and matched.** Counted with an
