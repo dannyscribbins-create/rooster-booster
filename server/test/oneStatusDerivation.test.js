@@ -223,12 +223,6 @@ const SANCTIONED_CALLER = 'server/utils/attributionDecide.js :: function ' + FN_
 // ── THE EXPIRING INVENTORY — each entry names the commit that DELETES it ──────
 const EXPIRING_CLASSIFIERS = [
   {
-    key: 'server/cron/jobs/jobberIncrementalSync.js :: function runForContractor',
-    spans: 1,
-    removedBy: 'N4 commit 3 — the incremental sync captures, then decides',
-    why: 'classifies from the LIVE Jobber object; it already holds the capture-shape client',
-  },
-  {
     key: 'server/crm/pipelineSync.js :: function syncSingleClient',
     spans: 1,
     removedBy: 'N4 commit 4 — syncSingleClient decides from the facts it already captured',
@@ -262,18 +256,17 @@ const PERMANENT_CLASSIFIERS = [
 // ── WRITERS ──────────────────────────────────────────────────────────────────
 // Sanctioned: the file captures facts AND decides from them before writing.
 const SANCTIONED_WRITERS = [
+  // ⚠ RETIRED FROM THE EXPIRING LIST BY N4 COMMIT 3, WHICH IS THE FIRST ENTRY TO CLOSE.
+  // It still WRITES the stage — the COALESCEd upsert is unchanged — but the value now comes
+  // from captureClientFacts + decideFromFacts inside withClientLock, so it is a sanctioned
+  // door rather than a live classifier awaiting conversion.
+  { key: 'server/cron/jobs/jobberIncrementalSync.js :: function runForContractor', spans: 1 },
   { key: 'server/routes/webhooks/jobber.js :: function upsertAndTagClient', spans: 1 },
   { key: 'server/routes/webhooks/jobber.js :: function handleStageWebhook', spans: 1 },
   { key: 'server/utils/requestAttribution.js :: function writeStage', spans: 1 },
 ];
 
 const EXPIRING_WRITERS = [
-  {
-    key: 'server/cron/jobs/jobberIncrementalSync.js :: function runForContractor',
-    spans: 1,
-    removedBy: 'N4 commit 3',
-    why: 'writes a live-classified stage; COALESCEd, so a null cannot erase a good value',
-  },
   {
     key: 'server/crm/pipelineSync.js :: function syncSingleClient',
     spans: 2,

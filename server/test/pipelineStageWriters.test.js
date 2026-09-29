@@ -94,12 +94,62 @@ const setBoth = (fn) => { axios.post = fn; _setTestOverrides({ axiosPost: fn });
 const isClientsQuery = (body) => /GetRecentClients/.test(body?.query || '');
 const isRelatedQuery = (body) => /GetClientRelated/.test(body?.query || '');
 
+const isCaptureQuery = (body) => /GetClient/.test(body?.query || '') && !/GetClientRelated|GetRecentClients/.test(body?.query || '');
+
+// ── THE CAPTURE SHAPE (N4 commit 3) ──────────────────────────────────────────
+//
+// ⚠ THE SYNC NO LONGER CLASSIFIES FROM THE RELATED FETCH, SO THESE FIXTURES HAD TO GROW A
+// SECOND ANSWER — AND THAT MAKES THIS FILE STRONGER RATHER THAN MERELY DIFFERENT. The stage
+// now comes from decideFromFacts over facts written by captureClientFacts, so these cases
+// drive the REAL capture-then-decide path end to end: fetch -> fact rows -> derivation ->
+// stored stage. Before commit 3 they exercised a pure function on a live object.
+//
+// ⚠ THE PROPERTY UNDER TEST IS UNCHANGED and the assertions below are untouched: a job with a
+// PAID invoice stages 'paid', an active quote with no job stages 'inspection', an unpaid
+// invoice stages 'sold'. Only the mechanism moved. This is a deliberate behaviour change,
+// recorded here rather than absorbed silently.
+//
+// ⚠ AND THE NESTING STILL MATTERS, FOR A NEW REASON. 'paid' is now reachable only if the job
+// fact, the invoice fact AND the invoice-to-job LINK are all written — so a fixture whose
+// invoice carries no `jobs` connection derives 'sold', not 'paid'. That is the fact-era
+// equivalent of the flattening trap this file's header describes.
+function captureNode(clientId, related) {
+  const jobs = (related?.jobs?.nodes || []);
+  const page = { hasNextPage: false, endCursor: null };
+  const invoices = [];
+  for (const j of jobs) {
+    for (const inv of (j.invoices?.nodes || [])) {
+      invoices.push({
+        ...inv,
+        client: { id: clientId },
+        jobs: { nodes: [{ id: j.id }], pageInfo: { hasNextPage: false } },
+        archivedJobs: { nodes: [], pageInfo: { hasNextPage: false } },
+      });
+    }
+  }
+  return {
+    id: clientId,
+    firstName: 'Stage', lastName: clientId, isCompany: false, isLead: false, isArchived: false,
+    createdAt: new Date().toISOString(),
+    emails: [], phones: [], tags: { nodes: [] }, customFields: related?.customFields || [],
+    quotes: { nodes: jobs.length === 0 ? (related?.quotes?.nodes || []).map(q => ({ ...q, client: { id: clientId } })) : (related?.quotes?.nodes || []).map(q => ({ ...q, client: { id: clientId } })), pageInfo: page },
+    jobs: { nodes: jobs.map(j => ({ ...j, client: { id: clientId } })), pageInfo: page },
+    requests: { nodes: (related?.requests?.nodes || []).map(r => ({ ...r, client: { id: clientId }, createdAt: r.createdAt || new Date().toISOString() })), pageInfo: page },
+    invoices: { nodes: invoices, pageInfo: page },
+  };
+}
+
 // Answers the two queries the sync makes per run: one page of clients, then one
 // related-data fetch per client. `related` is keyed by client id.
 function installJobber({ clients, related }) {
   setBoth(async (_url, body) => {
     if (isClientsQuery(body)) {
       return { data: { data: { clients: { nodes: clients, pageInfo: { hasNextPage: false, endCursor: null } } } } };
+    }
+    if (isCaptureQuery(body)) {
+      const id = body?.variables?.id;
+      if (!(id in related)) throw new Error(`harness: no capture fixture for ${id}`);
+      return { data: { data: { client: captureNode(id, related[id]) } } };
     }
     if (isRelatedQuery(body)) {
       const id = body?.variables?.id;

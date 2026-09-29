@@ -7,7 +7,20 @@ const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../../utils/retryHelpers');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
-const { classifyPipelineStatus } = require('../../crm/pipelineSync');
+// ── N4 COMMIT 3 — THIS DOOR CAPTURES, THEN DECIDES ──────────────────────────
+// ⚠ classifyPipelineStatus IS GONE FROM THIS FILE. It decided the stage from the LIVE object
+// returned by the truncated GetClientRelated query below — `jobs(first: 50)`,
+// `quotes(first: 20)`, `requests(first: 20)`, and an UNPAGED `invoices`. A client past any of
+// those caps was classified from a partial view, and nothing said so. The stage now comes from
+// decideFromFacts, over facts captured by fetchFullClient, which pages every connection to
+// exhaustion and THROWS rather than truncating.
+// ⚠ computeThrottlePaceDelayMs is imported from the same module and is NOT incidental — see
+// the pacing block in the per-client loop.
+const { computeThrottlePaceDelayMs } = require('../../crm/pipelineSync');
+const { withClientLock } = require('../../utils/clientLock');
+const { captureClientFacts } = require('../../utils/factCapture');
+const { decideFromFacts } = require('../../utils/attributionDecide');
+const { fetchFullClient } = require('../../utils/jobberClientFetch');
 const { evaluateAudience } = require('./dynamicAudiences');
 const { getFreshContractorAccessToken } = require('../../crm/jobber');
 
@@ -20,14 +33,27 @@ const { getFreshContractorAccessToken } = require('../../crm/jobber');
 // before initialisation is a TDZ throw, and relying on "the module finishes loading
 // before anything calls it" is a timing argument, not a guarantee.
 let _axiosPost = (...args) => axios.post(...args);
+// ⚠ N4 commit 3 adds ONE more seam, and only one. `_sleep` lets a pacing test assert a DELAY
+// without actually waiting for it.
+// ⚠ IT DELIBERATELY DOES NOT SEAM THE CAPTURE. A first draft wrapped fetchFullClient and
+// decideFromFacts so a capture failure could be injected directly — and the 6b call-site fence
+// went red, correctly: it checks that every capture-path fetch passes a `door` and a
+// `contractorId`, and a seam's default wrapper forwards `...args` with no door literal for the
+// fence to see. The wrappers were also dead weight, because a capture failure is injectable at
+// the AXIOS layer (a 200 carrying an `errors` array, which is the shape a real GraphQL failure
+// arrives in) — a strictly better test, since it drives the real fetch and its real error
+// handling rather than a stub standing in for both.
+let _sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // test seam — inert in production, never called outside server/test/
-function _setTestOverrides({ axiosPost } = {}) {
+function _setTestOverrides({ axiosPost, sleep } = {}) {
   if (axiosPost !== undefined) _axiosPost = axiosPost;
+  if (sleep !== undefined) _sleep = sleep;
 }
 // test seam — inert in production, never called outside server/test/
 function _resetTestOverrides() {
   _axiosPost = (...args) => axios.post(...args);
+  _sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function runIncrementalSync() {
@@ -300,8 +326,54 @@ async function runForContractor(contractorId) {
       // relatedData is `... || {}`, so a related fetch that returned no client would
       // classify as 'lead' for precisely the same reason. `null` here means "not
       // classified this pass" and the upsert below leaves any existing stage alone.
-      const relatedClient = relatedResponse.data?.data?.client || null;
-      const pipelineStage = relatedClient ? classifyPipelineStatus(relatedClient) : null;
+      // ── CAPTURE, THEN DECIDE (N4 commit 3) ─────────────────────────────────
+      //
+      // ⚠ THE CAPTURE FETCH IS A SECOND JOBBER CALL AND THAT IS DELIBERATE, NOT AN OVERSIGHT.
+      // The GetClientRelated response above cannot be captured: it is truncated at
+      // `jobs(first: 50)` / `quotes(first: 20)` / `requests(first: 20)` with an unpaged
+      // `invoices`, and it omits fields the fact writers read. Capturing from it would write
+      // INCOMPLETE facts — which are indistinguishable from complete ones downstream, and
+      // therefore worse than capturing nothing. fetchFullClient pages all four connections to
+      // exhaustion and throws on a truncated invoice-job set.
+      // ⚠ THE RELATED FETCH STAYS because deriveAndSaveTags needs per-job `customFields` and
+      // `requestStatus`, and JOB_FIELDS carries no customFields. Two fetches, two purposes.
+      //
+      // ⚠ BOTH FETCHES ARE OUTSIDE THE LOCK AND MUST STAY THERE. Holding a pooled connection
+      // across a Jobber round trip is what server/utils/clientLock.js forbids outright: a slow
+      // Jobber would exhaust the pool rather than delay one client.
+      let pipelineStage = null;
+      try {
+        const forCapture = await fetchFullClient(client.id, token, {
+          door: 'incremental-sync', contractorId,
+        });
+        pipelineStage = await withClientLock(
+          pool, { contractorId, jobberClientId: client.id, door: 'incremental-sync' },
+          async (tx) => {
+            await captureClientFacts(tx, { contractorId, client: forCapture });
+            // `tx`, not `pool` — a read on another connection would sit outside the lock and
+            // could miss the capture on the line above.
+            const decided = await decideFromFacts(tx, { contractorId, jobberClientId: client.id });
+            return decided.currentStatus;
+          }
+        );
+      } catch (capErr) {
+        // ⚠ A FAILED CAPTURE MEANS NO DECISION (Commit 5's rule 2), AND null IS NOT A STAGE.
+        // The upsert below COALESCEs it, so whatever was stored survives untouched — "not
+        // observed this pass", exactly what an absent relatedData already meant here. What must
+        // never happen is a stage decided from a fact set a failed capture may have left
+        // partial: that writes a confident wrong answer, and the next run sees a stored value
+        // and has no reason to look again.
+        // ⚠ IDENTITY AND TAGS BELOW STILL RUN — they come from the FETCH, not the fact tables,
+        // so a fact-write failure says nothing about them. Same ruling as upsertAndTagClient.
+        pipelineStage = null;
+        await logError({
+          req: null,
+          contractorId,
+          error: new Error(`[jobberIncrementalSync] capture failed for client ${client.id}, no stage decided: ${capErr.message}`),
+          source: 'jobberIncrementalSync — capture',
+          alert: false,
+        });
+      }
 
       const email = client.emails?.find(e => e.primary)?.address
         || client.emails?.[0]?.address
@@ -384,6 +456,35 @@ async function runForContractor(contractorId) {
       );
 
       updatedIds.push(client.id);
+
+      // ── COST-BASED PACING (N4 commit 3) ────────────────────────────────────
+      //
+      // ⚠ WHAT THROTTLES IS THE RESERVATION, NOT THE SPEND, AND THAT IS THE WHOLE REASON THIS
+      // BLOCK EXISTS. Jobber reserves `requestedQueryCost` against the bucket before running
+      // the query and refunds the unused part after. Measured live 2026-09-29:
+      // GetClient requested **3515** / actual **50-61**; GetClientRelated requested **3408** /
+      // actual **46-72**, against maximumAvailable **10,000**, restoreRate **500/s**. So the
+      // bucket is DEBITED by ~50-70 per call while ADMISSION costs ~3,500 — a capture can be
+      // refused with the bucket at 3,000 even though the run has barely spent anything.
+      //
+      // ⚠ WHY IT DOES NOT FIRE TODAY, SAID SO THAT A ZERO DELAY IS NOT READ AS A BROKEN CHECK.
+      // This loop is SERIAL: two round trips per client at a few hundred ms each restore far
+      // more than the ~110 actual cost they spend, so `currentlyAvailable` sits near the
+      // maximum (observed range 9,781-9,945 across 143 live capture lines) and the computed
+      // delay is 0. It is a guard against a burst, not a throttle we are near.
+      //
+      // ⚠ AND IT PACES ON THE RELATED RESPONSE'S OWN FIGURES RATHER THAN A CONSTANT. Both
+      // requests hit ONE bucket and the related fetch is the later of the two, so its
+      // throttleStatus is the freshest reading of the state the NEXT client will meet.
+      // fullJobberImport paces against a hardcoded PAGE_COST whose own comment records it as
+      // unsourced; this reads what Jobber actually said.
+      const paceCost = relatedResponse.data?.extensions?.cost;
+      const paceMs = computeThrottlePaceDelayMs(paceCost?.throttleStatus, paceCost?.requestedQueryCost);
+      if (paceMs > 0) {
+        // diagnostic log — intentional
+        console.log(`[jobberIncrementalSync] pacing ${paceMs}ms after client ${client.id} — available ${paceCost?.throttleStatus?.currentlyAvailable}/${paceCost?.throttleStatus?.maximumAvailable}`);
+        await _sleep(paceMs);
+      }
 
     } catch (err) {
       await logError({ req: null, error: err, source: `jobberIncrementalSync — client ${client.id}` });

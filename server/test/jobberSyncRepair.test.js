@@ -246,6 +246,27 @@ describe('Wave 0.2 — sync pagination, token refresh and the sanctioned token p
           pageInfo: { hasNextPage: false, endCursor: null },
         } } } };
       }
+      // ── N4 COMMIT 3: THE CAPTURE FETCH IS ANSWERED BUT NOT RECORDED ────────
+      // The sync now makes TWO per-client Jobber calls — fetchFullClient for the capture,
+      // then GetClientRelated for the tags. T12's property is unchanged and is about the
+      // RELATED call: which credential the loop presents on client 2 after a mid-run
+      // rotation. Recording the capture call as well would double `bearers` and make the
+      // assertion about a different thing, so it is answered with an empty-but-complete
+      // connection shape and deliberately not counted.
+      // ⚠ EMPTY CONNECTIONS, WITH pageInfo — an empty `nodes` with no `pageInfo` makes
+      // fetchFullClient throw rather than return, which would skip the client entirely and
+      // is exactly how this case first failed after commit 3.
+      if (/GetClient\(/.test(String(body?.query || ''))) {
+        const page = { hasNextPage: false, endCursor: null };
+        return { data: { data: { client: {
+          id: String(body?.variables?.id || ''),
+          quotes: { nodes: [], pageInfo: page },
+          jobs: { nodes: [], pageInfo: page },
+          requests: { nodes: [], pageInfo: page },
+          invoices: { nodes: [], pageInfo: page },
+        } } } };
+      }
+
       // Per-client related-data query — record which credential it presented.
       bearers.push(String(opts?.headers?.Authorization || ''));
       if (!rotated) {

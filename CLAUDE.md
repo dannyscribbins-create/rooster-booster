@@ -424,8 +424,62 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2149 server tests across 355 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2149 · suites 355 · pass 2149 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 2 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2159 server tests across 358 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 3 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2159 · suites 358 · pass 2159 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 3 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2149 → 2159 is **+10**, one new file (`syncCaptureThenDecide.test.js`); suites 355 → 358
+  is that file's **three** top-level describes. React did not move — no `src/` file was touched —
+  and was re-measured. **All four predicted before the run and matched.** Counted with an
+  anchored `^\s*it\(` (10), and the isolated run's own `tests 10` agrees, so no loop wraps a case.
+  ⚠ **TWO EXISTING SUITES WERE REPAIRED AND CONTRIBUTE 0, AND THE REPAIR IS THE ENTRY.** The
+  sync now makes a SECOND per-client Jobber call — `fetchFullClient` for the capture — and
+  `pipelineStageWriters.test.js` (8 cases) and `jobberSyncRepair.test.js`'s T12 stub both
+  answered only the two queries the old sync made, so the capture threw and every stage came
+  back null. **The property is unchanged and the assertions are untouched**; the harnesses
+  learned to answer the capture query. ⚠ **This made `pipelineStageWriters` STRONGER rather
+  than merely different: it now drives the real fetch → fact rows → derivation → stored stage
+  path, where before it exercised a pure function on a live object.**
+  ⚠ **AND A LITERAL BACKSPACE BYTE (0x08) SAT INSIDE A REGEX FOR TWO DEBUGGING PASSES — THE
+  HEREDOC ESCAPE TRAP THIS FILE RECORDS, HIT BY THE SESSION THAT HAD QUOTED THE RULE.** A `\b`
+  written into a Python heredoc reached the file as the control character, so
+  `/GetClient<BS>/` never matched and the harness fell through to "unexpected query" while
+  `grep` DISPLAYED the line as `/GetClient\b/`. **The tell was `JSON.stringify` showing `"\b"`
+  with ONE backslash** — a real backslash-b stringifies as `"\\b"`. Found only by evaluating
+  the landed line rather than reading it. Regex-bearing edits go through the editor.
+  ⚠ **A CALL-SITE FENCE CAUGHT A TEST SEAM HIDING A REQUIRED ARGUMENT, WHICH IS THE OTHER
+  ENTRY WORTH KEEPING.** The first draft wrapped `fetchFullClient` and `decideFromFacts` in
+  `_`-prefixed seams so a capture failure could be injected. `captureFetchContract`'s 6b fence
+  went red: it requires every capture-path fetch to pass a `door` and a `contractorId`, and a
+  seam's `(...args) =>` default forwards them with no literal for the fence to see. **The seams
+  were also never used** — a capture failure is injectable at the AXIOS layer, as a 200
+  carrying an `errors` array, which is the shape a real GraphQL failure arrives in and is a
+  strictly better test. Both seams deleted; only `_sleep` remains, and it is used.
+  ⚠ **MEASURED BEFORE BUILDING, AND THE ANSWER IS WHY THIS WAS SAFE TO SHIP: ZERO DISPLAYED
+  STAGES CHANGE.** Of the 57 clients `accent-roofing-dev` touched in the last 25 hours — the
+  sync's fixed window — **all 57 already have facts and all 57 already agree** with the
+  fact-derived answer (0 differ, 0 backwards, 0 forwards); exactly 1 is in a rep book and it
+  does not differ. They agree because the webhook doors are already capture-then-decide, so
+  the active population was fact-derived before this commit reached it.
+  ⚠ **AND THE WINDOW IS FIXED AT 25 HOURS WITH NO CHUNKING, SO AN UNBOUNDED CATCH-UP IS NOT
+  REACHABLE ON THIS PATH** — unlike `crm/pipelineSync.js`'s separately-named
+  `runIncrementalSync`, which chunks up to 30 days. ⚠ **The two functions share a name and NOT
+  a path**: the cron writes `jobber_clients` only and never touches `pipeline_cache`. That one
+  is N4 commit 7's subject.
+  ⚠ **PACING IS ADDED AGAINST THE RESERVATION, NOT THE SPEND.** Jobber reserves
+  `requestedQueryCost` and refunds the unused part, so a capture is refused on the RESERVATION.
+  Measured live across 143 capture lines: requested **3408–3515**, actual **46–72**, bucket
+  **10,000**, restore **500/s**, `currentlyAvailable` never below **9,781**. Serial round trips
+  restore far more than they spend, so the computed delay is 0 today — a guard against a burst,
+  not a throttle we are near, and the paired positive asserts a healthy bucket does NOT pace.
+  ⚠ **FIVE GUARD-PROOFS, EVERY REVERT AN INVERSE PATCH IN A `finally` PROVEN BYTE-IDENTICAL BY
+  sha256.** (i) the stage decided from the LIVE object again → **4**, including the fence's
+  caller check and the source case; (ii) the upsert's COALESCE removed so a failed capture
+  erases a good stage → **3**; (iii) a Jobber fetch moved INSIDE the per-client lock → **exactly
+  1**; (iv) the pacing neutralised → **exactly 1**; (v) the retired fence entry put back while
+  its call site is gone → **exactly 1**, the CLOSURE case — **the first expiring entry to
+  close, and the mechanism commit 1 built for it working on a real retirement.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 2 COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2149 / 355 / 1397 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE N4 COMMIT 2 COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2133 → 2149 is **+16**, one new file (`derivableClient.test.js`); suites 351 → 355 is
   that file's **four** top-level describes. React did not move — no `src/` file was touched —
   and was re-measured. **All four predicted before the run and matched.** Counted with an
