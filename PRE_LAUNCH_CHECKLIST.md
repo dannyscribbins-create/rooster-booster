@@ -274,6 +274,166 @@ all cite 1.3 / 1.4 / 1.7 by number. Every existing citation stays true.
 
 ## 🔴 PRE-LAUNCH — must be done before real contractor traffic
 
+**Payout amount audit — filed 2026-09-28. Every finding, quote, query and production figure is in
+`PAYOUT_AMOUNT_AUDIT.md` at the repo root (untracked). Danny's rulings on it are in that file's
+§6.**
+
+⚠ **EVERY CASHOUT, APPROVAL, DENIAL AND STRIPE TRANSFER IN PRODUCTION TO DATE IS A TEST
+TRANSACTION. NO REAL MONEY HAS EVER MOVED TO A REAL PERSON.** Ruled by Danny 2026-09-28.
+Production holds 2 cashouts `paid` (**$1,000**), 4 `approved` (**$2,000**) and 13 `denied`
+(**$6,500**) against **$500** of recorded conversions — **and none of it is real.** Corroborated
+independently of the ruling: `STRIPE_SECRET_KEY` is **`sk_test_`** (prefix only, measured
+2026-09-28; the key is never printed or written), so no `stripe.transfers.create` from this
+deployment can move funds. ⚠ **This paragraph is here because the figures are alarming on their
+face and the audit is long — $3,000 out against $500 earned is exactly the shape the live defect
+below produces, and a reader meeting the numbers without this line would reasonably conclude money
+had gone out of the door.** ⚠ **AND IT MAKES NOTHING THEORETICAL: every code path executed.** Test
+mode proves no harm was done; it proves nothing about whether the logic is right. **The day
+`STRIPE_SECRET_KEY` becomes `sk_live_`, the three entries below stop being test-mode curiosities.**
+
+- [ ] **🔴 FIX NOW, BEFORE OTHER WORK — three separate small commits, IN THE ORDER (2), (1), (3).**
+      Ruled by Danny 2026-09-28. **The order is his, and it is not arbitrary:** (2) closes the
+      unbounded amount at the point money leaves, so it is the one that must not wait; (1) then
+      corrects the balance arithmetic that (2) will be validating against; (3) removes the
+      speculative writer that pollutes the ledger both of the others read.
+      - [x] **(2) — the Stripe transfer amount comes from the approved `cashout_requests` row,
+            never from the request body. SHIPPED locally 2026-09-28, NOT PUSHED.**
+            `server/routes/stripe.js`'s `POST /api/admin/stripe/transfer` took
+            `bonusAmount` from `req.body` and **never compared it to `cashout_requests.amount`**,
+            although its own ownership gate already read that row. `executeStripeTransfer`
+            applied only `Math.round(x * 100)` and `> 0` — **no upper bound anywhere.** Now: the
+            amount is read from the row, a disagreeing request is **rejected and logged**, the
+            transfer fires only for a cashout in `approved` state owned by the caller, and **at
+            most once**.
+      - [ ] **(1) — the cashout balance gate must deduct `'paid'` cashouts.**
+            `server/routes/referrer.js:1761` deducts only `status IN ('pending','approved')`, so a
+            settled cashout stops reducing the balance and **the same earnings can be cashed out
+            repeatedly.** `server/routes/account.js:415` computes the same balance as
+            `status <> 'denied'` — **both formulas are in the codebase and the money path uses the
+            wrong one.**
+            ⚠ **CONFIRMED FIRING IN PRODUCTION, measured on Danny's own rows** (audit §4a, at his
+            request): his test referrer has been paid **$500 twice against a single $500
+            earning**, and the `$500 balance that never drops` he reported is this defect — the
+            deduction is transient, and his balance returns to $500 **the instant he actions the
+            cashout in the admin panel**, because `'paid'` leaves the deducted set. Measured:
+            `earned 500`, `deducted_by_cashout_gate 0`, `available 500`, while `account.js`'s
+            formula computes a deduction of `1000` on the identical rows.
+            ⚠ **AFTER THIS FIX HIS TEST BALANCE WILL GO TO $0 (or negative) AND TEST CASHOUTS WILL
+            BE REFUSED. THAT IS THE FIX WORKING, NOT A REGRESSION** — `earned 500 − paid 1000` is
+            `−500`. The audit's §4a records the sanctioned way to seed a test balance afterwards
+            (a `referral_conversions` row with a **synthetic** `jobber_client_id`, one per test
+            earning because of `UNIQUE(user_id, jobber_client_id)`, as its own explicitly-approved
+            production write) **and the four things not to do** — chief among them re-widening the
+            gate for test convenience, which is the defect wearing a justification.
+            ⚠ **A SECOND, SEPARATE HOLE IN THE SAME GATE THAT THIS FIX DOES NOT CLOSE:** 13 of 19
+            cashout rows carry **`user_id = NULL`**, including **all four `approved`** ones, so
+            `WHERE user_id = $1` cannot see them and they are deducted by **neither** formula.
+            **Filed here so it is not assumed closed by (1).**
+      - [ ] **(3) — a GET request must not write a money row.**
+            `server/routes/referrer.js:936` writes `referral_conversions.bonus_amount` from
+            `item.payout` — the speculative **`500 + boost`** ladder of `server/crm/jobber.js:211`,
+            which reads **no invoice, no job and no schedule** — and `ON CONFLICT
+            (user_id, jobber_client_id) DO NOTHING` makes it **permanent**, racing the webhook
+            writer. Measured: both production conversion rows are ladder-shaped, one on a
+            synthetic `jobber_client_id` (`test-client-002`), and `SUM(paid_count) = 1` against 2
+            rows points at this path rather than the webhook. **Unpinned by any test** — no file in
+            `server/test/` references `bonusEarned` at all. `server/routes/referrer.js:1034` also
+            keeps a **second, inlined copy** of `boostSchedule` rather than importing
+            `server/constants/boostSchedule.js`.
+
+- [ ] **🔴 LAUNCH GATE — THE MONEY PHASE MUST BE COMPLETE BEFORE LAUNCH.** Ruled by Danny
+      2026-09-28. **Findings 4 and 5 of the payout audit are fixed TOGETHER, in the money phase, in
+      a later wave — and launch does not happen until that phase is done, because finding 4 runs in
+      live code today.**
+      - **Finding 4 — every referral payout is computed on ONE invoice, not the sale.**
+        `server/referralRules.js:114` reads `invoiceData.amounts?.total` from the single
+        webhook-triggering invoice; Step 5's own comment concedes it (*"For MVP single-invoice
+        webhook: the batch IS this invoice"*). Danny's amended sale-value ruling requires the **sum
+        of the final invoice totals of the DISTINCT invoices linked to any job in the sale**. Three
+        wrong outcomes follow, all live: a `tiered` sale of $1,200 + $1,400 buys the $951–1,200
+        bracket (**$50**) instead of $2,501–4,000 (**$150**); an `escalating` sale of $5,000 +
+        $5,000 is refused `invoice_below_minimum_threshold` against the $9,500 floor although the
+        sale clears it; and because `UNIQUE(user_id, jobber_client_id)` lets only the first invoice
+        ever book a conversion, the second invoice's value is **permanently** lost. **A `tiered`
+        schedule is ACTIVE in production today.**
+      - **Finding 5 — the `percentage` model is 100× too large.**
+        `server/referralRules.js:227` is `invoiceTotal * percentage_rate` with **no `/100`**, while
+        `src/components/admin/ScheduleBuilderDrawer.jsx` is unambiguously a percent field
+        (`max="100"`, a `%` suffix, its own preview computing `rate / 100`, and a warning above
+        10). Production holds a fully-configured **3%** schedule with `percentage_max_cap 950` and
+        **`is_active = false`** — so it is **one checkbox from live**, and on a $9,854 invoice it
+        computes **$29,562** where **$295.62** was intended. `percentage_max_cap` masks it into
+        "always pays the cap" **only because a cap is set**; the field is optional.
+      - ⚠ **A MEASUREMENT THE RULING DID NOT HAVE, AND IT STRENGTHENS THE GATE RATHER THAN
+        WEAKENING IT: `referralRules` HAS NEVER COMPUTED A PAYOUT IN PRODUCTION.** Zero
+        `referral_conversion` rows in `activity_log` (audit §4c) — and
+        `server/routes/webhooks/jobber.js:1468` writes one **unconditionally** on every qualified
+        conversion, outside the `rowCount > 0` guard, so its absence is proof rather than
+        inference. The route is mounted and **has** been entered (one
+        `invoice_paid_experience_trigger` row), so the code is live as the ruling says; what is
+        measured is that it has not yet produced a wrong dollar amount. **So there is no case for
+        an emergency patch, and every case for the gate.**
+        ⚠ **`jobber_webhook_events` holds NO invoice topic — but that table begins 2026-09-18, so
+        its silence is evidence about ELEVEN DAYS, not about all time.** Whether `INVOICE_UPDATE`
+        is subscribed at all lives in the **Jobber developer console, outside this repo** and was
+        **not checked** — the same boundary `CLAUDE.md` records for OAuth scopes. **Observed: no
+        invoice delivery in eleven days while five other topics arrived in volume. Ask Danny; do
+        not infer it.**
+
+- [ ] **🔴 The auto-fire payout path is ENABLED in production and has called Stripe three times.**
+      ⚠ **The audit's first pass called this "dormant by data, because `payout_automation` defaults
+      to `'manual_all'`". That was the DEFAULT, not this contractor's SETTING, and reading one for
+      the other is the error.** Measured 2026-09-28: Accent is `payout_automation = 'threshold'`
+      with `payout_review_threshold = 1500.00`, a connected Stripe account, and a test referrer
+      holding a bank token — so **every $500 `stripe_ach` request meets `shouldAutoFire` and
+      bypasses admin review entirely** (`server/routes/referrer.js:1846`). Three attempts are
+      recorded in `cashout_requests.bank_connection_blocked_reason`; **the most recent reached
+      `stripe.transfers.create` and was refused by STRIPE for an empty TEST balance, not by
+      RoofMiles.** It sits downstream of finding (1)'s gate, so **(1) and this compose into a
+      self-service repeat payout.** Harmless today only because the key is `sk_test_`.
+      **Decide deliberately whether `threshold` is the intended production setting before launch.**
+
+- [ ] **`server/routes/account.js:435` — hardcoded ghost `contractor_id = 'accent-roofing'`.**
+      Only `'accent-roofing-dev'` exists, so this returns zero rows and the account-deletion
+      confirmation email is **always unbranded**; `session.contractorId` is in scope nine lines
+      above and simply unused. **No effect on any amount**, but it sits inside the handler that
+      auto-queues a `pending` cashout with no minimum and no cap. *(This is the `account.js`
+      defect this document's own header names as the failure that went unrecorded for four
+      commits — it is now recorded.)*
+
+- [ ] **`src/components/admin/AdminReferrers.jsx:379` renders a bonus dollar amount with NO stage
+      gate.** `{ref.payout && <span>+${ref.payout}</span>}` beside a badge map that includes
+      `sold`. It obeys CLAUDE.md's *never display the bonus amount at `sold`* non-negotiable
+      **only** because `server/crm/jobber.js:211` nulls `payout` off the `paid` stage — **the
+      guarantee lives in a different file on a different surface.** Its referrer-side counterpart
+      (`src/components/referrer/ProfileTab.jsx:495`) gates on `status === 'complete'`, so **the two
+      surfaces use different rules for the same non-negotiable.** Also `server/crm/jobber.js:130`'s
+      comment documents `'paid' → 'sold'` while the code writes `'complete'` — an inverted record
+      in the one file keeping this from firing.
+
+- [ ] **`src/components/referrer/CashOutTab.jsx:119` displays a balance that is wrong three ways.**
+      `pipeline.filter(p => p.payout).reduce(...)` sums the **speculative** ladder, ignores
+      `p.conversion_bonus` (the confirmed amount), ignores the server's own `data.balance`, and
+      **subtracts no pending or approved cashouts.** It drives the headline `$X available`, the
+      **"Max"** button, the client-side gate and the "Remaining" line — so the referrer is invited
+      to request a number the server will refuse. Fixing (1) does **not** fix this.
+
+- [ ] **Sale value is NOT BUILT, and the substrate for it already exists.** `client_sales.revenue_total`
+      is declared and has **no writer and no reader** (0 of 5,595 rows populated); `client_sales`
+      has **never been altered** since its `CREATE`. The only SQL in the repo that sums invoice
+      totals over a sale's jobs lives in a **test**
+      (`server/test/crmJobInvoiceFacts.test.js`, *"The shape the later sale-value commit will
+      use"*). ⚠ **Two recorded rules are INVERTED by the amended sale-value ruling and will mislead
+      whoever builds it:** `RoofMiles_Decisions_Record_Canvass_Attribution.md` §2.6 rules the value
+      is *"the contract amount … not the invoice totals"* and names `job.total` — the one field the
+      amendment excludes (on the audit's acceptance case it gives **$11,983** against the correct
+      **$12,058**); and `server/db.js:2397`'s comment says *"later jobs in a group add their
+      balance"*, when `invoice_balance` is **0** on every settled invoice by definition.
+      ⚠ **And `DISTINCT` is the whole job:** the natural join-and-`SUM` implementation overstates
+      the book by **$16,108,015.85 (+42%)** and the acceptance case by **2.8×**. **503 invoices span
+      more than one sale** (496 across two, 7 across three), worth **$8,850,848.93**, and the
+      amendment's earliest-job tie-break for them **exists nowhere in code**.
+
 **3d Phase 1b — the assigned date (filed 2026-09-28, Commit 1)**
 
 *The plan, the rulings and every guard-proof are in `PHASE_1b_DESIGN.md` at the repo root
