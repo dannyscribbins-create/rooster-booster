@@ -421,10 +421,20 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         is automatic on detection with no admin review, so a missed detection is a bonus that never
         credits and that no human is in a position to notice — the cash-out approval gate protects
         against wrong MONEY MOVEMENT, not against an earning that never happened.
-        **Fix (not built): a watermark-driven invoice sweep, in the shape of
-        `server/cron/jobs/repRequestSweep.js`.** N4 commit 4 narrows this — the stage becomes
-        fact-derived — but does **not** close it, because capture still depends on a webhook
-        arriving. Detail: `N4_STATUS_DESIGN.md` §2 and its 2026-09-29 rulings note.
+        ⚠ **N4 NARROWS THIS SHARPLY, AND THE RESIDUE IS WORTH NAMING PRECISELY.**
+        `/webhooks/jobber/invoice-paid` **is already a CAPTURE door** — verified 2026-09-29: it
+        calls `fetchClientRelatedData` and then `upsertAndTagClient(..., 'invoice-paid')`, and
+        that function is capture-then-decide. **So it already writes a fact-derived
+        `jobber_clients.pipeline_stage` today**, which is exactly why both stale clients read
+        `paid` there while `pipeline_cache` does not. Once N4 puts the REFERRER-visible status on
+        the same facts, **this door captures and derives the referrer stage too — with no new
+        door and no new Jobber call.**
+        **The gap therefore narrows to events that never arrive at all** — a webhook Jobber never
+        sends, or one whose fetch fails and is never retried — rather than to "the stage is on a
+        different mechanism from the trigger", which is what it is today.
+        **Fix for the residue (not built): a watermark-driven invoice sweep, in the shape of
+        `server/cron/jobs/repRequestSweep.js`.** Detail: `N4_STATUS_DESIGN.md` §8 ruling 3a and
+        §10.3.
       - [ ] **N4 CONVERGING STATE — ACCEPTED, NOT A DEFECT (Danny ruling 7, 2026-09-29).**
         After the N4 arc, `jobber_clients.pipeline_stage` is *decided* from saved facts at every
         live door, but for **12,384 of 19,557 clients (63.3%, measured 2026-09-29 on
