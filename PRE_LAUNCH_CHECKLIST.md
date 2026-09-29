@@ -453,6 +453,37 @@ preview — in that order, and **the order is load-bearing**: §6 records that t
       pre-Commit-2 write clock) while the deciding request's own `created_at` is
       `2026-09-22T18:08:07Z` — **six days apart**. The guard behaved exactly as ruled AND
       preserved a wrong value. Both are true together and both are by design.
+      ⚠ **GATE CLEARED 2026-09-28 at `9ecf033`, on a preview taken AFTER that deploy.** Danny
+      took both backups (Railway Postgres + admin Run Backup Now), then the write-free preview
+      ran against production. **445 candidates in 4.9s — unchanged 443 · would change 1 ·
+      unassigned or flagged 1.** Dates: **would change 402 · unchanged 21 · no date either side
+      22 · moving EARLIER 401 · moving LATER 0**, shift buckets 7–30 days **14** and over 30 days
+      **387**. `would_flag` count: **0**.
+      **The two changed rows were accepted IN ADVANCE by Danny, by name, before the run:**
+      one client loses a `mode_a` provisional (derived status `inspection` resolves to nobody
+      from saved facts — accepted, because he re-attributes at job creation under the
+      sale-is-a-job ruling), and one gains a `promoted_provisional` lock dated from its own
+      2024 request (accepted under PART 10b, the unmapped-newer-activity ruling).
+      ⚠ **EVERY ROW WAS ENUMERATED, NOT INFERRED FROM THE SUMMARY.** The CSV was parsed with a
+      real quoted-field parser — client names contain commas, so a `split(',')` would have
+      mis-columned them — and each stop condition was asked of all 445 rows independently:
+      rep changed **2**, would-flag **0**, lost an assignment **1**, gained an assignment **1**,
+      date moving later **0**. The date population was **recomputed from the columns** and
+      agreed with the script's own summary exactly (402 / 21 / 22, one date gained, none lost).
+      ⚠ **AND THE SHIFT SIGN WAS VERIFIED RATHER THAN ASSUMED**, because reading the convention
+      backwards would turn *"0 moving LATER"* into its opposite silently: three rows with a
+      negative shift were checked to have a new date genuinely earlier than the old one.
+      ⚠ **THE 22 "no date either side" ROWS CARRY NO REP ON EITHER SIDE** — checked, not assumed.
+      They are unassigned clients staying unassigned, so nothing is lost inside that number;
+      this is why the preview counts them apart from "unchanged" rather than folding them in.
+      ⚠ **17 ROWS ARE `recreatable: no` AND ALL 17 ARE UNCHANGED** — R5k doing exactly its job:
+      the rebuild does not clear what the replay could not rebuild.
+      ⚠ **ONE OBSERVATION THAT IS NOT A STOP AND IS RECORDED SO IT IS NOT REDISCOVERED AS ONE.**
+      The row losing its rep **keeps its `assigned_at`** (shift 0). That is the discard behaving
+      as designed — it clears assignment halves and deliberately does not touch the date — but
+      it leaves a date on a row with no owner, which is the `qr_link` leak's shape arriving by a
+      different route. **Benign here and self-correcting:** at job creation the owner changes
+      from nobody to a rep, so the date moves to that fact's own time.
 
 - [ ] **🔴 MAP EVERY ACTIVE ACCENT REP BEFORE LAUNCH — THEN PREVIEW, THEN REBUILD.** Ruled
       2026-09-28 (Danny), and it is the pre-launch half of the Lyndall ruling
