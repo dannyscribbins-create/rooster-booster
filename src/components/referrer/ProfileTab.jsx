@@ -60,8 +60,36 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
   // branding; neither is ever a literal.
   const programName = branding?.programName || branding?.companyName || '';
   const soldCount  = pipeline.filter(p => p.status === "complete").length;
-  const balance    = pipeline.filter(p => p.bonusEarned).reduce((sum, p) => sum + (p.conversion_bonus ?? p.payout ?? 0), 0);
   const nextPayout = getNextPayout(soldCount);
+
+  // ── THE BALANCE COMES FROM THE SERVER ──────────────────────────────
+  // ⚠ WHAT WAS HERE WAS THE SECOND INSTANCE OF FINDING 6, AND IT WAS FOUND BY THE FENCE
+  // RATHER THAN BY LOOKING. It read
+  //   pipeline.filter(p => p.bonusEarned).reduce((sum, p) => sum + (p.conversion_bonus ?? p.payout ?? 0), 0)
+  // which is BETTER than the Cash Out tab's removed version — it prefers the confirmed
+  // `conversion_bonus` over the speculative ladder — and still wrong in the way that
+  // matters: it subtracts **no pending, approved or paid cashouts at all**, so the row
+  // labelled "Balance" was really lifetime EARNINGS. A referrer who had cashed out
+  // everything still saw their full earnings there.
+  // ⚠ THE TWO SCREENS DISAGREED WITH EACH OTHER AS WELL AS WITH THE SERVER, because the
+  // fallback chains differed. One number, one source, now.
+  const [serverBalance, setServerBalance] = useState(null);
+
+  useEffect(() => {
+    async function fetchBalance() {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/cashout/balance`, {
+          headers: { Authorization: `Bearer ${getReferrerToken()}` },
+        });
+        const d = await r.json();
+        // ⚠ Number.isFinite — `available` is legitimately 0 and legitimately NEGATIVE.
+        if (Number.isFinite(d?.available)) setServerBalance(d.available);
+      } catch {
+        // Fail closed: `null` renders an em dash rather than a manufactured figure.
+      }
+    }
+    fetchBalance();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [showContact, setShowContact] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -357,7 +385,10 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
               { label: "Referrals Sent", val: String(pipeline.length),                               icon: "ph-users"     },
               { label: "Deals Sold",      val: String(soldCount),                                    icon: "ph-handshake" },
               { label: "Next Payout",     val: `$${nextPayout.total} (+$${nextPayout.boost} boost)`, icon: "ph-trend-up"  },
-              { label: "Balance",         val: `$${balance.toLocaleString()}`, money: true,           icon: "ph-wallet"    },
+              // ⚠ AN EM DASH WHILE UNKNOWN, NOT "$0" — a figure the screen has no basis for is
+              // worse than visibly absent, and 0 is itself a real answer. A negative balance
+              // renders with its sign rather than being clamped.
+              { label: "Balance",         val: Number.isFinite(serverBalance) ? `$${serverBalance.toLocaleString()}` : "—", money: true,           icon: "ph-wallet"    },
             ].map((item, i, arr) => (
               <div key={item.label} style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",

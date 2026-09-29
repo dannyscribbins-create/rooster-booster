@@ -424,7 +424,57 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2103 server tests across 347 suites, and 1358 React tests across 82 files** (measured 2026-09-29 by the payout-audit commit (3), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2103 · suites 347 · pass 2103 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2103 server tests across 347 suites, and 1369 React tests across 83 files** (measured 2026-09-29 by the payout-audit commit (3b), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2103 · suites 347 · pass 2103 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3b) ITSELF, BECAUSE IT SHIPS TESTS.**
+  ⚠ **THE REACT HALF MOVED AND THE SERVER HALF DID NOT, WHICH IS THE MIRROR OF THE LAST
+  THREE ENTRIES.** React 1358 → 1369 is **+11**, one new file
+  (`cashOutBalanceSource.test.jsx`), and 82 → 83 is that file. Server held at 2103 / 347
+  and was **re-measured** rather than carried.
+  ⚠ **AND THE SERVER HOLDING IS THE READING WORTH CHECKING, BECAUSE THIS COMMIT ADDS A
+  ROUTE.** `GET /api/cashout/balance` is new, and no server count moved — asked before the
+  run: `adminRouteCoverage`'s exact route count covers the ADMIN routers only, and nothing
+  counts referrer routes by number. A new route that moved no count is the expected shape
+  here; the same addition under `admin/` would have taken that fence red by one.
+  ⚠ **NO PHANTOM, ASKED BEFORE THE RUN.** `src/components/referrer/` is **not** one of
+  `adminBranding.test.jsx`'s four walked roots, so the two non-test `src/` files this commit
+  edits add nothing there, and the arithmetic closes at exactly 11.
+  ⚠ **11 FROM 11 `it(` LINES: two loops, BOTH inside `it()` bodies** (each is the fence's own
+  directory walk), so neither multiplies.
+  ⚠ **THE FENCE FOUND A SECOND INSTANCE OF THE DEFECT THAT NOBODY HAD LOOKED FOR, AND THAT
+  IS THE ENTRY WORTH KEEPING.** The commit's subject was `CashOutTab.jsx`. On its first run
+  the fence named `src\components\referrer\ProfileTab.jsx:63`, which computed a
+  DIFFERENT client-side balance — `filter(p => p.bonusEarned).reduce(… p.conversion_bonus ??
+  p.payout ?? 0)`. It was **better** than the one being removed (it preferred the CONFIRMED
+  bonus over the speculative ladder) and still wrong in the way that matters: it subtracted
+  **no cashouts at all**, so a row labelled "Balance" was really lifetime EARNINGS, and a
+  referrer who had cashed out everything still saw their full earnings there. **The two
+  screens also disagreed with each other**, because their fallback chains differed.
+  ⚠ **NARROWING THE FENCE TO THE ONE FILE WAS THE WRONG FIX AND WAS REJECTED.** Danny's
+  instruction was *no `src/` file computes an available balance itself*; a per-file carve-out
+  is the "exempt rather than reword" failure this file already forbids, and it would have
+  shipped a fence whose green meant nothing. ProfileTab was rewired to the same endpoint.
+  ⚠ **THE TWO WIDTHS.** (i) the client-side sum restored — both halves, because the `pipeline`
+  prop is the INPUT and restoring only the expression does not compile → **10 of 11 red**,
+  including Danny's shape. **The width is wide because the INJECTION is wide, not because the
+  cases are coupled** — it reverts the whole mechanism, so every case that reads the server
+  number fails. (ii) a NEW `src/` file of the forbidden shape → **exactly 1 red**, the fence.
+  ⚠ **AND THE INJECTION IS OBSERVABLE ONLY BECAUSE THE TEST PASSES A PROP THE FIXED
+  COMPONENT IGNORES.** `CashOutTab` no longer takes `pipeline`, so a mount without it would
+  make the restored sum total **0** — and "$0 available" against a −500 server balance would
+  look like a pass. The suite passes a deliberate `DANNYS_PIPELINE` summing to exactly 500,
+  inert today, so the restored formula produces the figure his screen really showed.
+  **An injection that cannot reach a discriminating value is not a guard-proof.**
+  ⚠ **AND ONE OF THIS COMMIT'S OWN ASSERTIONS WAS THE SUBSTRING TRAP, IN THE CHECKER.**
+  *"a FAILED balance fetch fails closed"* was written `not.toMatch(/available$/)` and FAILED
+  against correct code, because the honest copy **"Balance unavailable"** ends with
+  "available". What is forbidden is reporting a FIGURE as available, so the needle is now
+  `/\$[\d,]+ available/`. Same class as this file's `A32` / `#A32D2D` record, one layer in.
+  ⚠ **THE `pipeline` PROP WAS REMOVED FROM THE SIGNATURE AND THE CALL SITE, NOT LEFT
+  UNUSED**, and a case pins its absence: the prop was the input to the deleted calculation,
+  so while it remained the calculation could be restored without touching the caller and
+  nothing would flag it.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3) ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2103 / 347 / 1358 / 82**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3) ITSELF, BECAUSE IT SHIPS TESTS.**
   Server 2095 → 2103 is **+8**, one new file (`getNeverWritesMoney.test.js`); suites 346 → 347
   is that file's single top-level describe. React did not move — no `src/` file was touched —

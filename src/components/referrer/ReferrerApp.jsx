@@ -245,7 +245,7 @@ export default function ReferrerApp({
 
   const screens = {
     dashboard: <Dashboard setTab={setTab} pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited} pipelineStale={pipelineStale} pipelineStaleSince={pipelineStaleSince} pipelineUnavailable={pipelineUnavailable} userName={userName} balance={balance} paidCount={paidCount} profilePhoto={profilePhoto} showReviewCard={showReviewCard} onDismissReview={onDismissReview} sessionToken={getReferrerToken()} onViewAllReferrals={() => { setTab("profile"); setHighlightReferrals(true); }} bankStatus={bankStatus} onOpenBankSetup={handleOpenBankSetup} />,
-    cashout:   <CashOut pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} bankStatus={bankStatus} setTab={setTab} onOpenBankSetup={handleOpenBankSetup} token={getReferrerToken()} />,
+    cashout:   <CashOut loading={loading} userName={userName} userEmail={userEmail} bankStatus={bankStatus} setTab={setTab} onOpenBankSetup={handleOpenBankSetup} token={getReferrerToken()} />,
     refer:     <ReferAFriendTab userName={userName} token={getReferrerToken()} />,
     rankings:  <Rankings token={getReferrerToken()} />,
     profile:   <Profile onLogout={onLogout} pipeline={pipeline} loading={loading} userName={userName} userEmail={userEmail} onNameUpdate={onNameUpdate} profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto} highlightReferrals={highlightReferrals} onResetHighlight={() => setHighlightReferrals(false)} bankStatus={bankStatus} refreshBankStatus={fetchBankStatus} openManageAccount={openManageAccount} onResetOpenManageAccount={() => setOpenManageAccount(false)} />,

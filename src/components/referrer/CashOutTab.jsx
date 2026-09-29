@@ -47,7 +47,11 @@ const DETAIL_LABELS = {
 };
 
 // ─── Cash Out ─────────────────────────────────────────────────────────────────
-export default function CashOut({ pipeline, loading, userName, userEmail, bankStatus, setTab, onOpenBankSetup, token }) {
+// ⚠ THE `pipeline` PROP IS GONE, and that is the observable proof this screen no longer
+// derives money from the pipeline. It was consumed by exactly one expression — the
+// client-side balance sum removed below — so keeping it would leave the input to a
+// deleted calculation sitting in the signature, which is how the calculation comes back.
+export default function CashOut({ loading, userName, userEmail, bankStatus, setTab, onOpenBankSetup, token }) {
   const branding = useBranding();
   const programName = branding?.programName || branding?.companyName || '';
   // ⚠ THE SAME FALLBACK THE LANDING PAGE USES (renderState1's headlineSubject).
@@ -83,6 +87,38 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
     fetchEnabledMethods();
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── THE AVAILABLE BALANCE COMES FROM THE SERVER ────────────────────────
+  // ⚠ null MEANS "NOT YET KNOWN", AND IT IS NOT 0. A numeric default would render
+  // "$0 available" while the request was still in flight, which is a FIGURE the screen
+  // has no basis for — and 0 is also a real, meaningful answer, so the two states must
+  // stay distinguishable. Everything below branches on `balanceKnown`.
+  const [serverBalance, setServerBalance] = useState(null);
+  const [balanceError, setBalanceError] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    async function fetchBalance() {
+      try {
+        const r = await fetch(`${BACKEND_URL}/api/cashout/balance`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json();
+        // ⚠ Number.isFinite, NOT `d.available ||` or `!= null`. `available` is legitimately
+        // 0 and legitimately NEGATIVE, so a truthiness check would discard the two answers
+        // that matter most, and `!= null` would admit a string and render "$-500" via
+        // concatenation. This is CLAUDE.md's "the predicate matches its own VALUE's shape".
+        if (Number.isFinite(d?.available)) setServerBalance(d.available);
+        else setBalanceError(true);
+      } catch {
+        // ⚠ FAIL CLOSED, NOT TO ZERO AND NOT TO A GUESS. If the balance cannot be read the
+        // screen says so and the request stays disabled; inventing a number here is how the
+        // defect this replaces came to exist.
+        setBalanceError(true);
+      }
+    }
+    fetchBalance();
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const advanceStep = (n) => {
     setStep(n);
     setPopping(n);
@@ -116,7 +152,20 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
-  const balance = pipeline.filter(p => p.payout).reduce((sum, p) => sum + p.payout, 0);
+  // ⚠ WHAT WAS HERE SUMMED THE SPECULATIVE LADDER CLIENT-SIDE AND WAS WRONG THREE WAYS.
+  // `pipeline.filter(p => p.payout).reduce(...)` added up `payout` — the `500 + boost`
+  // figure computed in fetchPipelineForReferrer, which reads no invoice and no schedule —
+  // ignored the CONFIRMED `conversion_bonus` beside it, ignored the server's own `balance`
+  // field, and subtracted NO pending, approved or paid cashouts. Measured on Danny's
+  // account: it displayed $500 available while the server's own gate computed −$500, so
+  // the screen invited a request the server then refused. Finding 6 of the payout audit.
+  // ⚠ THERE IS NO BALANCE ARITHMETIC LEFT IN THIS FILE, AND
+  // src/components/referrer/cashOutBalanceSource.test.jsx FAILS IF ANY RETURNS.
+  const balanceKnown = Number.isFinite(serverBalance);
+  const balance = balanceKnown ? serverBalance : 0;
+  // ⚠ THE ONE GATE EVERY CONTROL BELOW READS. A zero or negative balance is honest and
+  // blocking: there is nothing to request, and the server would refuse it anyway.
+  const canRequest = balanceKnown && balance >= 20;
 
   const filteredMethods = ALL_METHODS.filter(m => enabledMethods.includes(m.id));
 
@@ -310,19 +359,31 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
             Dashboard card and the Profile rows, white here. V3's "the same number
             paints the same colour" holds everywhere the ground allows it, and this
             is the only place it does not. */}
-        <p style={{ margin: "4px 0 0", fontSize: 15, color: ON_SECONDARY }}>
-          ${balance.toLocaleString()} available
+        {/* ⚠ THREE DISTINCT STATES, RENDERED DISTINCTLY. Not-yet-known is not $0, and a
+            NEGATIVE balance is shown as owed rather than hidden or clamped — an over-paid
+            account is a real state (measured in production) and the screen that refuses the
+            request has to say why. */}
+        <p style={{ margin: "4px 0 0", fontSize: 15, color: ON_SECONDARY }} data-cashout-balance>
+          {!balanceKnown
+            ? (balanceError ? "Balance unavailable" : "Checking balance…")
+            : balance < 0
+              ? `$${Math.abs(balance).toLocaleString()} over-paid — nothing available`
+              : `$${balance.toLocaleString()} available`}
         </p>
         {/* ⚠ A STATUS MESSAGE ON A BRAND FILL, which the token set still has no pair
             for — the gap Palette-4b filed. Held on the literal here rather than
             routed to statusVar, whose LIGHT tone would mount at 2.87:1 on this navy.
             Reported; the fix is a ground move, and this hero has no room for one. */}
-        {balance < 20 && (
+        {!canRequest && (
           <p style={{ margin: "6px 0 16px", fontSize: 13, color: "#fca5a5", fontFamily: fontVar('body') }}>
-            Minimum cashout amount is $20
+            {!balanceKnown
+              ? (balanceError ? "We could not read your balance — please try again shortly" : " ")
+              : balance <= 0
+                ? "No balance available to cash out"
+                : "Minimum cashout amount is $20"}
           </p>
         )}
-        {balance >= 20 && <div style={{ marginBottom: 16 }} />}
+        {canRequest && <div style={{ marginBottom: 16 }} />}
 
         {/* Step indicator */}
         <style>{`@keyframes nodePop { 0%{transform:scale(1)} 50%{transform:scale(1.22)} 100%{transform:scale(1)} } @keyframes cardDrop { 0%{transform:translateY(-60px) scale(0.96);opacity:0} 60%{transform:translateY(8px) scale(1.01);opacity:1} 80%{transform:translateY(-4px) scale(0.995)} 100%{transform:translateY(0) scale(1);opacity:1} }`}</style>
@@ -435,7 +496,14 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
                 />
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                {[500, 1000, balance].map(v => (
+                {/* ⚠ MAX IS THE SERVER'S NUMBER, AND THE PRESETS CANNOT EXCEED IT.
+                    Previously this was `[500, 1000, balance]` against a client-side sum, so
+                    the screen offered $500 and $1,000 buttons to an account with neither —
+                    pre-filling an amount the server would refuse. Presets above the balance
+                    are dropped, Max is the balance itself, and duplicates are removed so a
+                    balance of exactly 500 does not render two buttons with the same React key
+                    (which the old expression did). */}
+                {[...new Set([500, 1000, balance].filter(v => v > 0 && v <= balance))].map(v => (
                   <button key={v} onClick={() => setAmount(String(v))} style={{
                     flex: 1, background: RECESS, border: `1px solid ${elevationVar('border')}`,
                     borderRadius: 8, padding: "8px", color: TEXT,
@@ -471,7 +539,9 @@ export default function CashOut({ pipeline, loading, userName, userEmail, bankSt
                 onBlur={e => e.target.style.borderColor = elevationVar('border')}
               />
             </div>
-            {amount && parseFloat(amount) >= 20 && parseFloat(amount) <= balance && (
+            {/* ⚠ canRequest GATES THIS TOO, so an unknown or non-positive balance cannot
+                reach the confirm step even if an amount was typed before the fetch landed. */}
+            {canRequest && amount && parseFloat(amount) >= 20 && parseFloat(amount) <= balance && (
               <button onClick={() => advanceStep(3)} style={{
                 width: "100%", marginTop: 16,
                 background: `linear-gradient(135deg, ${PRIMARY} 0%, ${PRIMARY_DARK} 100%)`,

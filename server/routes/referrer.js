@@ -1733,6 +1733,39 @@ router.get('/api/referrer/enabled-payout-methods', async (req, res) => {
 });
 
 // ── REFERRER: CASH OUT ────────────────────────────────────────────────────────
+// ── GET /api/cashout/balance ── THE SERVER'S available balance, for the screen ────
+//
+// ⚠ THIS EXISTS BECAUSE THE CASH OUT SCREEN WAS COMPUTING ITS OWN BALANCE AND GETTING A
+// DIFFERENT ANSWER FROM THE GATE THAT GOVERNS IT. `CashOutTab.jsx` summed the
+// SPECULATIVE `payout` ladder across the pipeline, ignored the confirmed
+// `conversion_bonus`, ignored this endpoint's own arithmetic, and subtracted NO pending,
+// approved or paid cashouts — so a referrer was shown a figure, and a "Max" button
+// pre-filled with it, that `POST /api/cashout` would then refuse. Finding 6 of
+// PAYOUT_AMOUNT_AUDIT.md.
+//
+// ⚠ IT RETURNS THE SAME NUMBER THE GATE USES, FROM THE SAME FUNCTION. Not a parallel
+// query that happens to agree today — `getCashoutBalance` is the one definition, and
+// server/test/cashoutBalanceSingleSource.test.js fails if a second one appears.
+//
+// ⚠ `available` MAY BE ZERO OR NEGATIVE AND IS NOT CLAMPED. An over-paid account is a real
+// state (measured in production: earned $500 against $1,000 settled), and clamping it to 0
+// here would hide from the screen exactly the condition the audit was raised about. The
+// client renders it honestly and disables the request.
+//
+// ⚠ A GET, AND IT WRITES NOTHING — see server/test/getNeverWritesMoney.test.js, which
+// fences every GET route in server/ against touching either money table.
+router.get('/api/cashout/balance', async (req, res) => {
+  try {
+    const session = await verifyReferrerSession(req, res);
+    if (!session) return;
+    const { earned, deducted, available } = await getCashoutBalance(pool, session.userId);
+    return res.json({ earned, deducted, available });
+  } catch (err) {
+    await logError({ req, error: err, source: 'GET /api/cashout/balance' });
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.post('/api/cashout', cashoutLimiter, [
   body('amount').isNumeric().withMessage('Amount must be a number')
     .custom(val => parseFloat(val) > 0).withMessage('Amount must be greater than 0')
