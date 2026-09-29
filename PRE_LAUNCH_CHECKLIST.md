@@ -430,7 +430,63 @@ preview — in that order, and **the order is load-bearing**: §6 records that t
       should note the shared writer is now the natural place for it, but the two routes still
       validate independently.**
 
-- [ ] **🔴 THE DATE-RESTORING REBUILD, AFTER COMMIT 6.** The 2026-09-27 rebuild reset roughly
+- [x] ✅ **DONE — RUN AND VERIFIED 2026-09-28, at `14bd585`. PHASE 1b IS COMPLETE.**
+      Danny took both backups, cleared the gate on a fresh preview, set
+      `REP_ASSIGNMENT_REBUILD=accent-roofing-dev`, let it run, then **removed the variable and
+      redeployed** — confirmed absent, and the subsequent deploy's log carries **no
+      `[repAssignmentRebuild]` line at all**, so it did not re-run.
+      **The run:** `402 rows removed` (173 stickies + 229 provisionals, 1 with no `written_by`
+      marker) · **442 clients replayed, 0 failed** · **KEPT 1** that the replay could not
+      recreate · **0 open co-assignment flags closed** (there were none open).
+      **The two accepted rows landed exactly as previewed:** one client lost its `mode_a`
+      provisional and its row is **gone**; one gained a `promoted_provisional` lock dated from
+      its own 2024 request. Nothing else moved.
+      **Verification preview — `445 unchanged · 0 would change · 0 unassigned or flagged · 0
+      dates would change · 0 EARLIER · 0 LATER`.** The rebuild is idempotent from here.
+      **Rep 5's book: 422 clients (181 locked, 241 provisional), zero null dates, spanning
+      `2024-07-02` → `2026-09-28`**, spread across 14 months where ~400 previously sat on one
+      day.
+      ⚠ **THE EXACTNESS IS MEASURED, NOT INFERRED: of the 404 rows carrying a fact,
+      `assigned_at = assigned_fact_at` on ALL 404 — `date_disagrees_with_fact` is 0.** Every
+      restored date is literally its own fact's timestamp, which is the property R5 asserts and
+      the only one that distinguishes a restore from a plausible-looking rewrite.
+      ⚠ **THE ARITHMETIC CLOSES RATHER THAN MERELY AGREEING.** 402 removed and 402 now
+      `written_by='replay'` is 401 recreated plus the gain minus the loss; the tenant held 422
+      rows before and holds 422 after; the verification preview's `no date either side` moved
+      22 → 23, which is the deleted row. **Four independent counts, one story.**
+      → the residue this run could NOT repair is its own item below; it is 15 rows and it is
+      not a defect in this run.
+
+- [ ] **🔴 SHOULD THE REBUILD RE-DERIVE `written_by='live'` ROWS TOO? — DECIDE BEFORE THE
+      PRE-LAUNCH MAP-ALL-REPS REBUILD.** Ruled 2026-09-28 (Danny): the affected rows are
+      **ACCEPTED for now** — pre-launch, and the dates are off by days rather than by anything
+      that changes an owner. **No targeted repair, no one-off script.**
+      **THE MEASURED POPULATION, from the post-rebuild database: 15 rows** — 10 live `mode_a`,
+      4 live `quote_salesperson`, 1 live `mode_a_at_close`. Each carries a **write-clock**
+      `assigned_at` and **no fact at all** (`assigned_fact_at IS NULL`), because they were
+      written live between the 2026-09-27 rebuild and Commit 2's deploy, which is the window in
+      which live doors wrote assignments without recording the fact behind them.
+      ⚠ **THE DATE-RESTORING REBUILD DID NOT MISS THEM — IT SPARED THEM, BY DESIGN**
+      (`REP_ASSIGNMENT_REBUILD_SOP.md` §4 keeps anything `written_by='live'`). **So no re-run of
+      today's rebuild will ever repair them**, and R5f's same-rep guard then locks each one in:
+      a live write that keeps the same rep preserves the wrong date rather than correcting it.
+      **The known instance, already measured:** a client holding `13:20:00.857` while its
+      deciding request's own `created_at` is six days earlier.
+      **THE DESIGN QUESTION TO ANSWER:** since Phase 1a, **live doors capture facts before they
+      decide**, so a `written_by='live'` row is **no longer inherently unrecreatable** — the
+      premise behind sparing it has changed. Should the rebuild re-derive live rows as well,
+      **with R5k still keeping anything it cannot recreate?** If yes, the pre-launch
+      map-all-reps rebuild repairs these 15 as a side effect and nothing bespoke is needed.
+      ⚠ **THIS IS THE "a rule applied once to a surface does not stay applied when the surface
+      moves" SHAPE.** Sparing live rows was correct when live writes recorded no facts. Phase 1a
+      changed that premise and **nobody re-ran the choice** — the SOP line still looks right and
+      its reason is gone.
+      ⚠ **DECIDE IT BEFORE THAT REBUILD, NOT AFTER.** Answering it afterwards means either
+      living with the residue or running a second rebuild, and a rebuild is not a thing to run
+      twice because a question was left open.
+
+- [ ] **~~🔴 THE DATE-RESTORING REBUILD, AFTER COMMIT 6~~ — SUPERSEDED BY THE DONE ENTRY ABOVE.
+      KEPT AS THE RECORD OF WHY IT WAS URGENT, BECAUSE THAT REASONING OUTLIVES THE RUN.** The 2026-09-27 rebuild reset roughly
       400 rows' dates to that day, and Commit 1's backfill has now copied those same wrong
       dates into `assigned_at`. **The fix is the EXISTING rebuild under the EXISTING gate** —
       preview with the date before → after, Danny's review, **one run** (confirmed Q7,
@@ -5880,6 +5936,34 @@ sale-boundary / payout phase FILED and not built.*
       ~28,000 queries and a handful of seconds for a 7,000-client book. It runs synchronously,
       which is what Danny ruled. **The estimate was arithmetic; the figure is a measurement, and
       they disagreed enough to have bought the wrong architecture.**
+
+- [ ] 🟡 **TWO PREVIEW-WORDING DEFECTS, TO BE FIXED TOGETHER IN ONE SMALL PREVIEW COMMIT**
+      (ruled by Danny 2026-09-28; the second found by the date-restoring run's verification).
+      ⚠ **Neither is a wrong number. Both are a correct number under a label that means
+      something else**, which is why they are filed together rather than as two bugs.
+      1. **"KEPT" COVERS TWO DIFFERENT PROTECTIONS AND A READER CANNOT TELL THEM APART.** The
+         preview-design entry above says *"rows KEPT (not recreatable)"* — that is **R5k**, a
+         row spared because the replay could not rebuild it. But the rebuild ALSO keeps
+         `sticky_source='manual'` (A36.3), `provisional_source='qr_link'` and everything
+         `written_by='live'` — kept because they are **not the engine's to touch**. One word,
+         two unrelated reasons: *"we could not recreate this"* and *"this was never ours"*.
+         **The two have opposite implications** — the first is a warning, the second is
+         correct behaviour — and a KEPT count cannot say which it is reporting.
+      2. **THE `date unchanged` BUCKET COUNTS A ROW THE DISCARD WILL DELETE.** Measured on the
+         2026-09-28 restoring run: the client that lost its rep sat inside `date unchanged 21`
+         with shift 0, because `simulateDiscard` carries the date through unchanged. **In
+         reality that row was deleted outright and now has no date at all.** The bucket is not
+         wrong about the simulation; it is wrong about what an operator reads it as.
+      ⚠ **THE SECOND ONE MISLED NOBODY, AND THAT IS NOT THE TEST.** It was harmless only
+      because the same row was ALSO reported under `unassigned or flagged`, so the loss was
+      visible by another route. **A row can sit in the date-unchanged bucket without losing
+      its rep, and then nothing else names it.**
+      **Fix shape:** split KEPT into its two reasons by name, and either exclude a
+      to-be-deleted row from the date buckets or give it one of its own. Wording and
+      bucketing only — no decision logic changes.
+      ⚠ **PLACEMENT NOTE:** Danny referred to an existing preview-wording item for (1). Several
+      greps did not find one as a separate entry, so both are filed here, beside the Commit 7c
+      record. **If that item does exist, merge these into it rather than keeping two.**
 
 - [ ] 🟡 **`citecheck --role-only` HAS BEEN IN BASELINE BREACH FOR SOME TIME, WHICH IS THE ONE
       STATE THAT SWITCHES A TRIPWIRE OFF** (found 2026-09-27 by 3d Phase 1a Commit 7c, incidentally).
