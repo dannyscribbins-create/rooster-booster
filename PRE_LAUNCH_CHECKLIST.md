@@ -385,6 +385,32 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         **not checked** — the same boundary `CLAUDE.md` records for OAuth scopes. **Observed: no
         invoice delivery in eleven days while five other topics arrived in volume. Ask Danny; do
         not infer it.**
+      - **THE OVER-PAYMENT WRITE-OFF — POLICY B's MISSING HALF. Ruled 2026-09-29, NOT BUILT.**
+        Danny ruled **policy B**: when a referrer's earnings shrink after a payout, **the
+        CONTRACTOR ABSORBS the shortfall and the balance restarts from ZERO.** Policy A —
+        carrying the shortfall forward against future earnings — was **rejected**. The reasoning
+        is in `RoofMiles_Decisions_Record_Canvass_Attribution.md` §2.8.
+        ⚠ **THE DISPLAY CLAMP SHIPPED IN COMMIT (3c) DOES NOT IMPLEMENT B, AND READING IT AS B
+        IS THE TRAP THIS ENTRY EXISTS TO PREVENT.** The referrer screens now show a plain `$0` for
+        any non-positive balance, which is the display ruling (§2.9) and is correct. The STORED
+        arithmetic is still `earned − cashouts`. So:
+        > a referrer at **−$500** who then earns **$300** computes to **−$200**, the clamp shows
+        > them **$0**, and their $300 has been **silently absorbed**. That is **policy A arrived
+        > at by accident**, and the clamp is precisely what hides it.
+        **B needs a WRITE-OFF RECORD** — the contractor's absorption stored as a fact, so the
+        balance returns to a TRUE zero and later earnings count normally from there.
+        ⚠ **WHY IT SITS UNDER THIS GATE RATHER THAN IN THE FIX-NOW LIST:** it needs a schema
+        decision (where a write-off lives, who may record one, whether it is reversible) and it
+        touches the same ledger the money phase rebuilds. Building it ahead of §2.6/§2.7 would
+        mean designing it twice.
+        ⚠ **FIRST CASE, AND IT IS A REAL ROW RATHER THAN A HYPOTHETICAL: Danny's own test
+        referrer is at −$500 today** — earned $500.00 against two settled $500 cashouts. Whatever
+        is built must be exercised against that account first, and after it runs his balance must
+        read a true **$0** with a **$300** subsequent earning showing as **$300**, not $0.
+        ⚠ **AND UNTIL IT EXISTS, THE ADMIN FLAG IS THE ONLY THING THAT MAKES AN OVER-PAYMENT
+        FINDABLE.** The referrer side is deliberately silent by ruling; if the admin flag is ever
+        removed or the clamp is pushed into the server, an over-payment becomes invisible to
+        everyone. **Do not clamp `GET /api/cashout/balance`.**
 
 - [ ] **🔴 The auto-fire payout path is ENABLED in production and has called Stripe three times.**
       ⚠ **The audit's first pass called this "dormant by data, because `payout_automation` defaults
@@ -406,6 +432,26 @@ mode proves no harm was done; it proves nothing about whether the logic is right
       auto-queues a `pending` cashout with no minimum and no cap. *(This is the `account.js`
       defect this document's own header names as the failure that went unrecorded for four
       commits — it is now recorded.)*
+
+- [ ] **`GET /api/pipeline` HAS SIDE EFFECTS ON A PAGE VIEW — decide before launch whether badge
+      awarding belongs on a write path.** Filed 2026-09-29 at Danny's instruction, after commit (3)
+      removed the money write from this same handler. What remains: it `UPDATE`s
+      `users.paid_count` (a cache of the referrer's paid referral count) and calls
+      `checkAndAwardBadges`, which can INSERT badge rows and drive a celebration popup.
+      ⚠ **NEITHER IS A MONEY TABLE, SO COMMIT (3)'s FENCE DOES NOT AND SHOULD NOT FLAG THEM** —
+      `server/test/getNeverWritesMoney.test.js` is scoped to `referral_conversions` and
+      `cashout_requests` by ruling. **This entry exists so "a GET never writes" is not read more
+      broadly than what was actually measured and fenced.**
+      ⚠ **WHY IT IS WORTH A DECISION RATHER THAN A SHRUG:** awarding a badge is an EVENT with
+      user-visible consequences (a popup, a leaderboard position), and hanging it off a page view
+      means it fires on a refresh, fires twice on a double-load, and never fires for a referrer
+      who does not open the app. A cron or the invoice-paid webhook is the shape that matches the
+      event. The `paid_count` write is a cache and is a lesser concern, but it is the same
+      question.
+      ⚠ **NOT URGENT AND NOT FREE:** nothing here can move money or mis-state an amount, which is
+      why it is not in the fix-now list — but a GET that mutates is also the reason a retry, a
+      prefetch or a browser's speculative load can change state, so it should be ruled on
+      deliberately rather than inherited.
 
 - [ ] **`src/components/admin/AdminReferrers.jsx:379` renders a bonus dollar amount with NO stage
       gate.** `{ref.payout && <span>+${ref.payout}</span>}` beside a badge map that includes

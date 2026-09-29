@@ -307,6 +307,57 @@ safer); invoice-to-job linkage (the import links invoices to CLIENTS, not jobs);
 **whether a payout on contract amount may fire before the client has paid in full** —
 the contractor would be paying a referrer out of money not yet received.
 
+## 2.8 Over-payment: POLICY B — the contractor absorbs it, the balance restarts at zero
+
+**Ruled by Danny, 2026-09-29**, in answer to the payout amount audit.
+
+**When a referrer's earnings SHRINK after they have already been paid** — a sale unwinds, an
+admin corrects a figure, a Mark-as-Paid is clicked by mistake — **the CONTRACTOR ABSORBS the
+shortfall and the referrer's balance restarts from ZERO.** The referrer is never asked for
+money back and never carries a debt forward. To be documented in a future contractor FAQ.
+
+**Rejected: policy A** — carrying the shortfall forward so the referrer's next earnings pay it
+off. It makes a referrer work for nothing without being told, and it is indistinguishable to
+them from the programme being broken.
+
+⚠ **A DISPLAY CLAMP ALONE DOES NOT IMPLEMENT B, AND THIS IS THE WHOLE REASON THIS SECTION
+EXISTS.** The referrer display ruling (below) shows a non-positive balance as a plain `$0`. That
+is correct as a DISPLAY rule and it is **not** policy B. The stored arithmetic is still
+`earned − cashouts`, so:
+
+> A referrer at **−$500** who then earns **$300** computes to **−$200**, and the clamp shows them
+> **$0**. Their $300 has been silently consumed by the shortfall. **That is policy A, arrived at
+> by accident**, and the clamp is what hides it.
+
+**B therefore needs a WRITE-OFF RECORD** — the contractor's absorption stored as a fact, so the
+balance returns to a true zero and later earnings count normally from there. Without it the
+clamp is a cosmetic layer over the policy Danny rejected.
+
+⚠ **THE DISTINCTION IS NOT COSMETIC VS REAL — IT IS WHICH POLICY IS IN FORCE.** A reader who
+sees `$0` on both screens cannot tell B from A, and neither can the referrer. The write-off is
+the only thing that makes the two states different.
+
+**Filed on `PRE_LAUNCH_CHECKLIST.md` under the MONEY PHASE launch gate, beside §2.7's payout
+timing, with Danny's test account (−$500) as its first case. NOT BUILT — ruled, recorded, and
+deliberately left for the money phase.**
+
+## 2.9 Referrer display: a non-positive balance is a plain $0, with no message
+
+**Ruled by Danny, 2026-09-29.** On **every referrer-facing screen**, a zero or negative
+available balance displays as a plain **`$0`** — **no message of any kind**, and the request
+control is **disabled**.
+
+**Never** *"over-paid"*, *"overpaid"*, *"negative"*, or a minus sign, on any referrer screen.
+
+⚠ **THE SERVER KEEPS RETURNING THE TRUE VALUE. THE CLAMP IS DISPLAY-ONLY.**
+`GET /api/cashout/balance` returns the real `available`, negative included, because the ADMIN
+panel has to show it and because a server that lied would make the over-payment unfindable.
+**Clamping at the source would destroy the evidence the write-off mechanism needs.**
+
+⚠ **AND THE ADMIN PANEL SHOWS THE TRUE NEGATIVE AND FLAGS IT**, which is what keeps the
+referrer-side silence honest rather than concealing. An over-payment nobody can see is how it
+stays unresolved.
+
 ---
 
 # PART 3 — WHERE THE STAGE LIVES
