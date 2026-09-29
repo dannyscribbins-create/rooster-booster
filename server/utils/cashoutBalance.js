@@ -80,4 +80,50 @@ async function getCashoutBalance(db, userId) {
   return { earned, deducted, available: earned - deducted };
 }
 
-module.exports = { getCashoutBalance };
+/**
+ * What a CONTRACTOR currently owes across all their referrers, for the admin dashboard.
+ *
+ * ⚠ IT LIVES HERE RATHER THAN IN routes/admin/metrics.js BECAUSE THE FENCE SAID SO, AND THE
+ * FENCE WAS RIGHT. It was first written inline in metrics.js with a comment claiming it was
+ * "scoped by contractor, not by user_id" and therefore not a second per-user formula. The
+ * subquery IS scoped by `user_id` — the comment asserted something the code contradicted — and
+ * server/test/cashoutBalanceSingleSource.test.js flagged it immediately. **A second copy of the
+ * balance arithmetic is a second copy wherever it sits.**
+ *
+ * ⚠ IT IS AN AGGREGATE, NOT A LOOP, AND THAT IS THE WHOLE REASON IT IS A SEPARATE EXPORT.
+ * Calling getCashoutBalance() once per referrer would be one round trip per person on a
+ * dashboard that already fetches a pipeline each. The arithmetic is identical and
+ * cashoutBalanceSingleSource.test.js pins that the two agree.
+ *
+ * ⚠ EACH REFERRER IS CLAMPED AT ZERO BEFORE SUMMING, AND THIS IS A JUDGEMENT RATHER THAN
+ * ARITHMETIC. A NEGATIVE balance is not money the contractor can collect, so letting it reduce
+ * the total would understate what is genuinely owed to everyone else — one over-paid account
+ * could mask a real liability to a dozen healthy referrers. Measured on the live tenant: summed
+ * RAW it reads −$500, summed CLAMPED it reads $0, and $0 is what is actually owed.
+ * **If the raw signed sum is ever wanted instead, `GREATEST(..., 0)` is the one thing to change.**
+ *
+ * Output: a NUMBER in dollars, never negative.
+ */
+async function getContractorOwedTotal(db, contractorId) {
+  const { rows } = await db.query(
+    `SELECT COALESCE(SUM(GREATEST(per_user.available, 0)), 0) AS owed
+       FROM (
+         SELECT u.id,
+                COALESCE((SELECT SUM(rc.bonus_amount) FROM referral_conversions rc
+                           WHERE rc.user_id = u.id), 0)
+              - COALESCE((SELECT SUM(cr.amount) FROM cashout_requests cr
+                           WHERE cr.user_id = u.id AND cr.status <> 'denied'), 0)
+                AS available
+           FROM users u
+          WHERE u.contractor_id = $1 AND u.deleted_at IS NULL
+       ) AS per_user`,
+    [contractorId]
+  );
+  const owed = Number(rows[0]?.owed ?? 0);
+  if (!Number.isFinite(owed)) {
+    throw new Error(`getContractorOwedTotal: non-numeric total for ${contractorId}`);
+  }
+  return owed;
+}
+
+module.exports = { getCashoutBalance, getContractorOwedTotal };

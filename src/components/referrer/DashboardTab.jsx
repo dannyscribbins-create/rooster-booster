@@ -4,6 +4,8 @@ import { getNextPayout } from '../../constants/boostSchedule';
 import RewardScheduleCard from './RewardScheduleCard';
 import { BACKEND_URL } from '../../config/contractor';
 import { useBranding } from '../shared/ThemeProvider';
+import { useCashoutBalance } from '../../hooks/useCashoutBalance';
+import { formatBalance, showsBalanceNote, BALANCE_ADJUSTMENT_NOTE } from '../../constants/balanceCopy';
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import StatusBadge from '../shared/StatusBadge';
@@ -68,8 +70,22 @@ const MONEY          = 'var(--rm-primary-text, #B1480A)';
 const MUTED = 0.72;
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimited, pipelineStale, pipelineStaleSince, pipelineUnavailable, userName, balance, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken, onViewAllReferrals, bankStatus, onOpenBankSetup, schedules }) {
+// ⚠ THE `balance` PROP IS GONE, AND ITS ABSENCE IS THE POINT. This screen rendered
+// `data.balance` — the server's SPECULATIVE pipeline total, which subtracts no cash-outs —
+// threaded down from App.jsx. It was the MAIN place a referrer reads their balance and it was
+// the one surface the earlier fix missed, because the earlier fence forbade a client-side SUM
+// and this screen never calculated anything: it rendered a number that arrived ready-made.
+// **A value that arrives already wrong is still wrong**, which is why the prop is removed
+// rather than repointed — while it exists, the wrong number can be passed back in.
+export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimited, pipelineStale, pipelineStaleSince, pipelineUnavailable, userName, paidCount, profilePhoto, showReviewCard, onDismissReview, sessionToken, onViewAllReferrals, bankStatus, onOpenBankSetup, schedules }) {
   const branding = useBranding();
+  // ── THE BALANCE, FROM THE ONE SHARED SOURCE ─────────────────────────
+  // ⚠ NOT THE `balance` PROP, WHICH IS GONE. That prop carried `data.balance` from
+  // /api/pipeline — the speculative total that subtracts no cash-outs — and made this screen
+  // read $500 while Cash Out and Profile read $0 for the same account on the same day.
+  const balanceState = useCashoutBalance(sessionToken);
+  const { available: serverBalance, known: balanceKnown } = balanceState;
+  const balanceNote = showsBalanceNote(balanceState) ? BALANCE_ADJUSTMENT_NOTE : null;
   const soldCount = paidCount;
   const nextPayout = getNextPayout(soldCount);
   const progressPct = Math.min((soldCount / 7) * 100, 100);
@@ -358,14 +374,36 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                       a homeowner reads most carefully; `primaryText` is already floored at
                       4.5 against both grounds, so the allowance buys nothing and would cost
                       a justification nobody would find later. */}
-                  <span style={{ fontSize: 32, color: MONEY, fontFamily: fontVar('mono'), fontWeight: 700, lineHeight: 1 }}>$</span>
-                  <span style={{
+                  {/* ⚠ THE `$` IS A SEPARATE SPAN AT A SMALLER SIZE, SO THE SIGN CANNOT LIVE
+                      INSIDE THE FIGURE. `formatBalance` returns "-$500"; splitting it here keeps
+                      the minus at the FIGURE's weight rather than stranding it on the small
+                      dollar glyph, where at 32px beside a 52px number it reads as a dash. */}
+                  <span style={{ fontSize: 32, color: MONEY, fontFamily: fontVar('mono'), fontWeight: 700, lineHeight: 1 }}>
+                    {balanceKnown && serverBalance < 0 ? '-$' : '$'}
+                  </span>
+                  <span data-dashboard-balance style={{
                     fontSize: 52, fontWeight: 900, letterSpacing: "-0.04em",
                     fontFamily: fontVar('heading'), color: MONEY, lineHeight: 1,
                   }}>
-                    {balance.toLocaleString()}
+                    {balanceKnown ? Math.abs(serverBalance).toLocaleString() : '—'}
                   </span>
                 </div>
+                {/* ⚠ THE NOTE, BESIDE A NEGATIVE ONLY (§2.10). A true $0 is silent — that is the
+                    half of §2.9 the amendment KEPT, and the reason `showsBalanceNote` tests
+                    `< 0` and not `<= 0`.
+                    ⚠ SUBTLE BY RULING: muted body tone on the card's own ground, no status
+                    colour, no banner. It has to read as a footnote rather than an alert.
+                    ⚠ AND THE OPACITY IS ON THIS PARAGRAPH, WHICH CONTAINS NO MONEY SPAN — the
+                    inheritance defect recorded immediately below is about a muted container
+                    wrapping an unmuted figure, and this note wraps nothing. */}
+                {balanceNote && (
+                  <p data-balance-note style={{
+                    margin: "6px 0 0", fontSize: 12, color: 'var(--rm-text, #1C2D4D)',
+                    opacity: MUTED, fontFamily: fontVar('body'), lineHeight: 1.5,
+                  }}>
+                    {balanceNote}
+                  </p>
+                )}
                 {/* ⚠ THE OPACITY IS ON THE PROSE SPAN, NOT ON THE PARAGRAPH, AND THAT
                     IS A REPAIR RATHER THAN A STYLE CHOICE. Palette-4a put
                     `opacity: MUTED` on this <p> to mute the sold-count sentence, and

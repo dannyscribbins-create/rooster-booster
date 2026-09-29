@@ -385,32 +385,63 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         **not checked** — the same boundary `CLAUDE.md` records for OAuth scopes. **Observed: no
         invoice delivery in eleven days while five other topics arrived in volume. Ask Danny; do
         not infer it.**
-      - **THE OVER-PAYMENT WRITE-OFF — POLICY B's MISSING HALF. Ruled 2026-09-29, NOT BUILT.**
-        Danny ruled **policy B**: when a referrer's earnings shrink after a payout, **the
-        CONTRACTOR ABSORBS the shortfall and the balance restarts from ZERO.** Policy A —
-        carrying the shortfall forward against future earnings — was **rejected**. The reasoning
-        is in `RoofMiles_Decisions_Record_Canvass_Attribution.md` §2.8.
-        ⚠ **THE DISPLAY CLAMP SHIPPED IN COMMIT (3c) DOES NOT IMPLEMENT B, AND READING IT AS B
-        IS THE TRAP THIS ENTRY EXISTS TO PREVENT.** The referrer screens now show a plain `$0` for
-        any non-positive balance, which is the display ruling (§2.9) and is correct. The STORED
-        arithmetic is still `earned − cashouts`. So:
-        > a referrer at **−$500** who then earns **$300** computes to **−$200**, the clamp shows
-        > them **$0**, and their $300 has been **silently absorbed**. That is **policy A arrived
-        > at by accident**, and the clamp is precisely what hides it.
-        **B needs a WRITE-OFF RECORD** — the contractor's absorption stored as a fact, so the
-        balance returns to a TRUE zero and later earnings count normally from there.
+      - **THE OVER-PAYMENT DECISION — WRITTEN IN PLAIN LANGUAGE SO IT CAN BE DECIDED IN THE
+        MONEY PHASE. Ruled 2026-09-29 to STAY OPEN until then. NOT BUILT.**
+
+        **What happens today.** A referrer's balance is `everything they have earned` minus
+        `every cash-out that was not denied`. Nothing else. So if their earnings ever go DOWN
+        after they have been paid — a sale unwinds, an admin corrects a figure, a Mark-as-Paid
+        is clicked by mistake — the balance goes **negative, and stays negative until they earn
+        their way back out of it.** **The debt is carried.**
+
+        **The two policies, one sentence each.**
+        · **Policy A — carry the shortfall.** The referrer's next earnings pay off the
+          difference before they can cash out again. *What the referrer experiences:* they refer
+          someone, the job closes, and their balance moves from −$500 to −$200. They earned
+          $300 and can still withdraw nothing.
+        · **Policy B — the contractor absorbs it.** The shortfall is written off and the
+          balance restarts at zero. *What the referrer experiences:* their balance is $0, and the
+          next $300 they earn is $300 they can cash out.
+
+        ⚠ **POLICY B IS RULED. WHAT IS MISSING IS THE MECHANISM, NOT THE DECISION.** Danny
+        ruled **B** (§2.8 of the decisions record): the contractor absorbs the shortfall and the
+        balance restarts at zero. A is **rejected**. This entry is open because **nothing in the
+        code implements B yet**, not because the choice is outstanding.
+        ⚠ **AND THE TWO HALVES OF THE SYSTEM CURRENTLY DISAGREE WITH THE RULING AND WITH EACH
+        OTHER.** The formula carries the shortfall — that is **A's behaviour**, and it happens
+        only because a balance is a subtraction and **no write-off record exists to clear it**.
+        Commit (3c)'s clamp then showed `$0` for anything negative, which **looked like B while
+        the arithmetic did the opposite**: a referrer would have seen `$0`, concluded nothing had
+        happened, and been wrong — their earnings were going to a shortfall nobody had told them
+        about. The §2.10 amendment removed the clamp so the display now tells the truth, which is
+        the honest interim: **the screen matches the arithmetic, and the arithmetic will match the
+        ruling once the write-off is built.**
+
+        ⚠ **DANNY'S $1,000 CASH-OUT WAS A TEST, NOT A REAL PAYMENT, SO NO REAL DEBT EXISTS —
+        AND A WRITE-OFF IS NEEDED EITHER WAY.** His test referrer reads −$500 because two test
+        cash-outs of $500 settled against $500 of earnings. **No money left anyone's account**
+        (Stripe is in test mode; see the block at the top of this section). So the −$500 is an
+        artifact of testing, not a sum anybody owes — **and that is true whichever policy wins.**
+        Even under policy A, a debt that was never incurred should not be carried. **Clearing it
+        needs the same write-off record that policy B needs**, which is why the mechanism is
+        required regardless of the decision.
+
+        **What a write-off record has to do.** Store the contractor's absorption as a FACT, so
+        the balance returns to a TRUE zero rather than being hidden behind a display rule, and
+        so later earnings count normally from there.
+
+        ⚠ **ACCEPTANCE CONDITION, UNCHANGED:** run it against Danny's test referrer first.
+        Afterwards his balance must read a true **$0**, and a subsequent **$300** earning must
+        show as **$300** — not $0, and not −$200.
+
         ⚠ **WHY IT SITS UNDER THIS GATE RATHER THAN IN THE FIX-NOW LIST:** it needs a schema
         decision (where a write-off lives, who may record one, whether it is reversible) and it
         touches the same ledger the money phase rebuilds. Building it ahead of §2.6/§2.7 would
         mean designing it twice.
-        ⚠ **FIRST CASE, AND IT IS A REAL ROW RATHER THAN A HYPOTHETICAL: Danny's own test
-        referrer is at −$500 today** — earned $500.00 against two settled $500 cashouts. Whatever
-        is built must be exercised against that account first, and after it runs his balance must
-        read a true **$0** with a **$300** subsequent earning showing as **$300**, not $0.
-        ⚠ **AND UNTIL IT EXISTS, THE ADMIN FLAG IS THE ONLY THING THAT MAKES AN OVER-PAYMENT
-        FINDABLE.** The referrer side is deliberately silent by ruling; if the admin flag is ever
-        removed or the clamp is pushed into the server, an over-payment becomes invisible to
-        everyone. **Do not clamp `GET /api/cashout/balance`.**
+
+        ⚠ **AND DO NOT CLAMP `GET /api/cashout/balance`.** The server returns the true value;
+        the admin panel shows it and flags it. Clamping at the source would destroy the evidence
+        this mechanism needs and make an over-payment invisible to everyone.
 
 - [ ] **🔴 The auto-fire payout path is ENABLED in production and has called Stripe three times.**
       ⚠ **The audit's first pass called this "dormant by data, because `payout_automation` defaults

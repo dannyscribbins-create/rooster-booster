@@ -403,7 +403,17 @@ export default function AdminReferrers({ setLoggedIn }) {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
               <StatCard label="Total Referrals" value={detail.pipeline.length}                        icon="ph-clipboard-text" animDelay={0}   />
               <StatCard label="Sold"            value={detail.paidCount}                              icon="ph-trophy" accent={AD.greenText} animDelay={80}  />
-              <StatCard label="Balance"         value={`$${detail.balance.toLocaleString()}`}         icon="ph-currency-dollar" accent={AD.amberText} animDelay={160} />
+              {/* ⚠ THIS CARD SHOWED `detail.balance` — THE SPECULATIVE `500 + boost` SUM — AND
+                  COMMIT (3c) ADDED THE TRUE BALANCE CARD ABOVE IT WITHOUT AUDITING THIS SCREEN.
+                  The result was two figures labelled "Balance" on ONE view disagreeing with each
+                  other: −$500 at the top and $500 here. **That was worse than the defect being
+                  fixed**, and it is why the amended instruction is to audit every surface that
+                  renders a balance rather than to add a correct one beside the wrong ones.
+                  ⚠ RELABELLED AS WELL AS REPOINTED. "Lifetime earned" is what this number
+                  actually is once it reads the ledger — the total ever booked, before any
+                  cash-out — and it is genuinely useful beside the available balance. Calling it
+                  "Balance" is what made two different questions look like one. */}
+              <StatCard label="Lifetime earned" value={detail.cashoutBalance ? `$${Number(detail.cashoutBalance.earned).toLocaleString()}` : '—'} icon="ph-currency-dollar" accent={AD.amberText} animDelay={160} />
             </div>
             <div style={{ background: AD.bgCard, border: `1px solid ${AD.border}`, borderRadius: 16, overflow: 'hidden', boxShadow: AD.shadowSm }}>
               <div style={{ padding: '16px 20px', borderBottom: `1px solid ${AD.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

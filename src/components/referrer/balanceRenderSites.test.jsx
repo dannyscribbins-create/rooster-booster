@@ -88,41 +88,52 @@ describe('payout commit (3b) — the Cash Out screen reads the server balance', 
   // what a referrer should be told, not a discovery that the old text was wrong — and the
   // distinction matters, because the TRUE value is still what the server returns and what the
   // admin panel shows.
-  it('⚠ DANNY\'S SHAPE: a server balance of −500 displays a plain $0', async () => {
+  // ⚠ INVERTED A SECOND TIME, BY §2.10 AMENDING §2.9 THE DAY AFTER IT SHIPPED. The old
+  // assertions are quoted so the reversal is reviewable:
+  //   · toMatch(/[$]0 available/) on a −500 balance — the clamp
+  //   · not.toMatch(/-[$]/)                          — a minus sign was forbidden outright
+  //   · getByText(/No balance available to cash out/) — already removed by §2.9 itself
+  // ⚠ BOTH WERE CORRECT UNDER §2.9 AND ARE NOW WRONG, AND NEITHER WAS A BUG. The clamp made a
+  // referrer who earned $300 while at −$500 see `$0` and conclude nothing had happened, so
+  // Danny amended the ruling to show the truth. **Recording the reversal is what stops the
+  // next reader treating the clamp as the intent.**
+  it('⚠ DANNY\'S SHAPE: a server balance of −500 displays as −$500, not $0 and not $500', async () => {
     mount({ available: -500 });
     await waitFor(() => expect(balanceLine().textContent).not.toMatch(/Checking/));
     const text = balanceLine().textContent;
-    expect(text).toMatch(/\$0 available/);
-    // The original finding-6 defect: the client-side sum rendered $500 here.
-    expect(text).not.toMatch(/\$500/);
-    // The §2.9 prohibitions, on the balance line itself.
-    expect(text).not.toMatch(/over-?paid/i);
-    expect(text).not.toMatch(/negative/i);
-    expect(text).not.toMatch(/-\$/);
+    expect(text).toMatch(/-\$500 available/);
+    expect(text).not.toMatch(/\$0 available/);
+    // ⚠ THE ORIGINAL FINDING-6 DEFECT WAS A **POSITIVE** $500 HERE, so the needle has to
+    // exclude the minus — `not.toMatch(/\$500/)` would fail against the correct `-$500`,
+    // which is the substring trap this arc has now hit four times.
+    expect(text).not.toMatch(/(^|[^-])\$500 available/);
   });
 
-  it('⚠ a negative balance shows NO message anywhere on the screen', async () => {
+  it('⚠ a negative balance shows the §2.10 note, and NOTHING implying a debt', async () => {
     const { container } = mount({ available: -500 });
-    await waitFor(() => expect(balanceLine().textContent).toMatch(/\$0 available/));
-    // ⚠ THE WHOLE RENDERED TREE, NOT JUST THE BALANCE LINE. The ruling is that no message of
-    // any kind appears — a sibling paragraph saying "nothing available" would satisfy a
-    // balance-line-only assertion and still break it.
+    await waitFor(() => expect(balanceLine().textContent).toMatch(/-\$500/));
+    const note = document.querySelector('[data-balance-note]');
+    expect(note).toBeTruthy();
+    expect(note.textContent).toBe('Your balance reflects a recent adjustment. Questions? Contact us.');
+    // ⚠ POLICY B MEANS THE REFERRER OWES NOTHING (§2.8), so no wording may imply one. This is
+    // the half of the old case that SURVIVES the amendment: the minus sign is now required,
+    // but the debt language is still forbidden.
     const all = container.textContent;
     expect(all).not.toMatch(/over-?paid/i);
-    expect(all).not.toMatch(/No balance available/i);
-    expect(all).not.toMatch(/nothing available/i);
+    expect(all).not.toMatch(/\bdebt\b/i);
+    expect(all).not.toMatch(/\bowe[sd]?\b/i);
+    expect(all).not.toMatch(/\brepay\b/i);
     expect(all).not.toMatch(/negative/i);
-    // ⚠ A MINUS SIGN IMMEDIATELY BEFORE A DOLLAR FIGURE — not a bare hyphen, which appears
-    // legitimately in hyphenated copy elsewhere on the screen.
-    expect(all).not.toMatch(/-\s*\$\s*\d/);
-    expect(all).not.toMatch(/\$-\d/);
   });
 
-  it('a ZERO balance displays a plain $0 and no message', async () => {
+  it('⚠ a TRUE $0 displays $0 with NO note — the half of §2.9 that SURVIVED', async () => {
+    // ⚠ THE DISTINCTION THE AMENDMENT TURNS ON. A `$0` meaning "no progress yet" keeps its
+    // silence; a `$0` that was hiding a negative no longer exists. `showsBalanceNote` tests
+    // `< 0` and not `<= 0` for exactly this, and this case is what pins the difference.
     const { container } = mount({ available: 0 });
     await waitFor(() => expect(balanceLine().textContent).toMatch(/\$0 available/));
-    expect(container.textContent).not.toMatch(/No balance available/i);
-    expect(container.textContent).not.toMatch(/over-?paid/i);
+    expect(document.querySelector('[data-balance-note]')).toBeNull();
+    expect(container.textContent).not.toMatch(/adjustment/i);
   });
 
   // ⚠ RENAMED: this read "no method button is offered", which stated the opposite of what it
@@ -132,7 +143,7 @@ describe('payout commit (3b) — the Cash Out screen reads the server balance', 
     // the balance is only acceptable because the control is blocked; a screen that said $0 and
     // still let a request through would be worse than the wording it replaced.
     mount({ available: -500 });
-    await waitFor(() => expect(balanceLine().textContent).toMatch(/\$0 available/));
+    await waitFor(() => expect(balanceLine().textContent).toMatch(/-\$500/));
     expect(screen.queryByText(/Minimum cashout amount/i)).toBeNull();
     // ⚠ DISABLED, NOT ABSENT — AND THE FIRST WRITING OF THIS CASE ASSERTED ABSENCE AND FAILED
     // AGAINST CORRECT CODE. Danny's ruling is that the request is BLOCKED (button disabled),
@@ -347,6 +358,102 @@ describe('payout commit (3b) — the Cash Out screen reads the server balance', 
     // ⚠ AND THE OLD CLIENT-SIDE SUM MUST BE GONE, which is the other half of finding 6 on this
     // screen — it summed `conversion_bonus ?? payout` and subtracted no cashouts at all.
     expect(src).not.toMatch(/reduce\([^)]*conversion_bonus/);
+  });
+
+  // ── THE RENDER-SITE FENCE ──────────────────────────────────────────────────
+  // ⚠ THIS EXISTS BECAUSE THE PREVIOUS FENCE WAS THE WRONG SHAPE AND MISSED THE MAIN SCREEN.
+  // That one forbade a client-side SUM (`reduce(` beside `payout`), which caught Cash Out and
+  // Profile because they CALCULATED a balance. The Dashboard calculated nothing — it rendered
+  // `data.balance`, the server's speculative pipeline total, handed down as a PROP from
+  // App.jsx — so a fence for the shape of a CALCULATION was structurally blind to it. One
+  // account read $500 there and $0 on the other two screens on the same day.
+  // ⚠ SO THIS FENCE IS ABOUT SOURCES, NOT ARITHMETIC: every balance must originate from
+  // `useCashoutBalance`, and the two speculative fields must reach no render at all.
+  // **A value that arrives already wrong is still wrong.**
+
+  const SPECULATIVE_FIELDS = ['data' + '.balance', 'detail' + '.balance'];
+  const ENDPOINT = '/api/cashout' + '/balance';
+  const HOOK = path.join('src', 'hooks', 'useCashoutBalance.js');
+
+  function srcFiles(root) {
+    const out = [];
+    (function walk(dir) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!/\.(js|jsx)$/.test(entry.name)) continue;
+        if (/\.test\.(js|jsx)$/.test(entry.name)) continue;
+        out.push(full);
+      }
+    })(root);
+    return out;
+  }
+
+  const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+  it('⚠ FENCE: only the shared hook fetches the balance endpoint', () => {
+    const offenders = [];
+    for (const file of srcFiles(path.join(process.cwd(), 'src'))) {
+      const rel = path.relative(process.cwd(), file);
+      if (rel === HOOK || rel.replace(/\//g, '\\') === HOOK) continue;
+      strip(fs.readFileSync(file, 'utf8')).split(/\r?\n/).forEach((line, i) => {
+        if (line.includes(ENDPOINT)) offenders.push(`${rel}:${i + 1}`);
+      });
+    }
+    expect(offenders, 'a second balance fetcher:\n  ' + offenders.join('\n  ') +
+      '\nImport useCashoutBalance instead.').toEqual([]);
+  });
+
+  it('⚠ FENCE: no src/ file RENDERS a speculative balance field', () => {
+    // ⚠ THIS IS THE ONE THAT WOULD HAVE CAUGHT THE DASHBOARD. `data.balance` and
+    // `detail.balance` are the two pipeline-derived totals that subtract no cash-outs. Neither
+    // may appear anywhere in src/ — not rendered, not assigned, not passed on.
+    const offenders = [];
+    for (const file of srcFiles(path.join(process.cwd(), 'src'))) {
+      const rel = path.relative(process.cwd(), file);
+      strip(fs.readFileSync(file, 'utf8')).split(/\r?\n/).forEach((line, i) => {
+        for (const f of SPECULATIVE_FIELDS) {
+          if (line.includes(f)) offenders.push(`${rel}:${i + 1} — ${f}`);
+        }
+      });
+    }
+    expect(offenders, 'a speculative balance reaches a render site:\n  ' +
+      offenders.join('\n  ') + '\nRead the balance from useCashoutBalance.').toEqual([]);
+  });
+
+  it('⚠ FENCE: no component is handed a balance as a PROP', () => {
+    // ⚠ THE PROP-DELIVERED CASE, NAMED EXPLICITLY, because that is exactly how the Dashboard
+    // received its wrong number and why a source fence has to look for delivery as well as for
+    // computation. A `balance={...}` prop means some parent decided the figure.
+    const offenders = [];
+    for (const file of srcFiles(path.join(process.cwd(), 'src'))) {
+      const rel = path.relative(process.cwd(), file);
+      strip(fs.readFileSync(file, 'utf8')).split(/\r?\n/).forEach((line, i) => {
+        if (/\bbalance=\{/.test(line)) offenders.push(`${rel}:${i + 1}`);
+      });
+    }
+    expect(offenders, 'a balance is passed as a prop:\n  ' + offenders.join('\n  ') +
+      '\nCall useCashoutBalance in the component that renders it.').toEqual([]);
+  });
+
+  it('HARNESS FLOOR: the render-site fence walks real files and its needles work', () => {
+    // ⚠ WITHOUT THIS ALL THREE FENCES ABOVE PASS BECAUSE THE WALK FOUND NOTHING, which is
+    // indistinguishable from a clean codebase — the shape CLAUDE.md records as a mechanism
+    // reporting health it never observed.
+    const files = srcFiles(path.join(process.cwd(), 'src')).map(f => path.relative(process.cwd(), f));
+    expect(files.length).toBeGreaterThan(50);
+    expect(files.some(f => /DashboardTab\.jsx$/.test(f))).toBe(true);
+    expect(files.some(f => /useCashoutBalance\.js$/.test(f))).toBe(true);
+    // The hook must actually contain the endpoint, or fence 1 is vacuous.
+    const hook = fs.readFileSync(path.join(process.cwd(), HOOK), 'utf8');
+    expect(hook.includes(ENDPOINT)).toBe(true);
+    // And each needle must match a synthetic line of the forbidden shape.
+    expect('const b = data' + '.balance;').toContain(SPECULATIVE_FIELDS[0]);
+    expect(/\bbalance=\{/.test('<Dashboard balance={x} />')).toBe(true);
+    // ⚠ AND MUST SPARE THE LEGITIMATE IDIOM: `balanceState`, `balanceText`, `balanceNote` and
+    // `cashoutBalance` are all real identifiers in this tree and none is a prop pass.
+    expect(/\bbalance=\{/.test('const balanceText = formatBalance(balanceState);')).toBe(false);
+    expect('detail.cashoutBalance.available').not.toContain(SPECULATIVE_FIELDS[1] + '.');
   });
 
   it('CashOutTab no longer takes the pipeline prop at all', () => {

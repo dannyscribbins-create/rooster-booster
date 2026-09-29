@@ -118,6 +118,39 @@ describe('payout commit (3c) — the admin panel shows the true negative balance
     expect(card().textContent).not.toMatch(/referrer app shows them/);
   });
 
+  it('⚠ ONE balance figure on the screen, not two that disagree', async () => {
+    // ⚠ THIS CASE EXISTS BECAUSE COMMIT (3c) CREATED THE DEFECT IT PINS. It added the true
+    // balance card above WITHOUT auditing the rest of the detail view, which already carried a
+    // StatCard labelled "Balance" reading the SPECULATIVE `detail.balance`. The screen then
+    // showed −$500 at the top and $500 a few lines below, both labelled Balance. **Two
+    // contradictory figures on one view is worse than the single wrong one it replaced.**
+    // ⚠ THE FIXTURE MAKES THEM DIFFERENT ON PURPOSE (balance: 500 against available: −500), so
+    // a card reading the wrong field is visible rather than coincidentally right.
+    await openDetail(DANNYS_BALANCE);
+    // ⚠ EXACTLY-"Balance" LEAF NODES, NOT A `$500` NEEDLE. The first writing asserted
+    // `not.toMatch(/\$500/)` and failed against CORRECT code, because the TRUE card renders
+    // `-$500` — which contains `$500` — and the arithmetic line says `$500 earned`. That is the
+    // substring trap, in the checker, for the third time in this arc. Counting the LABEL is the
+    // property: two figures both labelled "Balance" is the defect.
+    const labelled = Array.from(document.querySelectorAll('*'))
+      .filter(el => el.children.length === 0 && /^Balance$/i.test((el.textContent || '').trim()));
+    expect(labelled.length).toBeLessThanOrEqual(1);
+    expect(document.body.textContent).toMatch(/Lifetime earned/);
+  });
+
+  it('the lifetime-earned card reads the LEDGER, not the speculative pipeline sum', async () => {
+    // ⚠ ONE MOUNT PER CASE. The first writing called `openDetail` TWICE in one test;
+    // testing-library cleans up between TESTS, not within one, so both trees stayed in
+    // `document.body` and every body-wide assertion saw the union of two renders. The failure
+    // read like a wrong figure and was a harness fault.
+    // ⚠ THE HEALTHY FIXTURE IS WHAT DISCRIMINATES: earned is 900 while the payload's
+    // speculative `detail.balance` is 500, so a card reading the wrong field shows 500.
+    await openDetail(HEALTHY_BALANCE);
+    expect(document.body.textContent).toMatch(/Lifetime earned/);
+    expect(document.body.textContent).toMatch(/\$900/);
+    expect(document.body.textContent).not.toMatch(/\$500/);
+  });
+
   it('the card is absent entirely when the referrer has no app account', async () => {
     // ⚠ null, NOT A ZEROED OBJECT. A CRM-side referrer with no `users` row has no balance to
     // speak of, and a manufactured `{ available: 0 }` would read as "settled up" — the

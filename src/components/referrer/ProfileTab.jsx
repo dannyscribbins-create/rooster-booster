@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import { R, STATUS_CONFIG } from '../../constants/theme';
 import { useBranding } from '../shared/ThemeProvider';
 import { BACKEND_URL } from '../../config/contractor';
+import { useCashoutBalance } from '../../hooks/useCashoutBalance';
+import { formatBalance, showsBalanceNote, BALANCE_ADJUSTMENT_NOTE } from '../../constants/balanceCopy';
 import { getNextPayout } from '../../constants/boostSchedule';
 import { BADGES } from '../../constants/badges';
 import { SHOUT_BUCKETS } from '../../constants/shouts';
@@ -62,34 +64,15 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
   const soldCount  = pipeline.filter(p => p.status === "complete").length;
   const nextPayout = getNextPayout(soldCount);
 
-  // ── THE BALANCE COMES FROM THE SERVER ──────────────────────────────
-  // ⚠ WHAT WAS HERE WAS THE SECOND INSTANCE OF FINDING 6, AND IT WAS FOUND BY THE FENCE
-  // RATHER THAN BY LOOKING. It read
-  //   pipeline.filter(p => p.bonusEarned).reduce((sum, p) => sum + (p.conversion_bonus ?? p.payout ?? 0), 0)
-  // which is BETTER than the Cash Out tab's removed version — it prefers the confirmed
-  // `conversion_bonus` over the speculative ladder — and still wrong in the way that
-  // matters: it subtracts **no pending, approved or paid cashouts at all**, so the row
-  // labelled "Balance" was really lifetime EARNINGS. A referrer who had cashed out
-  // everything still saw their full earnings there.
-  // ⚠ THE TWO SCREENS DISAGREED WITH EACH OTHER AS WELL AS WITH THE SERVER, because the
-  // fallback chains differed. One number, one source, now.
-  const [serverBalance, setServerBalance] = useState(null);
-
-  useEffect(() => {
-    async function fetchBalance() {
-      try {
-        const r = await fetch(`${BACKEND_URL}/api/cashout/balance`, {
-          headers: { Authorization: `Bearer ${getReferrerToken()}` },
-        });
-        const d = await r.json();
-        // ⚠ Number.isFinite — `available` is legitimately 0 and legitimately NEGATIVE.
-        if (Number.isFinite(d?.available)) setServerBalance(d.available);
-      } catch {
-        // Fail closed: `null` renders an em dash rather than a manufactured figure.
-      }
-    }
-    fetchBalance();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── THE BALANCE, FROM THE ONE SHARED SOURCE ───────────────────────
+  // ⚠ THIS FILE FETCHED `/api/cashout/balance` ITSELF, AND SO DID CashOutTab. Two fetchers
+  // is how two screens drift; `useCashoutBalance` is the only place in `src/` that asks now.
+  // ⚠ WHAT WAS HERE BEFORE THAT WAS WORSE: a client-side sum of
+  // `conversion_bonus ?? payout` that subtracted no cash-outs, so the row labelled "Balance"
+  // was really lifetime EARNINGS. It was found by a fence, not by looking.
+  const balanceState = useCashoutBalance(getReferrerToken());
+  const balanceText = formatBalance(balanceState);
+  const balanceNote = showsBalanceNote(balanceState) ? BALANCE_ADJUSTMENT_NOTE : null;
 
   const [showContact, setShowContact] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -385,14 +368,12 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
               { label: "Referrals Sent", val: String(pipeline.length),                               icon: "ph-users"     },
               { label: "Deals Sold",      val: String(soldCount),                                    icon: "ph-handshake" },
               { label: "Next Payout",     val: `$${nextPayout.total} (+$${nextPayout.boost} boost)`, icon: "ph-trend-up"  },
-              // ⚠ CLAMPED FOR DISPLAY, BY DANNY'S §2.9 RULING (2026-09-29): a zero or NEGATIVE
-              // balance shows as a plain `$0` on every referrer screen, with no message and no
-              // minus sign. An em dash still stands for NOT-YET-KNOWN, which is not a balance
-              // claim — clamping that to $0 would state a figure the screen has no basis for.
-              // ⚠ THE CLAMP IS NOT POLICY B. `serverBalance` holds the true value and the admin
-              // referrer view shows it with a flag; the write-off that makes the balance a TRUE
-              // zero is filed under the money-phase launch gate. Do not clamp the server.
-              { label: "Balance",         val: Number.isFinite(serverBalance) ? `$${Math.max(0, serverBalance).toLocaleString()}` : "—", money: true,           icon: "ph-wallet"    },
+              // ⚠ THE §2.9 CLAMP IS GONE, AMENDED BY §2.10 THE DAY AFTER IT SHIPPED. This row
+              // read `Math.max(0, serverBalance)`, which hid a negative behind a `$0`; the true
+              // figure shows now, with a subtle note beneath the rows.
+              // ⚠ AN EM DASH STILL STANDS FOR NOT-YET-KNOWN, which is not a balance claim —
+              // rendering `$0` there would state a figure the screen has no basis for.
+              { label: "Balance",         val: balanceText ?? "—", money: true,           icon: "ph-wallet"    },
             ].map((item, i, arr) => (
               <div key={item.label} style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
@@ -406,6 +387,20 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                 <span style={{ fontSize: 15, fontWeight: 700, color: item.money ? MONEY : 'var(--rm-text, #1C2D4D)' }}>{item.val}</span>
               </div>
             ))}
+            {/* ⚠ THE NOTE, BESIDE A NEGATIVE ONLY (§2.10) — a true $0 stays silent, which is
+                the half of §2.9 the amendment KEPT. Placed BELOW the rows rather than inside
+                the Balance row because that row is a fixed label/value pair; a second line
+                inside it would break the alignment every other row depends on.
+                ⚠ SUBTLE BY RULING: muted body tone, no status colour, no banner. */}
+            {balanceNote && (
+              <p data-balance-note style={{
+                margin: 0, padding: "0 16px 14px", fontSize: 12,
+                color: 'var(--rm-text, #1C2D4D)', opacity: MUTED,
+                fontFamily: fontVar('body'), lineHeight: 1.5,
+              }}>
+                {balanceNote}
+              </p>
+            )}
           </div>
         </AnimCard>
 

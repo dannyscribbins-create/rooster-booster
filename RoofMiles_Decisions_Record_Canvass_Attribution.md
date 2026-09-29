@@ -358,6 +358,51 @@ panel has to show it and because a server that lied would make the over-payment 
 referrer-side silence honest rather than concealing. An over-payment nobody can see is how it
 stays unresolved.
 
+⚠ **§2.9 IS SUPERSEDED BY §2.10 BELOW, THE SAME DAY IT WAS WRITTEN. IT IS KEPT VERBATIM RATHER
+THAN REWRITTEN**, because the amendment is only legible against what it replaced — and because
+the clamp it specifies SHIPPED (commits 3b/3c) and is what the next reader will find in the code.
+
+## 2.10 AMENDMENT to §2.9 — show the TRUE balance, including a negative
+
+**Ruled by Danny, 2026-09-29, superseding §2.9 above.**
+
+**What §2.9 said, quoted so the change is reviewable:**
+
+> On **every referrer-facing screen**, a zero or negative available balance displays as a plain
+> **`$0`** — **no message of any kind**, and the request control is **disabled**.
+> **Never** *"over-paid"*, *"overpaid"*, *"negative"*, or a minus sign, on any referrer screen.
+
+**What now governs instead:**
+
+- **A NEGATIVE balance DISPLAYS AS NEGATIVE**, with a **subtle** on-screen note explaining why.
+  *Subtle* means not an alert, not a warning colour dominating the screen.
+- **A TRUE `$0` — someone with no progress yet — displays as `$0` with NO message of any kind.**
+  That was the point of the original ruling and **it stands**: never explain a zero that just
+  means *"nothing yet"*.
+
+⚠ **THE DISTINCTION IS BETWEEN A `$0` THAT MEANS NO PROGRESS AND A `$0` THAT WAS HIDING A
+NEGATIVE.** The first gets silence. The second **no longer exists**, because the negative now
+shows.
+
+⚠ **THE CONSEQUENCE IS THE POINT: THE DISPLAY NOW MATCHES THE ARITHMETIC.** Under §2.9's clamp a
+referrer who earned **$300** while at **−$500** saw **`$0`** and would reasonably conclude nothing
+had happened — while the system applied their $300 to a debt **nobody had told them about**. With
+the negative shown they see **−$200**, and the note explains it. **The clamp did not make the
+situation kinder; it made it unexplainable.**
+
+⚠ **WHAT DID NOT CHANGE.** Cash-out remains unavailable at or below `$0`, and the payout controls
+stay disabled there. The SERVER still returns the true value — it always did — and the admin panel
+still shows it and flags it. **Only the referrer-facing DISPLAY rule moved.**
+
+⚠ **AND THIS AMENDMENT DOES NOT CHANGE THE POLICY, WHICH IS ALREADY DECIDED.** §2.8 ruled
+**policy B** — the contractor absorbs the shortfall and the balance restarts at zero — and A is
+rejected. What the money phase still owes is the **write-off record** that makes B real, not a
+decision.
+§2.10 changes only what the referrer is SHOWN. Until the write-off exists the stored arithmetic
+still carries the shortfall, so what the amended display gives is a **truthful view of the state
+the system is actually in** — which is what makes the gap between the ruling and the code
+visible instead of hidden behind a `$0`.
+
 ---
 
 # PART 3 — WHERE THE STAGE LIVES

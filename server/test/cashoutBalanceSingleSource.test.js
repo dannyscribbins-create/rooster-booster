@@ -31,7 +31,7 @@ const path = require('node:path');
 const { request: _httpRequest } = require('node:http');
 
 const referrerRouter = require('../routes/referrer');
-const { getCashoutBalance } = require('../utils/cashoutBalance');
+const { getCashoutBalance, getContractorOwedTotal } = require('../utils/cashoutBalance');
 const {
   seedContractor, seedUser, seedSession, startTestServer, stopTestServer,
 } = require('./helpers');
@@ -352,6 +352,62 @@ describe('payout commit (1) — one definition of a referrer\'s available balanc
         `metrics.js:${s.line} would be flagged — the fence's discriminator has broken`
       );
     }
+  });
+
+  // ── THE ADMIN AGGREGATE ────────────────────────────────────────────────────
+
+  it('⚠ admin "Total Balance Owed" agrees with the shared function, per referrer', async () => {
+    // ⚠ WHAT IT REPLACED SUMMED THE SPECULATIVE PIPELINE FIGURE AND SUBTRACTED NO CASH-OUTS,
+    // so an admin was shown every bonus ever earned as still owed — a number that can only
+    // grow. This pins that the aggregate in routes/admin/metrics.js computes the same
+    // arithmetic as getCashoutBalance, one round trip instead of one per referrer.
+    await earn(500);
+    await cashout(100, 'paid');
+    await cashout(50, 'pending');
+    await cashout(400, 'denied');      // must not deduct
+    const bal = await getCashoutBalance(pool, userId);
+    assert.equal(bal.available, 350, 'precondition: the shared function says 350');
+
+    // ⚠ CALLS THE SHARED AGGREGATE RATHER THAN RE-TYPING ITS SQL. The first writing of this
+    // case pasted the query inline — which is a third copy of the balance arithmetic, in the
+    // very file that fences against a second one.
+    const owed = await getContractorOwedTotal(pool, CONTRACTOR);
+    assert.equal(owed, 350, 'the aggregate must agree with the helper');
+  });
+
+  it('⚠ the aggregate CLAMPS each referrer at zero, so one over-paid account cannot mask a real debt', async () => {
+    // ⚠ THIS IS A JUDGEMENT, PINNED SO IT IS VISIBLE RATHER THAN INCIDENTAL. A negative balance
+    // is not money the contractor can collect, so letting it reduce the total would understate
+    // what is genuinely owed to everyone else. Danny's own account is the live example: summed
+    // RAW this tenant reads −$500; summed CLAMPED it reads what is actually owed.
+    // **If the raw signed sum is wanted instead, the GREATEST() is the one thing to change.**
+    await earn(100);
+    await cashout(600, 'paid');        // this referrer is at −500
+    const other = await seedUser(pool, {
+      fullName: 'Healthy Referrer', email: 'healthy@pay1.test', contractorId: CONTRACTOR,
+    });
+    await pool.query(
+      `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, bonus_amount)
+       VALUES ($1, $2, 'jc-healthy', 300)`, [other, CONTRACTOR]
+    );
+
+    // ⚠ THE RAW SIGNED SUM IS COMPUTED HERE ONLY TO PROVE THE TWO READINGS DISAGREE. Without
+    // it the fixture cannot tell a clamped aggregate from an unclamped one — the shape
+    // CLAUDE.md records as "a fixture whose columns agree cannot tell two readings apart".
+    const { rows } = await pool.query(
+      `SELECT COALESCE(SUM(
+                COALESCE((SELECT SUM(rc.bonus_amount) FROM referral_conversions rc
+                           WHERE rc.user_id = u.id), 0)
+              - COALESCE((SELECT SUM(cr.amount) FROM cashout_requests cr
+                           WHERE cr.user_id = u.id AND cr.status <> 'denied'), 0)
+              ), 0) AS raw
+         FROM users u
+        WHERE u.contractor_id = $1 AND u.deleted_at IS NULL`,
+      [CONTRACTOR]
+    );
+    assert.equal(parseFloat(rows[0].raw), -200, 'raw: the over-paid account eats the healthy one');
+    assert.equal(await getContractorOwedTotal(pool, CONTRACTOR), 300,
+      'clamped: the $300 genuinely owed still shows');
   });
 
   it('both callers IMPORT the shared function', async () => {

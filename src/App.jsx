@@ -247,7 +247,6 @@ export default function App() {
   const [userName, setUserName]   = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [pipeline, setPipeline]   = useState([]);
-  const [balance, setBalance]     = useState(0);
   const [paidCount, setPaidCount] = useState(0);
   const [loading, setLoading]     = useState(false);
   const [pipelineRateLimited, setPipelineRateLimited] = useState(false);
@@ -448,7 +447,8 @@ export default function App() {
               setPipelineStaleSince(null);
             }
             setPipeline(Array.isArray(data.pipeline) ? data.pipeline : []);
-            setBalance(data.balance || 0);
+            // ⚠ `data.balance` IS NO LONGER READ. It is the pipeline's SPECULATIVE total and
+            // subtracted no cash-outs; every balance surface now calls useCashoutBalance.
             setPaidCount(data.paidCount || 0);
             setLoading(false);
           }
@@ -875,7 +875,7 @@ export default function App() {
         pipeline={pipeline} loading={loading} pipelineRateLimited={pipelineRateLimited}
         pipelineStale={pipelineStale} pipelineStaleSince={pipelineStaleSince} pipelineUnavailable={pipelineUnavailable}
         userName={userName} userEmail={userEmail}
-        balance={balance} paidCount={paidCount}
+        paidCount={paidCount}
         profilePhoto={profilePhoto} setProfilePhoto={setProfilePhoto}
         showReviewCard={showReviewCard} onDismissReview={handleDismissReview}
         announcement={announcement} announcementSettings={announcementSettings}

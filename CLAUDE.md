@@ -424,7 +424,97 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2103 server tests across 347 suites, and 1380 React tests across 84 files** (measured 2026-09-29 by the payout-audit commit (3c), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2103 · suites 347 · pass 2103 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2105 server tests across 347 suites, and 1387 React tests across 84 files** (measured 2026-09-29 by the payout-audit commit (3e), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2105 · suites 347 · pass 2105 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3e) ITSELF, BECAUSE IT SHIPS TESTS.**
+  React 1382 → 1387 is **+5 = 4 + 1 PHANTOM**, and the phantom was PREDICTED before the run
+  rather than reconciled after it. Four cases were appended to the renamed
+  `balanceRenderSites.test.jsx` (16 → 20); the fifth is `adminBranding.test.jsx` sweeping the new
+  `src/constants/balanceCopy.js`, because **`src/constants` IS one of its four walked roots** and
+  it emits one case per swept NON-TEST file. ⚠ **`src/hooks/` is NOT a walked root**, so the
+  other new file (`useCashoutBalance.js`) adds nothing — which is why the arithmetic closes at
+  exactly 5 and not 6. Files hold at 84: the suite was RENAMED, not added. Server held at
+  2105 / 347 and was re-measured. **All four predicted and matched.**
+  ⚠ **THE PREVIOUS FENCE WAS THE WRONG SHAPE AND MISSED THE MAIN SCREEN. THAT IS THE ENTRY.**
+  Commit (3b)'s fence forbade a client-side SUM (`reduce(` beside `payout`) and caught Cash Out
+  and Profile because they CALCULATED a balance. **The Dashboard calculates nothing** — it
+  rendered `data.balance`, the server's speculative pipeline total, handed down as a PROP from
+  `App.jsx` — so a fence for the shape of a CALCULATION was structurally blind to it. One
+  account read **$500 on the Dashboard and $0 on the other two screens on the same day**.
+  ⚠ **A VALUE THAT ARRIVES ALREADY WRONG IS STILL WRONG**, and the general rule is: when the
+  defect is *which number is shown*, fence the RENDER SITES and their SOURCE, never the
+  arithmetic. The replacement fences three things — only the shared hook may fetch the
+  endpoint, no `data.balance`/`detail.balance` may appear anywhere in `src/`, and no component
+  may be handed `balance={…}` as a prop — with a harness floor proving the walk reaches
+  `DashboardTab.jsx` and that each needle matches a synthetic line AND spares the legitimate
+  identifiers (`balanceState`, `balanceText`, `cashoutBalance`).
+  ⚠ **THE `balance` PROP WAS REMOVED FROM THE COMPONENT AND FROM `App.jsx`'s STATE, NOT
+  REPOINTED.** While the prop exists the wrong number can be passed back in, and nothing would
+  say so. Same reasoning as (3b) removing `pipeline` from CashOutTab.
+  ⚠ **THE §2.9 CASES WERE INVERTED A SECOND TIME, BY A RULING, ONE DAY AFTER THE FIRST
+  INVERSION — AND BOTH REVERSALS ARE QUOTED IN THE FILE.** (3c) made the screen clamp a
+  negative to `$0`; §2.10 amends that to show the true negative with a subtle note, keeping the
+  silence only for a TRUE zero. **Neither writing was a bug.** The clamp made a referrer who
+  earned $300 while at −$500 see `$0` and conclude nothing had happened. **Recording the
+  reversal is what stops the next reader treating the clamp as the intent.**
+  ⚠ **FIVE WIDTHS.** (i) `data.balance` read again in `App.jsx` → **1 red**, the source fence;
+  (ii) the note firing at `<= 0` instead of `< 0` → **1 red**, the TRUE-$0 case — which is the
+  only thing standing between the amendment and explaining a zero that just means *nothing yet*;
+  (iii) the formatter clamping → **3 red**; (iv) the ADMIN view clamping → **1 red**, the leak
+  that would make an over-payment invisible to everyone; (v) a `balance={…}` prop pass in a new
+  file → **1 red**, the delivery shape the old fence could not see.
+  ⚠ **AND THE GATE WENT RED FIRST ON THE DOCUMENTED `stageWebhooks` FLAKE, CONFIRMED RATHER
+  THAN ASSUMED.** *"a LATER update of the same quote is NOT swallowed"* failed under full-suite
+  load; the suite passed **19/19 alone**, this commit modifies **no server file at all**, and the
+  re-run was green. That is the flake this file already records with its mechanism — a
+  fire-and-forget handler completing after the hook's reset.
+  ⚠ **TWO EXISTING PALETTE CASES NEEDED UPDATING AND NEITHER WAS A DEFECT.** The muted-idiom
+  count went **13 → 14** because the §2.10 note is a fourteenth `opacity: MUTED` site — raised
+  deliberately rather than relaxed to a range, because a range would stop the fence noticing a
+  new muted container. And the Dashboard render case had to **await** its figure: it used to
+  arrive as a prop on the first paint and now resolves asynchronously, so the synchronous
+  assertion failed against correct code. **A timing change, not a defect.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3d) ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2105 / 347 / 1382 / 84**.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3d) ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2103 → 2105 is **+2**, both APPENDED to the existing `cashoutBalanceSingleSource.test.js`
+  (15 → 17), so **suites hold at 347** — the expected shape when a file grows rather than a file
+  arriving. React 1380 → 1382 is **+2** appended to `adminOverpaidFlag.test.jsx` (6 → 8), so the
+  FILE count holds at 84 for the same reason. **All four predicted before the run and matched.**
+  ⚠ **AND THE SINGLE-SOURCE FENCE CAUGHT ITS OWN AUTHOR WRITING A SECOND FORMULA, WHICH IS THE
+  ENTRY WORTH KEEPING.** The admin dashboard's *Total Balance Owed* was summing the adapter's
+  speculative figure and subtracting NO cash-outs. The first repair wrote the corrected
+  aggregate INLINE in `routes/admin/metrics.js`, with a comment claiming it was *"scoped by
+  contractor, not by `user_id`"* and therefore not a second per-user balance. **The subquery IS
+  scoped by `user_id` — the comment asserted something the code contradicted** — and
+  `cashoutBalanceSingleSource.test.js` went red naming the file and line before the gate ran.
+  The aggregate moved into `server/utils/cashoutBalance.js` as `getContractorOwedTotal`.
+  **A comment is not a carve-out, and a fence that reads the code rather than the claim is why.**
+  ⚠ **THE TEST FOR IT THEN PASTED THE SAME SQL A THIRD TIME**, inside the very file that fences
+  against a second copy. It calls the shared export now. **The fence does not scan `server/test/`,
+  so nothing would have flagged that one** — it is recorded because the next person will do it.
+  ⚠ **THE CLAMP-AT-ZERO IN THAT AGGREGATE IS A JUDGEMENT, PINNED SO IT IS VISIBLE RATHER THAN
+  INCIDENTAL.** A negative balance is not money the contractor can collect, so letting it reduce
+  the total would understate what is owed to everyone else — one over-paid account could mask a
+  real liability to a dozen healthy referrers. Measured on the live tenant: **raw −$500, clamped
+  $0**, and $0 is what is actually owed. A case asserts the two readings DISAGREE on the same
+  fixture, because a fixture where they agree cannot tell a clamped aggregate from an unclamped
+  one.
+  ⚠ **AND COMMIT (3c) HAD LEFT TWO CONTRADICTORY "Balance" FIGURES ON ONE ADMIN SCREEN.** It
+  added the true balance card without auditing the view it was adding to, which already carried
+  a StatCard labelled *Balance* reading the speculative `detail.balance`: **−$500 at the top and
+  $500 a few lines below.** That is worse than the single wrong figure it replaced. Repointed at
+  the ledger AND relabelled *Lifetime earned*, because calling two different questions by one
+  name is what made them look like one.
+  ⚠ **A NEEDLE OF MINE WAS THE SUBSTRING TRAP FOR THE THIRD TIME IN THIS ARC.**
+  `not.toMatch(/[$]500/)` failed against CORRECT code, because the true card renders **`-$500`**
+  — which contains `$500` — and the arithmetic line says `$500 earned`. The property is
+  *two figures both labelled Balance*, so the assertion counts LABELS now.
+  ⚠ **AND ONE CASE MOUNTED TWICE WITHOUT CLEANUP.** testing-library cleans up between TESTS,
+  not within one, so both trees stayed in `document.body` and a body-wide assertion saw the
+  union of two renders. **It read like a wrong figure and was a harness fault.** One mount per
+  case now.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3c) ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2103 / 347 / 1380 / 84**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE PAYOUT-AUDIT COMMIT (3c) ITSELF, BECAUSE IT SHIPS TESTS.**
   React 1369 → 1380 is **+11 = 5 + 6**: five APPENDED to the existing
   `cashOutBalanceSource.test.jsx` (11 → 16) and six in one new file

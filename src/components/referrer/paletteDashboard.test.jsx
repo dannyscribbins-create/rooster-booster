@@ -28,7 +28,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { deriveThemeTokens, contrastRatio, RENDER_TOKEN_VARS } from '../../utils/themeTokens.mjs';
 import { resolveBrandingTheme } from '../../utils/brandingTheme.mjs';
 import {
@@ -387,7 +387,11 @@ describe('Palette-4a Part B T5 — the ruled destinations', () => {
     // HAVE THIS IDIOM. A second near-identical alpha is how a tenth pattern starts.
     expect(DASH_CODE).toContain('const MUTED = 0.72');
     const mutedSites = DASH_CODE.split('opacity: MUTED').length - 1;
-    expect(mutedSites, 'expected the muted idiom at thirteen CODE sites').toBe(13);
+    // ⚠ 13 → 14: the §2.10 balance note on the Dashboard card is a FOURTEENTH `opacity: MUTED`
+    // site. Raised deliberately rather than relaxed to a range — this fence exists to notice a
+    // new muted container, and a range would stop it noticing. The note wraps only text and no
+    // money span, so it does not reintroduce the inheritance defect this fence guards.
+    expect(mutedSites, 'expected the muted idiom at fourteen CODE sites').toBe(14);
   });
 
   it('[RED] the Phosphor colour PROP is gone — a var() cannot live in an SVG attribute', () => {
@@ -532,19 +536,23 @@ describe('Palette-4a Part B T6 — no R. colour, no retired tone, and it still r
   // ⚠ CLAUDE.md's shape 6: AnnouncementPopup threw a ReferenceError on every
   // render while its literal sweep passed. A sweep proves a string is ABSENT; it
   // proves NOTHING about whether the code still runs.
-  it('[RED] and the component still RENDERS — a sweep proves absence, not liveness', () => {
+  it('[RED] and the component still RENDERS — a sweep proves absence, not liveness', async () => {
     installFetch();
     render(
       <DashboardTab
         setTab={() => {}} pipeline={[]} loading={false}
-        userName="Dana Ellis" balance={1250} paidCount={3} sessionToken="t"
+        userName="Dana Ellis" paidCount={3} sessionToken="t"
       />
     );
     expect(screen.getByText('Your Dashboard')).toBeTruthy();
     expect(screen.getByText('Available Balance')).toBeTruthy();
     // The balance actually rendered its value, so the card ran rather than
     // merely mounting an empty shell.
-    expect(screen.getByText('1,250')).toBeTruthy();
+    // ⚠ AWAITED NOW, BECAUSE THE FIGURE ARRIVES ASYNCHRONOUSLY. It used to come in as a
+    // PROP and was present on the first paint; commit (3e) moved it onto
+    // `useCashoutBalance`, so the card renders an em dash until the request resolves. The
+    // synchronous assertion failed against correct code — a timing change, not a defect.
+    await waitFor(() => expect(screen.getByText('1,250')).toBeTruthy());
   });
 
   it('[RED] the banner branches render too — the migrated code paths are REACHED', () => {
@@ -555,7 +563,7 @@ describe('Palette-4a Part B T6 — no R. colour, no retired tone, and it still r
     const { container } = render(
       <DashboardTab
         setTab={() => {}} pipeline={[]} loading={false}
-        userName="Dana Ellis" balance={0} paidCount={0} sessionToken="t"
+        userName="Dana Ellis" paidCount={0} sessionToken="t"
         pipelineRateLimited pipelineUnavailable
         bankStatus={{ connected: false }} onOpenBankSetup={() => {}}
       />
@@ -606,6 +614,14 @@ function installFetch() {
     }
     if (init !== undefined && (init === null || typeof init !== 'object')) {
       throw new Error('fetch double: init must be an object or absent');
+    }
+    // ⚠ THE BALANCE ENDPOINT MUST ANSWER, BECAUSE THE DASHBOARD NO LONGER TAKES A `balance`
+    // PROP. Commit (3e) moved every referrer balance surface onto `useCashoutBalance`, which
+    // reads GET /api/cashout/balance. With the generic `{}` answer below, `available` is
+    // undefined, the hook correctly reports NOT-KNOWN, and the card renders an em dash — so
+    // the figure assertion below failed against CORRECT code until this stub was added.
+    if (String(url).includes('/api/cashout/balance')) {
+      return { ok: true, status: 200, json: async () => ({ earned: 1250, deducted: 0, available: 1250 }) };
     }
     return { ok: true, status: 200, json: async () => ({}) };
   });

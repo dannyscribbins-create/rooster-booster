@@ -24,6 +24,8 @@ const MONEY          = 'var(--rm-primary-text, #B1480A)';
 const MUTED = 0.72;
 
 import { useBranding } from '../shared/ThemeProvider';
+import { useCashoutBalance } from '../../hooks/useCashoutBalance';
+import { formatBalance, showsBalanceNote, canRequestCashout, BALANCE_ADJUSTMENT_NOTE } from '../../constants/balanceCopy';
 import { BACKEND_URL } from '../../config/contractor';
 import { safeAsync } from '../../utils/clientErrorReporter';
 import AnimCard from '../shared/AnimCard';
@@ -87,37 +89,12 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
     fetchEnabledMethods();
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── THE AVAILABLE BALANCE COMES FROM THE SERVER ────────────────────────
-  // ⚠ null MEANS "NOT YET KNOWN", AND IT IS NOT 0. A numeric default would render
-  // "$0 available" while the request was still in flight, which is a FIGURE the screen
-  // has no basis for — and 0 is also a real, meaningful answer, so the two states must
-  // stay distinguishable. Everything below branches on `balanceKnown`.
-  const [serverBalance, setServerBalance] = useState(null);
-  const [balanceError, setBalanceError] = useState(false);
-
-  useEffect(() => {
-    if (!token) return;
-    async function fetchBalance() {
-      try {
-        const r = await fetch(`${BACKEND_URL}/api/cashout/balance`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const d = await r.json();
-        // ⚠ Number.isFinite, NOT `d.available ||` or `!= null`. `available` is legitimately
-        // 0 and legitimately NEGATIVE, so a truthiness check would discard the two answers
-        // that matter most, and `!= null` would admit a string and render "$-500" via
-        // concatenation. This is CLAUDE.md's "the predicate matches its own VALUE's shape".
-        if (Number.isFinite(d?.available)) setServerBalance(d.available);
-        else setBalanceError(true);
-      } catch {
-        // ⚠ FAIL CLOSED, NOT TO ZERO AND NOT TO A GUESS. If the balance cannot be read the
-        // screen says so and the request stays disabled; inventing a number here is how the
-        // defect this replaces came to exist.
-        setBalanceError(true);
-      }
-    }
-    fetchBalance();
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── THE BALANCE COMES FROM THE ONE SHARED SOURCE ─────────────────────
+  // ⚠ THIS FILE USED TO FETCH `/api/cashout/balance` ITSELF, AND SO DID ProfileTab. Two
+  // fetchers is how two screens drift; `useCashoutBalance` is now the only place in `src/`
+  // that asks. `balanceRenderSites.test.jsx` fails if a second one appears.
+  const balanceState = useCashoutBalance(token);
+  const { available: serverBalance, known: balanceKnown, error: balanceError } = balanceState;
 
   const advanceStep = (n) => {
     setStep(n);
@@ -160,26 +137,19 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
   // account: it displayed $500 available while the server's own gate computed −$500, so
   // the screen invited a request the server then refused. Finding 6 of the payout audit.
   // ⚠ THERE IS NO BALANCE ARITHMETIC LEFT IN THIS FILE, AND
-  // src/components/referrer/cashOutBalanceSource.test.jsx FAILS IF ANY RETURNS.
-  const balanceKnown = Number.isFinite(serverBalance);
-  // ⚠ CLAMPED FOR DISPLAY ONLY, BY DANNY'S §2.9 RULING (2026-09-29). A zero or NEGATIVE
-  // available balance shows on every referrer screen as a plain `$0`, with NO message of any
-  // kind. Never "over-paid", "overpaid", "negative", or a minus sign.
-  // ⚠ THE SERVER STILL RETURNS THE TRUE VALUE AND MUST KEEP DOING SO. `serverBalance` holds
-  // it; only `displayBalance` is clamped. The admin referrer view shows the real figure and
-  // FLAGS it — clamping at the source would destroy the evidence, and until the policy-B
-  // write-off exists that admin flag is the only place an over-payment is visible to anyone.
-  // ⚠ AND THE CLAMP IS **NOT** POLICY B. B is "the contractor absorbs the shortfall and the
-  // balance restarts at zero". The stored arithmetic is still `earned − cashouts`, so a
-  // referrer at −$500 who then earns $300 computes to −$200 and still SEES $0 — their $300
-  // silently absorbed, which is the policy Danny REJECTED. The write-off record that makes B
-  // real is filed under the money-phase launch gate on PRE_LAUNCH_CHECKLIST.md.
-  // **Do not read this clamp as the policy, and do not push it into the server.**
-  const displayBalance = balanceKnown && serverBalance > 0 ? serverBalance : 0;
-  // ⚠ THE GATE READS THE TRUE VALUE, NOT THE CLAMPED ONE. Reading `displayBalance` here would
-  // work today only because both are 0 when non-positive; the true value is what the server's
-  // own gate compares against, so this is the one that cannot drift from it.
-  const canRequest = balanceKnown && serverBalance >= 20;
+  // src/components/referrer/balanceRenderSites.test.jsx FAILS IF ANY RETURNS.
+  // ⚠ `balanceKnown` COMES FROM THE HOOK NOW, not from a local Number.isFinite. A local
+  // re-derivation would say "known" for a value the hook had rejected as malformed.
+  // ⚠ THE CLAMP IS GONE. §2.9 clamped every non-positive balance to a plain `$0`; §2.10
+  // AMENDED that the same day — a NEGATIVE now displays as negative with a subtle note, and
+  // only a TRUE zero stays silent. The old comment here argued the clamp was display-only and
+  // not policy B; that was correct and is now moot, because there is no clamp to argue about.
+  const balanceText = formatBalance(balanceState);
+  const showsNote = showsBalanceNote(balanceState);
+  // ⚠ TWO DIFFERENT GATES, DELIBERATELY. `canRequestCashout` is the §2.10 rule (a balance
+  // must be ABOVE zero to start a request at all); the $20 minimum is a separate, older rule
+  // about the REQUEST rather than the balance, so it is applied on top rather than folded in.
+  const canRequest = canRequestCashout(balanceState) && serverBalance >= 20;
 
   const filteredMethods = ALL_METHODS.filter(m => enabledMethods.includes(m.id));
 
@@ -382,8 +352,21 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
         <p style={{ margin: "4px 0 0", fontSize: 15, color: ON_SECONDARY }} data-cashout-balance>
           {!balanceKnown
             ? (balanceError ? "Balance unavailable" : "Checking balance…")
-            : `$${displayBalance.toLocaleString()} available`}
+            : `${balanceText} available`}
         </p>
+        {/* ⚠ THE NOTE, AND IT APPEARS ONLY BESIDE A NEGATIVE (§2.10). A true $0 is silent —
+            that is the half of §2.9 that SURVIVED the amendment, and it is the whole reason
+            `showsBalanceNote` tests `< 0` rather than `<= 0`.
+            ⚠ SUBTLE BY RULING: the muted body tone on the hero's own ground, not a status
+            colour and not a banner. It must read as a footnote, not an alert. */}
+        {showsNote && (
+          <p data-balance-note style={{
+            margin: "6px 0 0", fontSize: 12, color: ON_SECONDARY, opacity: MUTED,
+            fontFamily: fontVar('body'), lineHeight: 1.5,
+          }}>
+            {BALANCE_ADJUSTMENT_NOTE}
+          </p>
+        )}
         {/* ⚠ A STATUS MESSAGE ON A BRAND FILL, which the token set still has no pair
             for — the gap Palette-4b filed. Held on the literal here rather than
             routed to statusVar, whose LIGHT tone would mount at 2.87:1 on this navy.
@@ -398,7 +381,7 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
           <p style={{ margin: "6px 0 16px", fontSize: 13, color: "#fca5a5", fontFamily: fontVar('body') }}>
             {!balanceKnown
               ? (balanceError ? "We could not read your balance — please try again shortly" : " ")
-              : displayBalance > 0
+              : serverBalance > 0
                 ? "Minimum cashout amount is $20"
                 : " "}
           </p>
@@ -533,7 +516,7 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
                     are dropped, Max is the balance itself, and duplicates are removed so a
                     balance of exactly 500 does not render two buttons with the same React key
                     (which the old expression did). */}
-                {[...new Set([500, 1000, displayBalance].filter(v => v > 0 && v <= displayBalance))].map(v => (
+                {[...new Set([500, 1000, serverBalance].filter(v => v > 0 && v <= serverBalance))].map(v => (
                   <button key={v} onClick={() => setAmount(String(v))} style={{
                     flex: 1, background: RECESS, border: `1px solid ${elevationVar('border')}`,
                     borderRadius: 8, padding: "8px", color: TEXT,
@@ -601,7 +584,7 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
                 ["Amount",    `$${parseFloat(amount).toLocaleString()}`],
                 ["Method",    ALL_METHODS.find(m => m.id === method)?.label],
                 ["Sent to",   detail || "—"],
-                ["Remaining", `$${(displayBalance - parseFloat(amount)).toLocaleString()}`],
+                ["Remaining", `$${(serverBalance - parseFloat(amount)).toLocaleString()}`],
               ].map(([k, v]) => (
                 <div key={k} style={{
                   display: "flex", justifyContent: "space-between",
