@@ -568,7 +568,11 @@ alternative looks attractive again to anyone who sees only the outcome.
   by sha256, anchors unique in BOTH directions.
   ⚠ **AND THREE THINGS DISCOVERY WAS DOING WRONG BESIDES THE DEDUPE, ALL SILENT.** It **never paged**
   (no `first:`, no cursor — Accent's 27 fit in one page, which is why it was invisible); it stored
-  **archived** fields as live (**11 of 27** are archived, and the mapping screen listed them
+  **archived** fields as live (**12 of 27** are archived — this read **11** until 2026-09-30, when a
+  post-7c-1 Run Discovery measured 12; whether one was archived in Jobber in between or the original
+  count was off by one is NOT established, and saying which would be inventing a source. The
+  correction is recorded rather than made silently, because the figure is a claim about the CURRENT
+  tenant rather than a dated snapshot — and the mapping screen listed them
   indistinguishably); and `CustomFieldConfigurationArea` was in `TYPE_MAP` **with no fragment in the
   query**, so those configurations arrived nameless and were dropped — a whole field type invisible
   while the type map claimed to handle it.

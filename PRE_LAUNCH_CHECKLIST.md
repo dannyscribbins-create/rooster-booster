@@ -683,6 +683,27 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         **What removes THIS half of the entry:** that script run against the 7, and their facts and
         stages re-read afterwards.
 
+      - [ ] **7c-2 — STORE `customFieldConfiguration.transferedFrom` WITH EACH DISCOVERED
+        CONFIGURATION. NOT STORED TODAY (filed 2026-09-30). IT BLOCKS RULING 1.** Discovery persists
+        `entity`, `transferable` and `archived` (7c-1) and **not** the link. Verified read-only against
+        the live tenant after a fresh Run Discovery: `contractor_jobber_fields` has
+        `id · contractor_id · jobber_field_id · label · field_type · options · discovered_at · entity ·
+        transferable · archived` — no column for it.
+        ⚠ **AND RULING 1 IS DEFINED IN TERMS OF THAT LINK, SO THIS IS A PRECONDITION RATHER THAN A
+        NICETY.** Danny's amended ruling 1 (case 2) reads the mapped field's **LINKED COUNTERPART** on
+        the invoice first, found via `transferedFrom` — **never by label, never by matching option
+        lists.** Accent's invoice-level "Job Type" (`730115`) carries an explicit
+        `transferedFrom → 730114` and has the *same 19 options* as the job field, so **the option
+        lists cannot tell them apart and the label cannot either.** Without the stored link there is
+        nothing left to follow, and the only remaining discriminators are exactly the two the ruling
+        forbids.
+        ⚠ **IT IS PROVEN SELECTABLE, so this is a capture-and-store job rather than an open question.**
+        `customFieldConfigurations { ... transferedFrom { id name appliesTo } }` resolves at the pinned
+        version `2026-05-12`, and the live link was read end to end while verifying case 2.
+        **What removes this entry:** the column added, discovery writing it, and the counterpart lookup
+        reading it — with a guard-proof showing a same-label *unlinked* field is ignored, which is the
+        only way to prove the lookup follows the link rather than the name.
+
       - [ ] **RIGHT AFTER 7c-2 — MIGRATE TEST FIXTURES OFF SYNTHETIC CLIENT IDS WHEREVER CODE IS
         GATED BY `isDerivableJobberClientId`, AND FENCE IT. NOT DONE (filed 2026-09-30). THE SECOND
         TIME A SYNTHETIC ID HID REAL BEHAVIOUR.** Fixtures across the server suite use ids like
@@ -793,7 +814,48 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         slip into a dependency commit. **Correct the project/service distinction; do not retire the
         block** — the rename is still deliberately not done, and four of its five members stand.
 
-      - [ ] **⚠ `npm audit` HIGH — `axios` `1.0.0 - 1.19.0`, SEVEN ADVISORIES, AND IT IS A DIRECT
+      - [x] ✅ **CLOSED 2026-09-30 — `axios` 1.18.0 → 1.20.0, LOCKFILE ONLY, AND THE GATE WAS NOT THE
+        EVIDENCE.** `1.20.0` is the only release above the advisory range and `^1.18.0` already
+        admitted it, so **`package.json` did not change at all** (sha256 identical before and after);
+        the lockfile moved **exactly one** package — `node_modules/axios: 1.18.0 -> 1.20.0` — with the
+        entry count unchanged at 472 and the root range still `^1.18.0`. `axios` now appears **0**
+        times in `npm audit` output; nothing new appeared.
+        ⚠ **THE CHANGELOG WAS READ AND CHECKED AGAINST THIS CODE RATHER THAN SKIMMED.** The one
+        BREAKING item in 1.20.0 is the `HttpStatusCode` rename (`ContentTooLarge`/
+        `UnprocessableContent` added, old names kept as deprecated aliases) — **this codebase
+        references that enum nowhere**, and the only near-miss a case-insensitive grep found is
+        `error.$metadata.httpStatusCode`, which is the **AWS S3 SDK's** error shape, not axios's.
+        1.19.0 carried no breaking change. Every other item lands on a surface this code does not
+        use: **no interceptors, no `axios.create`, no `axios.defaults`, no `proxy`, no
+        `validateStatus`, no `maxRedirects`, no `timeoutErrorMessage`, no `lookup`/`httpVersion`, no
+        `signal`, and no axios in `src/` at all** (so the XHR/`ECONNABORTED` change cannot reach us).
+        The whole surface is 129 `axios.post` + 2 `axios.get` on the DEFAULT instance, with
+        `headers`, `timeout`, and one `responseType: 'text'`.
+        ⚠ **AND THE DEFAULT INSTANCE IS EXACTLY WHAT TWO OF THE ADVISORIES WERE ABOUT**, which is why
+        this one mattered more than a transitive dev finding: *"Prototype-Pollution Gadget in the
+        Default Instance Allows Inherited Object.prototype.method to Override HTTP Method"*.
+        ⚠ **THE GATE IS NOT SUFFICIENT EVIDENCE FOR A RUNTIME HTTP CLIENT, AND SAYING SO IS THE
+        POINT.** It stayed green at 2305/387/1398/85 — but the server suite **stubs `axios.post`
+        almost everywhere**, so a green run exercises very little real axios. Unlike `undici`, where
+        the React suite genuinely ran on the upgraded code, nothing here does.
+        **So the real check was a CONTRACT TEST against live axios 1.20.0 over a real loopback HTTP
+        server**: 200 resolves with `.data`; 401/403/429/500 all still expose `err.response.status`
+        and drive `jobberShouldRetry` to the right verdict; a refused connection yields no status
+        with `err.code` set and retries; an 80ms `timeout` fires as `ECONNABORTED` and retries; flat
+        headers arrive verbatim with no method-bucket leak (the 1.20.0 bug fix); and
+        `responseType: 'text'` still yields a string. **9/9 pass.**
+        ⚠ **AND THAT CHECK WAS PROVEN DISCRIMINATING RATHER THAN ASSUMED.** `jobberShouldRetry` reads
+        `error?.response?.status ?? error?.status`; fed the same 401 with the status moved to
+        `err.statusCode` it returns **true**, i.e. **a 401 would be retried forever**. So the 401 case
+        returns false only because the field is still where the helper looks — had 1.20.0 moved it,
+        that case would have failed, and no mocked test in the suite could have noticed.
+        ⚠ **UNLIKE `undici`, THE DEPLOYED TREE DOES CHANGE.** axios is a runtime dependency and
+        Railway's build step is `npm install`, so the deploy installs 1.20.0. Live Jobber calls
+        producing real capture-cost figures after the push is the last confirmation, and it is
+        Danny's stated condition.
+
+      - [x] **⚠ SUPERSEDED — SEE THE CLOSED ENTRY DIRECTLY ABOVE. Kept as the record of what was
+        found and how it was found, not as open work.** — `npm audit` HIGH — `axios` `1.0.0 - 1.19.0`, SEVEN ADVISORIES, AND IT IS A DIRECT
         RUNTIME DEPENDENCY. FILED 2026-09-30, NOT FIXED. THE MOST SERIOUS OPEN AUDIT FINDING, AND
         THE ONLY ONE THAT IS NOT DEV-ONLY.** Measured, not inferred: `package.json` lists it under
         **`dependencies`** as `^1.18.0`; `node_modules/axios/package.json` and the lockfile's
@@ -826,8 +888,11 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         change across every `axios.post` call site and is its own piece of work, not a bump.
 
       - [ ] **`npm audit` HIGH — `brace-expansion` `4.0.0 - 5.0.11`. THE NEW STANDING HIGH, FILED
-        2026-09-30, NOT FIXED.** ⚠ **"THE SOLE HIGH" IS NO LONGER TRUE — see the `axios` entry
-        directly above, which is both HIGH and runtime.** It replaced `undici` as the sole HIGH the moment that one cleared,
+        2026-09-30, NOT FIXED.** ⚠ **"THE SOLE HIGH" WAS BRIEFLY UNTRUE AND IS TRUE AGAIN, WHICH IS
+        WORTH ONE LINE RATHER THAN A SILENT REVERT: `axios` was also HIGH (and runtime) from the
+        moment it was noticed on 2026-09-30 until it was cleared to 1.20.0 the same day. With that
+        closed, this is once more the only HIGH — `npm audit` reads 3 findings, 1 high + 2
+        moderate.** It replaced `undici` as the sole HIGH the moment that one cleared,
         and it is **not** something the undici commit introduced: it is present against the
         unmodified HEAD lockfile too, measured in the same session. Also open: `ip-address`
         `<=10.7.0` (moderate, four advisories) and `multer` `2.2.0 - 2.3.0` (moderate).
