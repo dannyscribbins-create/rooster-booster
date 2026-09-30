@@ -465,6 +465,120 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         Gate on the bumped tree: `tests 2219 · suites 369 · pass 2219 · fail 0 · cancelled 0 ·
         skipped 0 · todo 0`, React **1397 across 85**, `EXIT=0` read from the log. **No count
         moved, which is the expected shape for a dependency bump that ships no tests.**
+      - [ ] ⚠ **MONEY, LIVE NOW: ACCENT'S REFERRAL PROGRAMME CAN PAY ON EXACTLY ONE OF THEIR
+        NINETEEN JOB TYPES. MEASURED 2026-09-30, NOT FIXED.** Found by 7c's read-only investigation;
+        **it predates N4 and is not caused by it.** Reproducing `evaluateReferral`'s own matching
+        semantics (`LOWER()` both sides, **no TRIM**) against the stored option list and the active
+        schedules returns **`CAN EARN A BONUS TODAY : 1 of 19 -> ["Repair Attempt"]`** — present on
+        **3** clients of the **8,675** carrying a `work_category:` tag.
+        **Three independent causes, all live:**
+        · The **escalating "Full Roof Replacement"** schedule (ACTIVE, minimum invoice **$9,500**)
+        keys **only** on `New Construction` — an option of the **QUOTE** "Job Type". The engine reads
+        the **JOB** field. **It can never fire.**
+        · The **"Repair"** schedule keys on `Restoration`, also QUOTE-only. Never fires.
+        · The same schedule keys on `Skylight Install` while Jobber's option is `Skylight Install `
+        — **one trailing space**, and nothing trims on either side.
+        ⚠ **THE FAILURE IS SILENT AND IT IS THE WORST KIND.** `evaluateReferral` returns
+        `no_matching_schedule_for_job_type` and the caller acts only on `qualified`, so there is **no
+        row, no flag, no alert, and no email** — a referrer whose friend buys a full roof replacement
+        is simply not paid, and nothing anywhere says so.
+        ⚠ **AND THE EXISTING GUARDRAIL CANNOT SEE IT.** `ReferralProgramSettings.jsx`'s warning fires
+        on options present in the offered list but **unmapped**; this is the inverse — a schedule key
+        matching **no** option — and nothing checks that direction.
+        **What removes this entry:** Danny's decision on whether the matching repair lands before 7d
+        (proposed as commit **7c-0**: TRIM both sides, drop the hard-coded label for the mapping, add
+        the inverse guardrail) or as its own money-phase item — **plus** a decision on the two dead
+        keys, which is a configuration question and not a code one. Detail and every query:
+        `COMMIT_7C_DESIGN.md` §0 and §d.
+
+      - [ ] ⚠ **A SALE SPANNING SEVERAL JOBS WITH DIFFERENT CATEGORIES — WHOSE SCHEDULE GOVERNS THE
+        BONUS? NEEDS DANNY'S RULING BEFORE SALE VALUE IS BUILT. NOT BUILT (filed 2026-09-30).**
+        Sale grouping already puts several jobs into one sale inside the contractor's
+        `invoice_window_days` (`windowDaysFor` in `server/utils/clientSales.js`). So a roof
+        replacement plus a gutter install within that window is **one sale with two categories** —
+        and the two map to **different schedules** with different payout models and different
+        minimums. **Nothing decides between them today**, because the payout path does not group at
+        all: `evaluateReferral` uses the single triggered invoice.
+        ⚠ **AND THE ENGINE'S CURRENT TIE-BREAK IS NOT A RULING, IT IS AN ACCIDENT OF TWO LOOPS.** It
+        takes any `escalating` match over every other model, and within a model whatever row order
+        Postgres returned — the comment claiming seed order guarantees precedence is **not enforced
+        by the query**. So if grouping is ever wired in, the answer would be decided by that
+        accident unless a rule is set first.
+        **The options to rule between:** the highest-value category wins · the largest job's category
+        wins · the first (anchor) job's category wins · each job pays on its own schedule and the
+        bonuses sum · the contractor picks a precedence order.
+        ⚠ **DO NOT WIRE GROUPING INTO THE PAYOUT PATH BEFORE THIS IS RULED.** A test fence
+        (`server/test/saleGrouping.test.js`) deliberately forbids `referralRules.js` from importing
+        the grouping primitive, precisely so that how much referrers are paid never changes as a side
+        effect of a rep feature.
+        **What removes this entry:** a dated ruling, then the implementation it authorises.
+
+      - [ ] **THE REWARDS ONBOARDING STEP AND ITS GUARDRAILS — WHAT 7c DOES *NOT* COVER (filed
+        2026-09-30).** The programme must work for a contractor with **no** category field, and today
+        nothing supports that. Investigated read-only; **there is no onboarding flow and no
+        `CONTRACTOR_ONBOARDING_SPEC.md` anywhere in the repo** — the only files matching "onboarding"
+        are `BankingSettings.jsx`, `LoginScreen.jsx` and `stripe.js`, all unrelated. **So there is no
+        step to extend; one has to be built.**
+        **Placed in 7c** (see `COMMIT_7C_DESIGN.md` §g): the contractor-set **default schedule**, and
+        the **inverse guardrail** that flags a schedule key matching no live option.
+        **NOT in 7c or 7d — filed here:**
+        · **Onboarding rewards step**, listing discovered fields and, when none fits, plain
+        instructions to create one in Jobber (Settings → Custom Fields → Job custom fields → Add
+        Field, a dropdown, tick **Transferable**). **Its own arc, not a money commit.**
+        · **Coverage notice** — e.g. *"18 of your last 100 paid invoices had no value in your
+        category field, so they used your default schedule."* **Money phase**: it needs the fact
+        table populated over time and says nothing useful on day one.
+        · **Unmapped-new-option alert** — an option added in the CRM later must appear as unmapped,
+        never silently paid on the wrong schedule. **Money phase**; the existing unassigned-label
+        warning half-covers it already.
+        ⚠ **AND A RULING TO RECORD RATHER THAN BUILD: RoofMiles NEVER CREATES OR EDITS A CRM FIELD.**
+        It belongs beside the no-write-back principle (A36.5.a) for the same reason — automating
+        "just add the field for them" is a genuinely attractive idea on its merits, so a session that
+        has not met the answer will propose it.
+        · **Also filed, small:** the Schedule Builder's empty state promises *"connect Jobber or add
+        labels manually below"* and **there is no manual-add control**; with no discovered options the
+        admin cannot advance past Step 2 at all.
+
+      - [ ] **DOC CORRECTION — THE RECORD SAYING FIELD DISCOVERY "CANNOT WORK" IS INVERTED, AND IT
+        POINTS AWAY FROM THE MECHANISM 7c DEPENDS ON (filed 2026-09-30).** This file's own 3d Phase 0
+        block records that `customFieldConfigurations` *"returns a PERMISSIONS ERROR for this app's
+        scope … so `discoverFields()` in `server/crm/jobber.js` cannot work for this app today.
+        **Filed, not fixed.**"*
+        ⚠ **PRODUCTION CONTRADICTS IT.** `contractor_jobber_fields` holds **17 rows for
+        `accent-roofing-dev`, every one `discovered_at 2026-09-26 16:08 UTC`**, carrying data only
+        that query can supply — 94 `Source` options, 75 shingle colours, 58 insurers, and the
+        19-option `Job Type` list. **Discovery works.**
+        ⚠ **THIS IS THE INVERTED-RECORD CLASS, NOT MERE STALENESS:** it instructs the next session
+        *not* to build on field discovery, which is exactly what 7c is built on. Whether a scope was
+        added or Jobber changed is unknown and should be said rather than guessed.
+        **Also correct while there:** the same neighbourhood claims the mapping lives at
+        `contractor_crm_settings.work_category`. It does not — there is **no `work_category` column
+        anywhere in the schema**; the real location is
+        **`contractor_settings.contractor_field_mappings`**, a JSONB whose `work_category` key holds
+        a **label string**.
+        **What removes this entry:** correcting both claims, with the evidence, in their own docs
+        commit — not folded into a behaviour commit.
+
+      - [ ] **FIVE INCIDENTAL DEFECTS IN THE PAYOUT ENGINE AND ITS BUILDER, FOUND BY 7c's
+        INVESTIGATION. NONE FIXED (filed 2026-09-30).** All read-only findings with `file:line` in
+        `COMMIT_7C_DESIGN.md` §i.
+        · ⚠ **A PERCENTAGE SCHEDULE PAYS 100× TOO MUCH.** The builder sends a whole-number percent
+        and its own preview divides by 100; the engine multiplies raw — **no `/100`** — so `5`
+        becomes `invoiceTotal × 5`. **Accent's percentage schedule is INACTIVE, which is the only
+        reason this has not fired.** `percentage_max_cap` would clamp it only if set. **This is the
+        one of the five that is a live money hazard the moment somebody activates it.**
+        · `is_catch_all` is written by the builder and **never read** — the engine always treats the
+        last escalating step as catch-all, so unticking the box does nothing.
+        · The escalating **prior-count is not scoped by schedule**: the join adds no predicate on
+        `referral_conversions`, so it counts all of the referrer's conversions in the window. **It
+        cannot be fixed by a join** — `referral_conversions` has no `schedule_id`, so the schedule
+        `evaluateReferral` returns is never persisted.
+        · The **"Job source" mapping target does nothing** — the label is resolved and never used;
+        there is no `job_source:` tag block.
+        · **`insurance_company` can never be configured** — read by the tag deriver but absent from
+        the allowed mapping keys, so the PATCH strips it and the hard-coded fallback always wins.
+        **What removes this entry:** each fixed on its own, with the percentage one first.
+
       - [ ] **A CRON RUN THAT TAKES OVER AN EXPIRED LOCK MUST SAY SO IN `error_log`. NOT BUILT
         (filed 2026-09-30). Small.** The owner-scoped release from the cron-lock-owner commit makes
         a crashed holder's lock *takeable* once `timeout_at` passes — that is the self-healing half
