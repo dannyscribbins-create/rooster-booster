@@ -2,6 +2,10 @@ import { useState } from 'react';
 import { AD } from '../../constants/adminTheme';
 import { BACKEND_URL } from '../../config/contractor';
 import { getAdminToken } from '../../utils/authStorage';
+// ⚠ ONE DEFINITION of category-value comparison, mirrored from the canonical
+// server/utils/categoryMatch.js (7c-0). Step 2 needs it for UNSAVED state as the admin
+// toggles pills, which is the one comparison the server cannot make for us.
+import { categoryListIncludes, categoryValuesMatch, findUnmatchedCategoryKeys } from '../../utils/categoryMatch.mjs';
 
 const MODELS = [
   {
@@ -187,21 +191,37 @@ function Step1({ form, setForm }) {
 
 // ── Step 2: Job Type Mapping ───────────────────────────────────────────────────
 function Step2({ form, setForm, allLabels }) {
-  const selected = new Set(form.job_types);
 
   function toggle(label) {
     setForm(p => {
-      const next = new Set(p.job_types);
-      if (next.has(label)) next.delete(label); else next.add(label);
-      return { ...p, job_types: [...next] };
+      // ⚠ REMOVAL IS MATCHED WITH THE SHARED MATCHER, ADDITION STORES THE RAW LABEL (7c-0).
+      // The buckets above are now trim-insensitive, so a pill rendered from the option list can
+      // represent a stored key that differs in whitespace. A `Set.delete` on the exact string would
+      // silently fail to remove it — the pill would appear to un-toggle and the key would survive
+      // the save. Filtering by the matcher removes whichever stored form is actually there.
+      const present = categoryListIncludes(p.job_types, label);
+      const next = present
+        ? p.job_types.filter(k => !categoryValuesMatch(k, label))
+        : [...p.job_types, label];
+      return { ...p, job_types: next };
     });
   }
 
-  const qualifying    = allLabels.filter(l => selected.has(l));
-  const notQualifying = allLabels.filter(l => !selected.has(l));
+  // ⚠ TRIM- AND CASE-INSENSITIVE, THROUGH THE SHARED MATCHER (7c-0). These three buckets used
+  // exact, case-sensitive, untrimmed comparisons, and TWO of Accent's nineteen Jobber options carry
+  // a trailing space. The consequence was a false alarm in the amber bucket below: a key stored as
+  // 'Skylight Install' was reported as "not in Jobber fields" while the option 'Skylight Install '
+  // existed all along. The engine had the mirror-image bug — it refused to MATCH that pair — and
+  // both are now one function.
+  const qualifying    = allLabels.filter(l => categoryListIncludes(form.job_types, l));
+  const notQualifying = allLabels.filter(l => !categoryListIncludes(form.job_types, l));
 
-  // Labels not in allLabels but in form (from existing schedule with unknown labels)
-  const extraSelected = form.job_types.filter(l => !allLabels.includes(l));
+  // Selected keys that match no option in the mapped field. ⚠ THIS IS THE INVERSE GUARDRAIL, and
+  // it was already here before 7c-0 — rendered as the amber pills below. What 7c-0 changes is that
+  // it now uses the shared matcher, and that the same verdict is ALSO computed server-side and
+  // shown on the schedule LIST, so an admin no longer has to open each schedule and reach Step 2 to
+  // find out. ⚠ An empty allLabels yields [] rather than every key: unknown is not wrong.
+  const extraSelected = findUnmatchedCategoryKeys(form.job_types, allLabels);
 
   return (
     <div>

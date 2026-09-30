@@ -26,6 +26,8 @@ const { escapeHtml } = require('../../utils/pendingReferral');
 // columns. Escaping stops a breakout; it does not stop a scheme.
 const { safeLogoUrl, safeWebsiteUrl } = require('../../utils/safeUrl');
 const { isInvoicePaid } = require('../../utils/invoicePaid');
+// ⚠ ONE DEFINITION of category-value comparison, shared with the payout engine (7c-0).
+const { categoryListIncludes, findUnmatchedCategoryKeys } = require('../../utils/categoryMatch');
 
 const router = express.Router();
 
@@ -2654,6 +2656,12 @@ router.get('/api/admin/schedules', requirePermission('finance_settings'), async 
     }));
 
     let all_labels = [];
+    // ⚠ `options_known` SEPARATES "THE FIELD HAS NO SUCH OPTION" FROM "WE DO NOT KNOW ITS OPTIONS",
+    // AND THE INVERSE GUARDRAIL IS WORTHLESS WITHOUT THE DISTINCTION (7c-0). When no field is
+    // mapped, or discovery has never run, `all_labels` falls back BELOW to the keys already stored
+    // — at which point every key matches itself by construction and a naive check would report a
+    // clean bill of health it never observed. That is this repo's recurring failure exactly.
+    let options_known = false;
     const settingsResult = await pool.query(
       'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
       [contractorId]
@@ -2666,6 +2674,7 @@ router.get('/api/admin/schedules', requirePermission('finance_settings'), async 
       );
       if (Array.isArray(fieldResult.rows[0]?.options)) {
         all_labels = fieldResult.rows[0].options;
+        options_known = all_labels.length > 0;
       }
     }
     if (all_labels.length === 0) {
@@ -2674,12 +2683,47 @@ router.get('/api/admin/schedules', requirePermission('finance_settings'), async 
         [contractorId]
       );
       all_labels = allJt.rows.map(r => r.jobber_label);
+      // deliberately leaves options_known false — these are our own stored keys, not the field's
+      // options, so they can say nothing about whether a key still exists in the CRM.
     }
 
-    const assignedSet = new Set(schedules.flatMap(s => s.job_types));
-    const unassigned_labels = all_labels.filter(l => !assignedSet.has(l));
+    // ⚠ TRIM- AND CASE-INSENSITIVE, THROUGH THE ONE SHARED MATCHER (7c-0). This was
+    // `!assignedSet.has(l)` — an exact, case-sensitive, untrimmed comparison — so an option Jobber
+    // stores as `'Skylight Install '` was reported as unassigned even when the very same option was
+    // assigned as `'Skylight Install'`. Two of Accent's nineteen options carry a trailing space.
+    const assignedKeys = schedules.flatMap(s => s.job_types);
+    const unassigned_labels = all_labels.filter(l => !categoryListIncludes(assignedKeys, l));
 
-    res.json({ schedules, all_labels, unassigned_labels });
+    // ── THE INVERSE GUARDRAIL (7c-0) ─────────────────────────────────────────────
+    // `unassigned_labels` answers "which of the field's options earn nothing?". This answers the
+    // OPPOSITE and far more dangerous question: "which of this schedule's qualifying values match
+    // no option in the mapped field at all?" — a schedule that can never fire, paying nobody,
+    // silently, because the engine returns no_matching_schedule_for_job_type and the caller acts
+    // only on `qualified`.
+    //
+    // ⚠ IT REUSES ScheduleBuilderDrawer's CHECK RATHER THAN ADDING A SECOND ONE. Step 2 already
+    // renders exactly this as its amber "Currently assigned (not in Jobber fields)" pills, so the
+    // case was DETECTED before 7c-0 — but only from inside an open schedule, on Step 2, one
+    // schedule at a time. Computing it here puts the same verdict on the schedule LIST, and makes
+    // the server the single definition for every SAVED schedule.
+    //
+    // ⚠ AND THE OLD IN-DRAWER CHECK WAS ALSO WRONG IN THE OTHER DIRECTION: its exact `includes`
+    // flagged a real option as missing whenever only whitespace differed. The shared matcher fixes
+    // the false positive and the false negative together — they were one bug seen from two sides.
+    const schedulesWithGuard = schedules.map(s => ({
+      ...s,
+      unmatched_job_types: options_known
+        ? findUnmatchedCategoryKeys(s.job_types, all_labels)
+        : [],
+    }));
+
+    res.json({
+      schedules: schedulesWithGuard,
+      all_labels,
+      unassigned_labels,
+      options_known,
+      category_field_label: mappings.work_category || null,
+    });
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: 'Failed to load schedules' });

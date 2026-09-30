@@ -482,14 +482,32 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         `no_matching_schedule_for_job_type` and the caller acts only on `qualified`, so there is **no
         row, no flag, no alert, and no email** — a referrer whose friend buys a full roof replacement
         is simply not paid, and nothing anywhere says so.
-        ⚠ **AND THE EXISTING GUARDRAIL CANNOT SEE IT.** `ReferralProgramSettings.jsx`'s warning fires
-        on options present in the offered list but **unmapped**; this is the inverse — a schedule key
-        matching **no** option — and nothing checks that direction.
-        **What removes this entry:** Danny's decision on whether the matching repair lands before 7d
-        (proposed as commit **7c-0**: TRIM both sides, drop the hard-coded label for the mapping, add
-        the inverse guardrail) or as its own money-phase item — **plus** a decision on the two dead
-        keys, which is a configuration question and not a code one. Detail and every query:
-        `COMMIT_7C_DESIGN.md` §0 and §d.
+        ⚠ **AND I WROTE HERE THAT "THE EXISTING GUARDRAIL CANNOT SEE IT". THAT WAS WRONG, CORRECTED
+        2026-09-30 BY 7c-0 AFTER DANNY CHALLENGED IT.** `ScheduleBuilderDrawer.jsx`'s Step 2 computes
+        `extraSelected` and renders it as the amber **"CURRENTLY ASSIGNED (NOT IN JOBBER FIELDS)"**
+        pills — that **IS** the inverse check, and it has been there all along. What is true is
+        narrower: `ReferralProgramSettings.jsx`'s **list-level** warning covers only the other
+        direction (options assigned to no schedule), and the Step 2 check is reachable **only by
+        opening each schedule and reaching Step 2**. ⚠ **I conflated two mechanisms and reported a
+        VISIBILITY gap as total blindness** — the *state-the-scope-beside-the-claim* failure this file
+        records, written into this file.
+        ⚠ **AND THE OLD CHECK WAS WRONG IN THE OTHER DIRECTION TOO**, which is the part worth
+        keeping: `!allLabels.includes(l)` is exact, case-sensitive and untrimmed, so a key stored as
+        `Skylight Install` was reported as "not in Jobber fields" while the option
+        `Skylight Install ` existed all along. **A false positive on the very pair the engine had a
+        false negative on. One bug, two directions** — which is why 7c-0 fixes them with one matcher
+        and REUSES the existing check rather than adding a second.
+        ⚠ **STATUS 2026-09-30: LARGELY RESOLVED BY CONFIGURATION, NOT BY CODE.** Danny re-picked the
+        qualifying types in the Schedule Builder, deselecting `New Construction` and `Restoration`.
+        Matchable options went **1 → 8 of 19**, and all eight match even without TRIM. **So 7c-0's
+        TRIM is durability rather than a live repair, and saying otherwise would be taking credit for
+        his reconfiguration.** It still matters for three reachable cases: tidying the trailing space
+        in Jobber would break the stored key; any key entered by a route other than clicking a pill;
+        and the drawer's display comparison above.
+        **What removes this entry:** nothing further on the matching — 7c-0 shipped it. The residue is
+        that **11 of 19 options still map to no schedule** (inspections, measurements and the like),
+        which may well be intentional and is already covered by the unassigned-label warning.
+        Detail and every query: `COMMIT_7C_DESIGN.md` §0, §d and §d2.
 
       - [ ] ⚠ **A SALE SPANNING SEVERAL JOBS WITH DIFFERENT CATEGORIES — WHOSE SCHEDULE GOVERNS THE
         BONUS? NEEDS DANNY'S RULING BEFORE SALE VALUE IS BUILT. NOT BUILT (filed 2026-09-30).**
@@ -513,28 +531,40 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         effect of a rep feature.
         **What removes this entry:** a dated ruling, then the implementation it authorises.
 
-      - [ ] **THE REWARDS ONBOARDING STEP AND ITS GUARDRAILS — WHAT 7c DOES *NOT* COVER (filed
-        2026-09-30).** The programme must work for a contractor with **no** category field, and today
-        nothing supports that. Investigated read-only; **there is no onboarding flow and no
-        `CONTRACTOR_ONBOARDING_SPEC.md` anywhere in the repo** — the only files matching "onboarding"
-        are `BankingSettings.jsx`, `LoginScreen.jsx` and `stripe.js`, all unrelated. **So there is no
-        step to extend; one has to be built.**
+      - [ ] **ADDITIONS TO `CONTRACTOR_ONBOARDING_SPEC.md` — THE CATEGORY FIELD, TO BE MERGED WHEN
+        THAT SPEC REACHES THE REPO (filed 2026-09-30, re-filed as additions on Danny's correction).**
+        ⚠ **THE SPEC EXISTS — IT IS JUST NOT HERE.** Draft v0.1, 2026-09-27, in Danny's Claude project
+        files; he will add it to the repo later. **It does not yet cover the category field.** So
+        these are amendments to a real document, not a request to invent one.
+        ⚠ **AND MY EARLIER FINDING WAS RIGHT ABOUT THE REPO AND WRONG ABOUT THE WORLD** — I reported
+        "there is no `CONTRACTOR_ONBOARDING_SPEC.md` anywhere", having searched only the working tree.
+        A spec can exist outside the repo, and **"not in the repo" is not "does not exist"**; this is
+        the same shape as `git grep` being unable to see an untracked file, one layer out. Say what was
+        searched.
         **Placed in 7c** (see `COMMIT_7C_DESIGN.md` §g): the contractor-set **default schedule**, and
         the **inverse guardrail** that flags a schedule key matching no live option.
         **NOT in 7c or 7d — filed here:**
-        · **Onboarding rewards step**, listing discovered fields and, when none fits, plain
-        instructions to create one in Jobber (Settings → Custom Fields → Job custom fields → Add
-        Field, a dropdown, tick **Transferable**). **Its own arc, not a money commit.**
+        · **A REWARDS STEP that names the category field.** It lists the contractor's discovered
+        custom fields so they can choose one, and when none fits, gives the plain instructions to make
+        one in Jobber themselves: **Settings → Custom Fields → Job custom fields → Add Field**, type
+        **dropdown**, tick **Transferable**. ⚠ **Transferable is the load-bearing tick** — it is what
+        copies the value onto the job's invoices, and R-7c-3's resolution order leans on it.
+        ⚠ **AND THE STEP MUST NOT BLOCK.** A contractor with no such field is not stuck: they get
+        their **default schedule** (7c-3). Onboarding that dead-ends on a CRM setting nobody has
+        configured yet is worse than onboarding that proceeds and says what is missing.
         · **Coverage notice** — e.g. *"18 of your last 100 paid invoices had no value in your
         category field, so they used your default schedule."* **Money phase**: it needs the fact
         table populated over time and says nothing useful on day one.
         · **Unmapped-new-option alert** — an option added in the CRM later must appear as unmapped,
         never silently paid on the wrong schedule. **Money phase**; the existing unassigned-label
         warning half-covers it already.
-        ⚠ **AND A RULING TO RECORD RATHER THAN BUILD: RoofMiles NEVER CREATES OR EDITS A CRM FIELD.**
-        It belongs beside the no-write-back principle (A36.5.a) for the same reason — automating
-        "just add the field for them" is a genuinely attractive idea on its merits, so a session that
-        has not met the answer will propose it.
+        · **THE NO-CATEGORY DEFAULT, stated in the spec as well as built.** The rewards step has to
+        say what happens when no field is chosen, or the default schedule is a behaviour with no
+        documented promise behind it.
+        ✅ **AND THE RULING IS NOW RESIDENT RATHER THAN FILED: RoofMiles NEVER CREATES OR EDITS A
+        CONTRACTOR'S CRM FIELDS** — ruled by Danny 2026-09-30, written into `CLAUDE.md` beside A36.5.a
+        in the 7c-0 commit. It is resident because the proposal ("just create the field for them")
+        arrives before any document is open and is genuinely attractive on its merits.
         · **Also filed, small:** the Schedule Builder's empty state promises *"connect Jobber or add
         labels manually below"* and **there is no manual-add control**; with no discovered options the
         admin cannot advance past Step 2 at all.

@@ -175,6 +175,9 @@ export default function ReferralProgramSettings() {
   const [schedules, setSchedules]             = useState([]);
   const [allLabels, setAllLabels]             = useState([]);
   const [unassignedLabels, setUnassignedLabels] = useState([]);
+  // ⚠ THE CATEGORY FIELD'S LABEL, ONLY SO A WARNING CAN NAME IT (7c-0). It is display text,
+  // never an identity: the mapping is being moved onto entity + CRM id in 7c-1.
+  const [categoryFieldLabel, setCategoryFieldLabel] = useState(null);
   const [loading, setLoading]                 = useState(true);
   const [drawerOpen, setDrawerOpen]           = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(null); // null = create mode
@@ -189,6 +192,7 @@ export default function ReferralProgramSettings() {
       setSchedules(data.schedules || []);
       setAllLabels(data.all_labels || []);
       setUnassignedLabels(data.unassigned_labels || []);
+      setCategoryFieldLabel(data.category_field_label || null);
     } catch {
       // errors displayed inline via loading state
     } finally {
@@ -242,6 +246,15 @@ export default function ReferralProgramSettings() {
   const activeSchedules   = schedules.filter(s => s.is_active);
   const inactiveSchedules = schedules.filter(s => !s.is_active);
 
+  // ⚠ READ STRAIGHT FROM THE SERVER'S VERDICT, NEVER RECOMPUTED HERE (7c-0). The server owns this
+  // for every SAVED schedule — `unmatched_job_types` comes from the one shared matcher in
+  // server/utils/categoryMatch.js — and recomputing it in the client would be a second definition
+  // of exactly the rule 7c-0 exists to unify. It is also already gated by `options_known` there, so
+  // an absent field or an unrun discovery arrives as an empty array rather than as every key.
+  const schedulesWithBrokenKeys = schedules.filter(
+    s => Array.isArray(s.unmatched_job_types) && s.unmatched_job_types.length > 0
+  );
+
   return (
     <div style={{ maxWidth: 760 }}>
 
@@ -266,6 +279,51 @@ export default function ReferralProgramSettings() {
           Add Schedule
         </button>
       </div>
+
+      {/* ── THE INVERSE GUARDRAIL (7c-0) ──
+          A schedule whose qualifying value matches NO option in the mapped Jobber field can never
+          fire. ⚠ IT IS THE DANGEROUS DIRECTION, and it is the opposite of the warning below: that
+          one says "this option earns nothing", this one says "this schedule pays nobody". The
+          engine's refusal is silent — no row, no flag, no email — so the admin panel is the only
+          place it can surface.
+          ⚠ THE CHECK ITSELF IS NOT NEW. ScheduleBuilderDrawer's Step 2 has always rendered it as
+          amber "not in Jobber fields" pills. What is new is that it is visible WITHOUT opening each
+          schedule, and that the verdict is computed once on the server rather than three ways.
+          ⚠ `options_known` GATES IT: with no mapped field or no discovery run, nothing is known
+          about which options exist, and flagging every key would be a wall of false alarms on the
+          setup where the admin can do least about it. Unknown is not wrong. */}
+      {schedulesWithBrokenKeys.length > 0 && (
+        <div style={{
+          marginBottom: 24, padding: '12px 16px', borderRadius: AD.radiusMd,
+          background: AD.amberBg, border: `1px solid rgba(217,119,6,0.3)`,
+          display: 'flex', alignItems: 'flex-start', gap: 10,
+        }}>
+          <i className="ph ph-warning-octagon" style={{ fontSize: 18, color: AD.amberText, flexShrink: 0, marginTop: 1 }} />
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 600, color: AD.amberText, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
+              {schedulesWithBrokenKeys.length === 1
+                ? 'One schedule has a qualifying option that no longer exists in Jobber.'
+                : `${schedulesWithBrokenKeys.length} schedules have qualifying options that no longer exist in Jobber.`}
+            </p>
+            {schedulesWithBrokenKeys.map(s => (
+              <p key={s.id} style={{ margin: '0 0 4px', fontSize: 13, color: AD.amberText, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
+                <strong>{s.name}</strong>:{' '}
+                {s.unmatched_job_types.length === 1
+                  ? '1 qualifying option no longer exists'
+                  : `${s.unmatched_job_types.length} qualifying options no longer exist`}
+                {' — '}
+                {/* ⚠ QUOTED so a trailing space is visible. Two of Accent's own Jobber options carry
+                    one, and a bare value would make an admin hunt for a difference they cannot see. */}
+                {s.unmatched_job_types.map(v => `"${v}"`).join(', ')}
+              </p>
+            ))}
+            <p style={{ margin: '4px 0 0', fontSize: 12, color: AD.amberText, opacity: 0.85, fontFamily: AD.fontSans, lineHeight: 1.5 }}>
+              Referrals matching only those options pay nothing. Open the schedule and re-pick from
+              the current Jobber options{categoryFieldLabel ? ` in "${categoryFieldLabel}"` : ''}.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Unassigned labels warning ── */}
       {unassignedLabels.length > 0 && (

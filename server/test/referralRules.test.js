@@ -26,16 +26,18 @@ function makeInvoice(overrides = {}) {
   };
 }
 
+// ⚠ ONE POOL PER FILE, NOT PER describe, AND THIS FILE NOW HAS TWO (7c-0). initTestDb() returns
+// the server/db.js pool SINGLETON, so a per-describe pool.end() ends the pool the NEXT describe is
+// about to use. The first writing of 7c-0's block kept its own before/after and the result was
+// `Cannot use a pool after calling end on the pool` thrown from initDB during setup — which the
+// runner reports as CANCELLED, not failed, so ten cases vanished under a summary that showed no
+// failures for them. That is the exact shape CLAUDE.md records, hit by the session that had read it.
+let pool;
+before(async () => { pool = await initTestDb(); });
+after(async () => { await pool.end(); });
+
 describe('evaluateReferral — referral rules engine', () => {
-  let pool, userId, scheduleId;
-
-  before(async () => {
-    pool = await initTestDb();
-  });
-
-  after(async () => {
-    await pool.end();
-  });
+  let userId, scheduleId;
 
   beforeEach(async () => {
     await pool.query('DELETE FROM referral_conversions');
@@ -162,5 +164,170 @@ describe('evaluateReferral — referral rules engine', () => {
 
     assert.equal(result.qualified, false);
     assert.equal(result.reason,    'referrer_not_found');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7c-0 — THE CATEGORY FIELD IS THE CONTRACTOR'S, AND THE COMPARISON IS FORGIVING
+//
+// ⚠ EVERY CASE BELOW IS BEHAVIOURAL, THROUGH THE REAL ENGINE AND A REAL DATABASE, AND THAT IS
+// DELIBERATE. `server/test/categoryMatch.test.js` proves the matcher is CORRECT and that the call
+// sites are WRITTEN; neither of those proves a referral is actually PAID. A source fence and a unit
+// test on a pure function are both satisfied by code that is never reached — this repo has shipped
+// exactly that twice, so the money claim is made here or not at all.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('7c-0 — evaluateReferral reads the contractor mapping and matches forgivingly', () => {
+  beforeEach(async () => {
+    for (const t of ['referral_conversions', 'referral_schedule_job_types', 'referral_schedules',
+      'contractor_crm_settings', 'users', 'contractor_settings', 'contractor_jobber_fields']) {
+      await pool.query(`DELETE FROM ${t}`);
+    }
+    await seedContractor(pool, 'accent-roofing');
+    await seedUser(pool, {
+      fullName: 'Test Referrer',
+      email: 'referrer@c7-test.com',
+      contractorId: 'accent-roofing',
+    });
+  });
+
+  /** Seed a schedule keyed on one qualifying value, stored exactly as given. */
+  async function scheduleKeyedOn(jobberLabel) {
+    return seedReferralSchedule(pool, {
+      contractorId: 'accent-roofing', jobberLabel, flatAmount: 250,
+    });
+  }
+
+  /** Point the contractor's work_category mapping at a field label. */
+  async function mapCategoryFieldTo(label) {
+    await pool.query(
+      `INSERT INTO contractor_settings (contractor_id, contractor_field_mappings)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (contractor_id) DO UPDATE SET contractor_field_mappings = $2::jsonb`,
+      ['accent-roofing', JSON.stringify({ work_category: label })]
+    );
+  }
+
+  /** An invoice whose single job carries one custom field. */
+  function invoiceWithField(label, value) {
+    return makeInvoice({
+      jobs: { nodes: [{ customFields: [{ label, valueDropdown: value }] }] },
+    });
+  }
+
+  // ⚠ GUARD-PROOF (ii)'s SUBJECT. This is the live defect 7b found: the engine hard-coded the label
+  // 'Job Type', so a contractor who NAMES THEIR FIELD ANYTHING ELSE kept perfectly correct tags and
+  // silently stopped qualifying for every payout schedule. Restoring the literal turns this red.
+  it('⚠ a contractor whose category field is NOT called "Job Type" still qualifies', async () => {
+    await mapCategoryFieldTo('Work Type');
+    await scheduleKeyedOn('Roof Replacement');
+
+    const result = await evaluateReferral('accent-roofing',
+      invoiceWithField('Work Type', 'Roof Replacement'), 'Test Referrer');
+
+    assert.equal(result.qualified, true,
+      `the mapped field must be read, not a hard-coded label — got: ${JSON.stringify(result)}`);
+    assert.equal(Number(result.bonusAmount), 250);
+  });
+
+  // ⚠ PAIRED NEGATIVE, AND WITHOUT IT THE CASE ABOVE PROVES ALMOST NOTHING. An engine that read
+  // EVERY custom field regardless of label would pass it too. This pins that the mapping SELECTS.
+  it('⚠ PAIRED NEGATIVE — a value on a DIFFERENT field is not read', async () => {
+    await mapCategoryFieldTo('Work Type');
+    await scheduleKeyedOn('Roof Replacement');
+
+    const result = await evaluateReferral('accent-roofing',
+      invoiceWithField('Some Other Field', 'Roof Replacement'), 'Test Referrer');
+
+    assert.equal(result.qualified, false, 'only the MAPPED field may supply the category');
+    assert.equal(result.reason, 'no_job_type_found');
+  });
+
+  it('with NO mapping configured it still resolves "Job Type", matching deriveJobberTags', async () => {
+    // ⚠ THE FALLBACK IS DELIBERATE AND THIS CASE IS WHY IT STAYS. deriveJobberTags has the identical
+    // fallback, and the two readers must agree: an unmapped contractor's tags and their payouts have
+    // to resolve the same field. Deleting it would look like a cleanup and would stop every unmapped
+    // contractor qualifying.
+    await scheduleKeyedOn('Roof Replacement');
+    const result = await evaluateReferral('accent-roofing',
+      invoiceWithField('Job Type', 'Roof Replacement'), 'Test Referrer');
+    assert.equal(result.qualified, true, `got: ${JSON.stringify(result)}`);
+  });
+
+  // ⚠ GUARD-PROOF (i)'s SUBJECT, AND THE FIXTURE IS THE REAL PRODUCTION SHAPE. Jobber stores two of
+  // Accent's nineteen options with a TRAILING SPACE. The schedule key and the record's value can
+  // therefore differ by whitespace alone, and the old untrimmed comparison refused to match them.
+  // ⚠ THE KEY AND THE VALUE MUST DIFFER, or the case passes without TRIM and measures nothing.
+  it('⚠ a TRAILING SPACE on the value no longer loses the bonus', async () => {
+    await mapCategoryFieldTo('Job Type');
+    await scheduleKeyedOn('Skylight Install');                             // stored WITHOUT the space
+
+    const result = await evaluateReferral('accent-roofing',
+      invoiceWithField('Job Type', 'Skylight Install '), 'Test Referrer'); // Jobber's own form
+
+    assert.equal(result.qualified, true,
+      `one trailing space is not a different option — got: ${JSON.stringify(result)}`);
+  });
+
+  it('⚠ and the same in reverse — a trailing space on the stored KEY', async () => {
+    // Accent's live data is this way round: Danny re-selected from the pills, so the key carries
+    // Jobber's space. TRIM has to work from either side, and one direction is not the other.
+    await mapCategoryFieldTo('Job Type');
+    await scheduleKeyedOn('Skylight Install ');                            // stored WITH the space
+
+    const result = await evaluateReferral('accent-roofing',
+      invoiceWithField('Job Type', 'Skylight Install'), 'Test Referrer');
+
+    assert.equal(result.qualified, true, `got: ${JSON.stringify(result)}`);
+  });
+
+  // ⚠ GUARD-PROOF (iii)'s SUBJECT — on the LABEL, which is the half that was case-SENSITIVE. The
+  // value comparison already folded case; the field lookup did not, so it diverged from
+  // deriveJobberTags' getCustomFieldValue on the very same record.
+  it('⚠ the field LABEL is matched case-insensitively, as deriveJobberTags does', async () => {
+    await mapCategoryFieldTo('Job Type');
+    await scheduleKeyedOn('Roof Replacement');
+
+    const result = await evaluateReferral('accent-roofing',
+      invoiceWithField('JOB TYPE', 'Roof Replacement'), 'Test Referrer');
+
+    assert.equal(result.qualified, true,
+      `a label differing only in case is the same field — got: ${JSON.stringify(result)}`);
+  });
+
+  it('a TEXT custom field can supply the category, not only a dropdown', async () => {
+    // ⚠ THE OLD GUARD WAS `valueDropdown !== undefined`, which excluded a whole class of contractor
+    // by field TYPE. deriveJobberTags has always accepted valueText as well.
+    await mapCategoryFieldTo('Job Type');
+    await scheduleKeyedOn('Roof Replacement');
+
+    const result = await evaluateReferral('accent-roofing', makeInvoice({
+      jobs: { nodes: [{ customFields: [{ label: 'Job Type', valueText: 'Roof Replacement' }] }] },
+    }), 'Test Referrer');
+
+    assert.equal(result.qualified, true, `got: ${JSON.stringify(result)}`);
+  });
+
+  it('a blank category value still does not qualify — forgiving is not credulous', async () => {
+    // ⚠ THE LIMIT OF THE NORMALISER, ASSERTED. Trim-and-fold must not turn "no value" into a match;
+    // normalizeCategoryValue returns null for a blank and null matches nothing.
+    await mapCategoryFieldTo('Job Type');
+    await scheduleKeyedOn('Roof Replacement');
+
+    const result = await evaluateReferral('accent-roofing',
+      invoiceWithField('Job Type', '   '), 'Test Referrer');
+
+    assert.equal(result.qualified, false);
+    assert.equal(result.reason, 'no_job_type_found');
+  });
+
+  it('a value matching no schedule key still does not qualify', async () => {
+    await mapCategoryFieldTo('Job Type');
+    await scheduleKeyedOn('Roof Replacement');
+
+    const result = await evaluateReferral('accent-roofing',
+      invoiceWithField('Job Type', 'Gutter Cleaning'), 'Test Referrer');
+
+    assert.equal(result.qualified, false);
+    assert.equal(result.reason, 'no_matching_schedule_for_job_type');
   });
 });

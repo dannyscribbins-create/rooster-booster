@@ -372,10 +372,15 @@ describe('Phase 3 — the walk is real before anything it reports can matter', (
   });
 
   it('walks .mjs as well as .js and .jsx', () => {
-    // registrySections.mjs is the only .mjs under a walked root today. If it
+    // registrySections.mjs is ONE of the .mjs files under a walked root. If it
     // ever moves, this must be pointed at whatever replaced it rather than
     // deleted — the extension filter is the failure mode being guarded, not
     // this one file.
+    // ⚠ THIS COMMENT SAID "the only .mjs under a walked root today" AND 7c-0 MADE THAT FALSE:
+    // src/utils/categoryMatch.mjs is a second one. Corrected rather than left, because a comment
+    // asserting a current fact is a claim, and the next reader would use it to conclude the walker
+    // has one .mjs to worry about. The ASSERTION was always a toContain and never a count, so
+    // nothing here was broken — only the sentence beside it.
     expect(SWEPT).toContain('src/constants/registrySections.mjs');
   });
 

@@ -424,7 +424,76 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2219 server tests across 369 suites, and 1397 React tests across 85 files** (measured 2026-09-29 by the N4 commit 7b commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2219 · suites 369 · pass 2219 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2245 server tests across 374 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the 7c-0 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2245 · suites 374 · pass 2245 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE 7c-0 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2219 → 2245 is **+26 = 17 + 9**: seventeen in one new file (`categoryMatch.test.js`) and
+  nine APPENDED to `referralRules.test.js` (8 → 17). Suites 369 → 374 is **+5 = 4 + 1** — the new
+  file's four top-level describes plus the one appended describe. React 1397 → 1398 is **+1, A
+  PHANTOM**, and files hold at 85. **All four predicted before the run and matched.** Counted with an
+  anchored `^\s*it\(`; every loop was checked for POSITION — the `.map`/`.filter` chain sits inside
+  the mirror fence's `bodyOf()` helper and the one `for` inside an `it()` body — so none wraps a case.
+  ⚠ **THE PHANTOM WAS PREDICTED AND ITS MECHANISM IS THE ONE THIS FILE KEEPS RECORDING:**
+  `src/utils/categoryMatch.mjs` is a non-test file in a walked root, and `adminBranding.test.jsx`
+  **sweeps `.mjs` as well as `.js`/`.jsx`** — a detail worth re-reading rather than remembering, since
+  the 3b walker does NOT include `.mjs`.
+  ⚠ **AND THAT SWEEP CARRIED A COMMENT MY OWN COMMIT FALSIFIED, CORRECTED RATHER THAN LEFT.** Its
+  `.mjs` case said *"registrySections.mjs is the only .mjs under a walked root today"*. There are two
+  now. **The ASSERTION was always a `toContain` and never a count, so nothing broke** — only the
+  sentence beside it, which the next reader would have used to conclude the walker has one `.mjs` to
+  worry about.
+  ⚠ **THE COMMIT'S SUBJECT: THREE PLACES COMPARED A CATEGORY VALUE THREE DIFFERENT WAYS AND NONE
+  TRIMMED.** The engine lowercased in SQL and in JS; `deriveJobberTags` folded case on the label; the
+  Schedule Builder used an exact, case-sensitive `includes`. **Two of Accent's nineteen live Jobber
+  options carry a trailing space** (`'Skylight Install '`, `'Gutter Cleaning '`), so the looseness was
+  reachable — and it produced a **false negative in the engine** (a referrer silently unpaid) and a
+  **false positive in the admin panel** (a real option reported missing) **on the very same pair. One
+  bug, two directions**, now one matcher.
+  ⚠ **AND THE ENGINE WAS THE ONLY READER IGNORING THE CONTRACTOR'S MAPPING.** It hard-coded
+  `f.label === 'Job Type'`, so a contractor who renamed the field kept perfectly correct TAGS and
+  stopped qualifying for every payout schedule — silent, because `no_job_type_found` writes no row and
+  raises no alert. The `|| 'Job Type'` **fallback is kept deliberately**: `deriveJobberTags` has the
+  identical one, and the two readers must resolve the same field for an unmapped contractor or their
+  tags and their payouts would disagree. **Removing it would have looked like a cleanup and broken
+  every unmapped contractor** — a case says so.
+  ⚠ **FOUR WIDTHS, AND TWO OF THEM REPORT TWO THINGS AT ONCE SO THEY ARE SPLIT.** (i) TRIM removed
+  from the shared normaliser → **10 red = 9 behavioural/unit + 1 the MIRROR-DRIFT fence** (only the
+  server copy was injected, so the two copies diverge — the fence working, but not evidence about
+  behaviour); (ii) the hard-coded label restored → **exactly 1**; (iii) case-sensitive label
+  comparison → **exactly 1**; (iv) the guardrail always returning no findings → **2 = 1 behavioural +
+  1 mirror fence**, **and the PAIRED POSITIVE stayed green**, which is what proves the guardrail is
+  not simply flagging everything.
+  ⚠ **AND A CONFIGURATION CHANGE INVALIDATED A GUARD-PROOF BETWEEN THE DESIGN AND THE BUILD — THIS IS
+  THE ENTRY WORTH KEEPING.** (i) was specified as *"remove TRIM → `Skylight Install ` no longer
+  matches"*. By build time Danny had re-picked the qualifying types in the Schedule Builder, and the
+  key is now stored **with** Jobber's space — so the space sits on **both** sides and removing TRIM
+  changes nothing. **The injection would have come back GREEN and proved nothing.** Rewritten around
+  fixtures where key and value genuinely differ, in both directions. **An injection that cannot reach
+  a discriminating value is not a guard-proof, and a change in production DATA can turn a valid one
+  vacuous without touching a line of code.**
+  ⚠ **THE SAME RECONFIGURATION ALSO RETIRED THE COMMIT'S OWN HEADLINE, WHICH IS SAID PLAINLY RATHER
+  THAN QUIETLY DROPPED.** 7c's design measured Accent able to pay on **1 of 19** job types; after
+  Danny's re-pick it is **8 of 19**, and all eight match even without TRIM. **So this commit is
+  durability, not a live repair** — protection against the trailing space being tidied in Jobber
+  later, or a key arriving by any route other than clicking a pill. Claiming the repair would be
+  taking credit for a configuration change.
+  ⚠ **AND I REPORTED "THE EXISTING GUARDRAIL CANNOT SEE IT" AND WAS WRONG — CORRECTED IN THE SAME
+  COMMIT, INCLUDING IN THE CHECKLIST WHERE I HAD WRITTEN IT.** `ScheduleBuilderDrawer.jsx`'s Step 2
+  has always computed the inverse check and rendered it as amber *"Currently assigned (not in Jobber
+  fields)"* pills. True statement: the **list-level** warning covers only the other direction, and the
+  Step 2 check is reachable only by opening each schedule. **I conflated two mechanisms and reported a
+  VISIBILITY gap as total blindness** — the *state-the-scope-beside-the-claim* failure, committed into
+  the file that records it. 7c-0 therefore **REUSES** that check rather than adding a second.
+  ⚠ **AND THE HEREDOC ESCAPE TRAP AGAIN, ON AN APOSTROPHE THIS TIME.** Appending the behavioural block
+  through a quoted shell heredoc died on `unexpected EOF while looking for matching`. Verified the
+  target file was untouched, then wrote the block to a FILE with an editor and appended it with a
+  script — which is the rule this file states and the habit that keeps costing time.
+  ⚠ **AND `cancelled 0` WAS EARNED RATHER THAN OBSERVED.** The new block's first run reported ten
+  CANCELLED cases and `Cannot use a pool after calling end on the pool` from inside `initDB`, because
+  it kept its own `before`/`after` and `initTestDb()` returns the **`server/db.js` pool SINGLETON** —
+  so the first describe's teardown ended the pool the second needed. Hoisted to **one pool per FILE**.
+  **The exact shape this file records, hit by the session that had read it.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 7b COMMIT ITSELF, BECAUSE IT
+  SHIPS TESTS.* It read **2219 / 369 / 1397 / 85**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 7b COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
   Server 2210 → 2219 is **+9**, one new file (`referredStatusFromFacts.test.js`); suites 367 → 369
   is that file's **two** top-level describes. React did not move — no `src/` file was touched at
@@ -4378,6 +4447,24 @@ missing the standard trailers** — which is how you can spot the others, if the
   enforced here by the absence of mutations and by this rule — not by anything a grep can confirm**,
   and enabling a write scope is a product decision taken elsewhere rather than a build detail
   reachable by editing a query.
+- ⚠ **AND ROOFMILES NEVER CREATES OR EDITS A CONTRACTOR'S CRM FIELDS** — ruled by Danny 2026-09-30
+  during 7c. Not a custom field, not a dropdown option, not a field's configuration. **RoofMiles
+  READS the fields a contractor already has and tells them, in plain words, how to make one
+  themselves.** Same principle as A36.5.a one level down: additive, never invasive.
+  ⚠ **THE PROPOSAL THIS FORECLOSES IS SPECIFIC AND IT IS GENUINELY TEMPTING.** The referral
+  programme needs a category field (Accent's job "Job Type") to pick a payout schedule, and a
+  contractor who has none cannot earn anything until they make one. *"Just create it for them during
+  onboarding"* is one mutation, removes a whole support burden, and is the obvious kindness — **and
+  it is ruled out.** A field RoofMiles created is a field RoofMiles owns in their CRM, and the first
+  time it collides with their own naming, or an integration they add later, the damage is in the
+  system their business runs on and not in ours.
+  ⚠ **WHAT IS SANCTIONED INSTEAD:** discovery lists what exists; onboarding shows the steps
+  (Settings → Custom Fields → Job custom fields → Add Field, a dropdown, tick **Transferable**); and
+  a contractor with no such field uses their **default schedule** rather than being blocked. The
+  guardrails are read-only too — a coverage notice and an unmapped-option warning.
+  ⚠ **RESIDENT BECAUSE THE PROPOSAL ARRIVES BEFORE ANY DOCUMENT IS OPEN**, exactly like the
+  write-back one: a session asked to "make onboarding smoother" will suggest it on the merits and be
+  right to, having never read the spec. **Meet the answer first.**
 - OAuth token refresh handled by `refreshTokenIfNeeded(contractorId, {force})` — never bypass. Token access is contractor-scoped: never read or write the `tokens` table without a `contractor_id` predicate. Use `getContractorAccessToken(contractorId)` for reads — it is the only sanctioned way to read a contractor's access token. `tokens.id` is inert (sequence-filled default, never referenced by application code) — `contractor_id` is the real key.
 - `getPrimaryEmail`/`getPrimaryPhone` handle both GraphQL array shape and flat-string fallback — never simplify.
 - phones/emails absent from bulk allClients sync query intentionally (API load). Only in fetchFullClient and targeted lookups.

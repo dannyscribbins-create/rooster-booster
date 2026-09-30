@@ -23,6 +23,9 @@
 
 const { pool } = require('./db');
 const { isInvoicePaid } = require('./utils/invoicePaid');
+const { categoryListIncludes, normalizeCategoryValue } = require('./utils/categoryMatch');
+// ⚠ 7c-0 adds the first catch block in this module, and CLAUDE.md requires logError in every one.
+const { logError } = require('./middleware/errorLogger');
 
 // ── MAIN EXPORT ───────────────────────────────────────────────────────────────
 // contractorId: string — e.g. 'accent-roofing'
@@ -120,14 +123,52 @@ async function evaluateReferral(contractorId, invoiceData, referredBy) {
     ...(invoiceData.archivedJobs?.nodes || []),
   ];
 
+  // ⚠ THE CONTRACTOR'S OWN FIELD, NOT A HARD-CODED LABEL (7c-0). This read was
+  // `f.label === 'Job Type'` — the ONLY reader in the codebase that ignored the contractor's
+  // mapping, while `deriveJobberTags.js` has always honoured it. The consequence was silent and it
+  // was money: a contractor who renamed the field in Jobber kept perfectly correct TAGS and
+  // stopped qualifying for any payout schedule, because this function alone could no longer find
+  // the field. Nothing surfaced it — `no_job_type_found` writes no row and raises no alert.
+  //
+  // ⚠ THE `|| 'Job Type'` FALLBACK IS KEPT DELIBERATELY, AND IT IS NOT THE DEFECT BEING FIXED.
+  // `deriveJobberTags.js` has the identical fallback, and the two readers MUST agree: a contractor
+  // with no mapping configured must resolve the same field on both paths or their tags and their
+  // payouts would disagree. Removing it here would make every unmapped contractor stop qualifying
+  // — a regression dressed as a cleanup. The defect was IGNORING the mapping, not having a default.
+  let workCategoryLabel = 'Job Type';
+  try {
+    const mappingResult = await pool.query(
+      'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
+      [contractorId]
+    );
+    workCategoryLabel = mappingResult.rows[0]?.contractor_field_mappings?.work_category || 'Job Type';
+  } catch (mappingErr) {
+    // ⚠ FALL BACK, NEVER ABORT. A settings read failing must not turn into an unpaid referral; the
+    // default is the same one deriveJobberTags uses, so the behaviour degrades to the pre-7c-0 path
+    // rather than to nothing. Logged so the degradation is visible instead of assumed.
+    await logError({
+      req: null,
+      contractorId,
+      error: new Error(`[evaluateReferral] could not read work_category mapping, falling back to 'Job Type': ${mappingErr.message}`),
+      source: 'evaluateReferral — field mapping',
+      alert: false,
+    });
+  }
+
   const jobTypeValues = [];
   for (const job of allJobs) {
     const fields = job.customFields || [];
+    // ⚠ CASE-INSENSITIVE ON THE LABEL, MATCHING deriveJobberTags' getCustomFieldValue. The two read
+    // the same field off the same record and disagreed: that one folds case, this one used `===`.
+    // ⚠ AND `valueText` IS ACCEPTED AS WELL AS `valueDropdown`, for the same reason. The old
+    // `valueDropdown !== undefined` guard meant a contractor whose category field is a TEXT field
+    // could never qualify at all — a whole class of contractor silently excluded by a type check.
     const jobTypeField = fields.find(
-      f => f.label === 'Job Type' && f.valueDropdown !== undefined
+      f => f.label && normalizeCategoryValue(f.label) === normalizeCategoryValue(workCategoryLabel)
     );
-    if (jobTypeField?.valueDropdown) {
-      jobTypeValues.push(jobTypeField.valueDropdown);
+    const value = jobTypeField?.valueDropdown || jobTypeField?.valueText || null;
+    if (normalizeCategoryValue(value) !== null) {
+      jobTypeValues.push(value);
     }
   }
 
@@ -140,7 +181,13 @@ async function evaluateReferral(contractorId, invoiceData, referredBy) {
     `SELECT s.id, s.name, s.payout_model, s.minimum_invoice, s.reset_period,
             s.escalating_steps, s.tier_brackets, s.flat_amount,
             s.percentage_rate, s.percentage_max_cap, s.invoice_window_days,
-            array_agg(LOWER(jt.jobber_label)) AS mapped_labels
+            -- ⚠ RAW LABELS, NOT LOWER() (7c-0). The comparison used to be split across two
+            -- languages — SQL lowercased here, JS lowercased at the call site — and NEITHER
+            -- trimmed. Splitting a single rule across a query and a loop is how the two halves
+            -- came to disagree with the third copy in the admin panel. The raw label now travels
+            -- to ONE matcher (utils/categoryMatch), and it is also what lets a warning quote the
+            -- value exactly as stored, trailing space and all.
+            array_agg(jt.jobber_label) AS mapped_labels
      FROM referral_schedules s
      JOIN referral_schedule_job_types jt ON jt.schedule_id = s.id
      WHERE s.contractor_id = $1 AND s.is_active = true
@@ -160,7 +207,7 @@ async function evaluateReferral(contractorId, invoiceData, referredBy) {
   // First pass: look for a Full Roof match (payout_model = escalating for Accent Roofing)
   for (const schedule of schedulesResult.rows) {
     for (const jobType of jobTypeValues) {
-      if (schedule.mapped_labels.includes(jobType.toLowerCase())) {
+      if (categoryListIncludes(schedule.mapped_labels, jobType)) {
         if (schedule.payout_model === 'escalating') {
           winningSchedule = schedule;
           break;
@@ -174,7 +221,7 @@ async function evaluateReferral(contractorId, invoiceData, referredBy) {
   if (!winningSchedule) {
     for (const schedule of schedulesResult.rows) {
       for (const jobType of jobTypeValues) {
-        if (schedule.mapped_labels.includes(jobType.toLowerCase())) {
+        if (categoryListIncludes(schedule.mapped_labels, jobType)) {
           winningSchedule = schedule;
           break;
         }

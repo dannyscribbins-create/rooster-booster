@@ -968,3 +968,92 @@ ladder for conversions already booked. **The ledger wins.**
 record.** The alternative — recomputing tiers whenever detection order differs from payment
 order — makes a referrer's already-credited balance change retroactively, which is worse
 than a tier that is one step off.
+
+# 12. THE CATEGORY FIELD — CONTRACTOR- AND CRM-AGNOSTIC (7c, ruled 2026-09-30)
+
+The field that decides which payout schedule a referral is paid on. Accent's is the **JOB custom
+field "Job Type"**; the point of these rulings is that nothing in the platform may assume that.
+
+## 12.1 The contractor chooses the field, on any entity, identified by entity + CRM id
+
+**Ruling 1.** Any custom field, on a quote, a job or an invoice, chosen in the admin mapping and
+identified by **entity plus the field's CRM id** — never by its label.
+
+⚠ **THE REJECTED ALTERNATIVE IS THE ONE THAT SHIPPED, AND IT IS WHY THIS RULING EXISTS.** Every
+identification path today is by label: the mapping stores the string `"Job Type"`, discovery
+de-duplicates its results **by name**, and the option lookup is `WHERE label = $2 LIMIT 1`. Accent
+has **two** custom fields both labelled "Job Type" — one on quotes, one on jobs — with different
+option lists. Discovery keeps whichever Jobber returned first and discards the other, so which field
+the platform uses is decided by response order. It happened to keep the right one.
+
+⚠ **AND A LABEL CANNOT BE MADE CORRECT BY BEING MORE CAREFUL WITH IT.** It is not that the matching
+is sloppy; it is that the identifier does not identify. Two fields can share a label legitimately,
+and a contractor may rename either at any time.
+
+## 12.2 The Schedule Builder's options are always the chosen field's options
+
+**Ruling 2.** Whatever the mapping points at, that field's real options are the qualifying values the
+admin picks from.
+
+⚠ **THE FALLBACK THIS RETIRES IS A MECHANISM THAT REPORTS HEALTH IT NEVER OBSERVED.** When no options
+are known the schedules endpoint falls back to the qualifying keys already stored — at which point
+every key matches itself by construction and any "are these keys still valid?" check comes back
+clean. 7c-0 separates the two cases with an explicit `options_known` flag; ruling 2 removes the need
+for the fallback at all.
+
+## 12.3 Latest stage wins
+
+**Ruling 3.** Read the category from the **invoice**, else the **job**, else the **quote linked to the
+job**. Later stages are more trustworthy: they describe what was delivered and invoiced, not what was
+proposed.
+
+- A quote-level field marked **Transferable** in Jobber is copied onto the job, so it is read **from
+  the job** like any job field — no special case.
+- A **quote-only, non-transferable** field is read from the linked quote, as the fallback.
+- **No value at any stage** → the contractor's **default schedule**, and it counts toward the
+  coverage notice.
+
+⚠ **THE INVOICE STEP IS DEFERRED, NOT DROPPED, AND THE REASON IS A GAP IN WHAT WE KNOW RATHER THAN A
+DESIGN PREFERENCE.** Nothing in this codebase selects `customFields` on an Invoice, so the claim that
+a transferable field is reachable there is **unverified**. Building the preference now would be a
+branch that silently never fires — the exact failure this arc exists to prevent. **A transferable
+field carries the job's value anyway**, so reading the job loses nothing today. Jobber's changelog
+returns 403 to automated fetches; proving it needs a browser.
+
+## 12.4 Capture covers quotes as well as jobs
+
+**Ruling 4.** So ruling 3's quote fallback has saved facts to read rather than a live fetch.
+
+## 12.5 RoofMiles never creates or edits a contractor's CRM fields
+
+**Ruling 5.** Not a field, not a dropdown option, not a configuration. **Resident in `CLAUDE.md`
+beside A36.5.a.**
+
+⚠ **THE REJECTED PROPOSAL IS A KINDNESS, WHICH IS WHY IT NEEDED RULING OUT RATHER THAN ARGUING
+AGAINST.** A contractor with no category field cannot earn anything until they make one; creating it
+for them during onboarding is one mutation and removes a whole support burden. **A field RoofMiles
+created is a field RoofMiles owns inside the system their business runs on**, and the first collision
+with their own naming or a later integration does damage there rather than here. Sanctioned instead:
+discovery lists what exists, onboarding gives the steps, and a contractor without one uses their
+default schedule rather than being blocked.
+
+## 12.6 Schedule configuration is the contractor's, never a commit's
+
+**Ruling 6.** Qualifying values are re-picked in the Schedule Builder. **No commit edits schedule
+data.**
+
+⚠ **RECORDED BECAUSE THE TEMPTATION WAS LIVE AND SPECIFIC.** 7c's investigation found Accent's
+escalating schedule — the flagship, $9,500 minimum — keyed on a value that could never appear on the
+entity the engine reads, so it could never pay. Fixing that in a migration would have been quick, and
+would have made the platform the author of a contractor's payout policy. Danny re-picked them himself
+on 2026-09-30, and matchable options went from 1 of 19 to 8 of 19.
+
+⚠ **AND THE SEQUEL IS THE PART WORTH KEEPING: THE CONFIGURATION FIX LANDED BEFORE THE CODE FIX, WHICH
+CHANGED WHAT THE CODE FIX IS FOR.** 7c-0's trim-and-fold was written as a repair of a live break; by
+the time it shipped, the break was gone and the same commit had become **durability** — protection
+against the trailing space being tidied in Jobber later, or a key arriving by any route other than
+clicking a pill. **It also invalidated a guard-proof as originally specified**: with the whitespace on
+both sides, removing the trim no longer changed the outcome, so the injection had to be rewritten
+around fixtures where the two forms genuinely differ. *An injection that cannot reach a
+discriminating value is not a guard-proof* — and a configuration change can quietly turn a valid one
+into a vacuous one.
