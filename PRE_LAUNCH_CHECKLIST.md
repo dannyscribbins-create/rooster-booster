@@ -465,6 +465,65 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         Gate on the bumped tree: `tests 2219 · suites 369 · pass 2219 · fail 0 · cancelled 0 ·
         skipped 0 · todo 0`, React **1397 across 85**, `EXIT=0` read from the log. **No count
         moved, which is the expected shape for a dependency bump that ships no tests.**
+      - [ ] **A CRON RUN THAT TAKES OVER AN EXPIRED LOCK MUST SAY SO IN `error_log`. NOT BUILT
+        (filed 2026-09-30). Small.** The owner-scoped release from the cron-lock-owner commit makes
+        a crashed holder's lock *takeable* once `timeout_at` passes — that is the self-healing half
+        and it works. **What is missing is the record.** A takeover means the previous run died
+        mid-flight, which is exactly the event nobody is watching for, and today it happens in
+        silence. The row must name: the **job**, the **previous `locked_by` token**, and **how long
+        the lock had been expired** when it was taken.
+        ⚠ **MEASURED INSTANCE, WHICH IS WHY THIS IS FILED RATHER THAN IMAGINED.**
+        `jobber_incremental_sync` was locked at `02:00` with `timeout_at 02:20`; it was still
+        writing `jobber_clients` at `03:13:50` and was **killed by the N4 7b deploy at ~03:14**,
+        leaving `is_locked = true` with a long-expired timeout. **No `error_log` row was written** —
+        the only row in the preceding 24 hours was an `INFO` from the referred-capture backfill.
+        ⚠ **AND THE OVERRUN ALERT THAT COMMIT DID BUILD DID NOT FIRE EITHER**, which is the part
+        worth keeping: the job ran ~74 minutes against a 20-minute expiry and nothing recorded it.
+        **Whether that alert fires only on the release path — which a killed process never
+        reaches — is the first thing to check**, because if so the alert can only ever report an
+        overrun that ended cleanly, i.e. the case that needs it least. That is this file's own
+        *mechanism that reports health it cannot observe*, one layer in.
+        **What removes this entry:** a takeover that writes the row, plus a test that kills a
+        holder without letting it release and asserts the row appears.
+
+      - [ ] **`pipeline_cache.paid_at` CAN BE HOURS EARLY ON A ROW THAT WAS ALREADY `'paid'` BEFORE
+        N4. ACCEPTED RESIDUE (Danny, 2026-09-30) — NOT A DEFECT AND NOT TO BE "FIXED".**
+        `paid_at` is **written once, when `pipeline_status` first transitions into `'paid'`, and
+        never overwritten** — a resident behaviour in `.claude/rules/backend.md` and the source of
+        truth for engagement-cadence timing. N4 7b changed where the value COMES FROM (the earliest
+        paid invoice's own `received_date`, ruling 4) but deliberately did not backfill rows that
+        had already transitioned, because the upsert's `paid_at` branch requires
+        `pipeline_cache.pipeline_status != 'paid'`.
+        **Measured instance, live:** `Sarah Han` stores `2026-07-10 00:00:04Z` — a midnight cron
+        tick, i.e. *when a sync noticed* — against the invoice's true
+        `2026-07-09 20:07:09Z`. **~3h53m early.** Both columns read here are `TIMESTAMPTZ`, so the
+        gap is real and not a rendering artifact.
+        ⚠ **THE COST OF "FIXING" IT IS HIGHER THAN THE ERROR.** Making `paid_at` re-derivable means
+        letting a later capture move it, which is precisely what ruling 4 forbids: a second invoice
+        settling would re-clock a cadence for a client payable for months. **The one-writer rule is
+        the more valuable property**, so the stale values stay.
+        **What removes this entry:** nothing, unless a cadence decision is ever shown to turn on
+        sub-day precision for a pre-N4 row. Recorded so the discrepancy reads as known rather than
+        as 7b having got `paid_at` wrong.
+
+      - [ ] **DOC PASS — CLAUDE.md's ACCEPTED-STATE LIST NAMES THE RAILWAY *PROJECT*
+        `rooster-booster`, AND THE PROJECT IS NOW `RoofMiles`. NOT CORRECTED (filed 2026-09-30).**
+        The section *"THE INFRASTRUCTURE IS STILL NAMED `rooster-booster`, AND THAT IS A KNOWN
+        ACCEPTED STATE"* lists five things still carrying the old name and puts **the Railway
+        project** first. Measured 2026-09-30: `railway status` prints **`Project: RoofMiles`** with
+        `Project ID c9da76c9-e866-4cf2-8ac6-b966597f1b8d`; the **service** inside it is still
+        `rooster-booster`, and so are the GitHub repo, the working directory and `package.json`'s
+        `name`. **So four of the five are right and the first one is wrong.**
+        ⚠ **THIS IS THE ONE LINE IN THAT BLOCK WHOSE WHOLE JOB IS TO BE ACCURATE**, because the
+        block exists to stop a session inferring a fact about access or ownership from a name — and
+        a session that opens Railway, sees `RoofMiles`, and reads this list will conclude the list
+        is describing a different account. **The failure it warns about, produced by its own
+        staleness.**
+        ⚠ **NOT CORRECTED IN THE COMMIT THAT FOUND IT, DELIBERATELY:** it was found mid-arc while
+        confirming a deploy, and editing a governing file's accepted-state list is not a thing to
+        slip into a dependency commit. **Correct the project/service distinction; do not retire the
+        block** — the rename is still deliberately not done, and four of its five members stand.
+
       - [ ] **`npm audit` HIGH — `brace-expansion` `4.0.0 - 5.0.11`. THE NEW STANDING HIGH, FILED
         2026-09-30, NOT FIXED.** It replaced `undici` as the sole HIGH the moment that one cleared,
         and it is **not** something the undici commit introduced: it is present against the
