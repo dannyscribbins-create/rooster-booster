@@ -435,8 +435,50 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         **Fix for the residue (not built): a watermark-driven invoice sweep, in the shape of
         `server/cron/jobs/repRequestSweep.js`.** Detail: `N4_STATUS_DESIGN.md` §8 ruling 3a and
         §10.3.
+      - [x] ✅ **CLOSED 2026-09-30 — `undici` BUMPED `7.29.0 → 7.30.0` IN THE LOCKFILE ONLY, ITS
+        OWN COMMIT, ALL FOUR OF DANNY'S CONDITIONS MET.** The change is **`package-lock.json`
+        alone, 3 lines** (version, resolved, integrity); `package.json` is **byte-identical by
+        sha256** before and after, because `7.30.0` already satisfies `jsdom`'s existing
+        `^7.25.0` — so nothing needed declaring and **`jsdom` did not move** (`29.1.1` both
+        sides). `undici` now appears **0 times** in `npm audit` output.
+        ⚠ **AND THE "DOES NOT REACH THE DEPLOYED SERVER" CLAIM WAS UPGRADED FROM AN INFERENCE TO A
+        MEASUREMENT.** `NODE_ENV=production` on the Railway service means its `npm install` build
+        omits devDependencies, and in the live container `node_modules/undici`,
+        `node_modules/jsdom` and `node_modules/vitest` **do not exist** —
+        `require.resolve('undici')` returns `MODULE_NOT_FOUND`. The package is not merely unimported
+        in production; it is **absent**.
+        ⚠ **THE ENTRY BELOW NAMED ONE IMPORTER AND THERE ARE THREE.** It said the only importer is
+        `src/devServerPipeline.test.js`; `server/test/campaignEmailEscaping.test.js` and
+        `server/test/emailUrlSafety.test.js` both `require('jsdom')` too. **So the SERVER suite
+        exercises jsdom as well as the React suite**, which makes the gate a wider test of this bump
+        than the entry claimed — a correction in the reassuring direction, and still a correction.
+        ⚠ **AND THE AUDIT TOTAL IN THAT ENTRY IS A DATED READING, NOT A STANDING FACT — MEASURED
+        LIKE-FOR-LIKE ON 2026-09-30 AND IT HAD ALREADY MOVED.** Against the **unmodified HEAD**
+        lockfile the audit read **4 findings: 2 moderate (`ip-address`, `multer`) + 2 HIGH
+        (`brace-expansion`, `undici`)** — not the 3 the entry records, because
+        `brace-expansion`'s advisory published in between. With the bump: **3 findings, 2 moderate
+        + 1 HIGH**, the delta being exactly the `undici` HIGH. **The advisory database is fetched
+        live, so an audit count is true at an instant and nothing else.**
+        ⚠ **AND THE PRIOR FIGURE IN THIS ENTRY CAME FROM A `tail`, WHICH IS WHY IT UNDERSTATED.**
+        CLAUDE.md names `npm audit` in the family of checks whose totals print last; the findings
+        section sat outside the window. **Read the findings in full or read nothing.**
+        Gate on the bumped tree: `tests 2219 · suites 369 · pass 2219 · fail 0 · cancelled 0 ·
+        skipped 0 · todo 0`, React **1397 across 85**, `EXIT=0` read from the log. **No count
+        moved, which is the expected shape for a dependency bump that ships no tests.**
+      - [ ] **`npm audit` HIGH — `brace-expansion` `4.0.0 - 5.0.11`. THE NEW STANDING HIGH, FILED
+        2026-09-30, NOT FIXED.** It replaced `undici` as the sole HIGH the moment that one cleared,
+        and it is **not** something the undici commit introduced: it is present against the
+        unmodified HEAD lockfile too, measured in the same session. Also open: `ip-address`
+        `<=10.7.0` (moderate, four advisories) and `multer` `2.2.0 - 2.3.0` (moderate).
+        ⚠ **WHAT WILL REMOVE THIS ENTRY, because a list that can only grow stops being a list of
+        open work:** a bump that takes `brace-expansion` out of `npm audit`'s output, on the same
+        four conditions Danny set for `undici` — smallest change, own commit, full gate, report
+        before pushing. **Not yet investigated**: which package requires it, whether it is dev-only,
+        and whether it reaches the deployed tree are all unknown and must be measured from the
+        lockfile and the container rather than assumed from the `undici` precedent.
       - [ ] **`npm audit` HIGH — `undici`, TRANSITIVE UNDER `jsdom`, TEST-ONLY. ACKNOWLEDGED, NOT
-        FIXED (2026-09-29).** A batch of ten advisories against `undici` `7.0.0 - 7.29.0` published
+        FIXED (2026-09-29).** ⚠ **SUPERSEDED — SEE THE CLOSED ENTRY ABOVE. Kept as the record of
+        what was decided and why, not as open work.** A batch of ten advisories against `undici` `7.0.0 - 7.29.0` published
         during the N4 arc: the audit read **3 moderate** at commit 6 and **2 moderate + 1 HIGH**
         about thirty minutes later, with **no dependency change in between**.
         **Measured from disk and the lockfile, never from `npm ls`** (which this repo records as
