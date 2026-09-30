@@ -368,6 +368,63 @@ async function writeInvoiceJobLinks(db, contractorId, nodes) {
  * so an absent connection captures zero rows and removes nothing — a client's request facts
  * survive a capture that never asked about them. Do not "tidy" any writer into a replace.
  */
+/**
+ * Custom-field facts for one stage's records (7c-2).
+ * Inputs: a db/tx, contractorId, the `CustomFieldAppliesTo` entity for this stage, and the record
+ * nodes (each with `id`, `client { id }` and a `customFields` array).
+ * Output: the number of rows written.
+ *
+ * ⚠ IT KEYS ON THE CONFIGURATION ID, NEVER THE LABEL, AND THAT IS RULING 1 IN THE WRITER. Accent
+ * has THREE configurations named "Job Type" and two of them share an identical 19-option list, so a
+ * label-keyed row could not say WHICH field a value came from — and mixing a quote-vocabulary value
+ * into a job-reading schedule is exactly the live defect 7c-1 was raised about. A node whose
+ * configuration id is missing is SKIPPED rather than stored under its label, because a row that
+ * cannot be attributed is worse than an absent one: the resolver would read it as an answer.
+ *
+ * ⚠ BOTH VALUE SHAPES ARE KEPT SEPARATE. A dropdown value is one of a known option list and a text
+ * value is anything; flattening them into one column would make "typed something off-list"
+ * indistinguishable from "picked an option", which the admin guardrail depends on telling apart.
+ *
+ * ⚠ AND THE RECORD'S CLIENT IS REQUIRED, matching `writeQuoteFacts`. A custom-field fact with no
+ * client cannot be found by the resolver, which reads per client — so a node missing `client.id` is
+ * filtered out rather than written unreachable. This is the same defect shape as the quote capture
+ * that filtered every quote because no query selected `client` on it.
+ */
+async function writeCustomFieldFacts(db, contractorId, entity, nodes) {
+  if (!contractorId) throw new Error('writeCustomFieldFacts: contractorId is required');
+  if (!entity) throw new Error('writeCustomFieldFacts: entity is required');
+  let written = 0;
+  for (const node of (nodes || [])) {
+    const recordId = node?.id;
+    const clientId = node?.client?.id;
+    if (!recordId || !clientId) continue;
+    for (const field of (node.customFields || [])) {
+      const configurationId = field?.customFieldConfiguration?.id;
+      if (!configurationId) continue;
+      // ⚠ `?? null` RATHER THAN `|| null`, so an empty string survives to the database as an empty
+      // string instead of becoming NULL. Ruling 2 treats blank as ABSENT, and that decision belongs
+      // to the RESOLVER: collapsing it here would make "the contractor cleared this field" and
+      // "this field has no value column" the same row, and the live tenant really does carry a
+      // blank "Job Type" on a job whose invoice copy has a value.
+      const valueDropdown = field.valueDropdown ?? null;
+      const valueText = field.valueText ?? null;
+      await db.query(
+        `INSERT INTO crm_custom_field_facts
+           (contractor_id, entity, entity_jobber_id, jobber_client_id, configuration_id,
+            label, value_dropdown, value_text, captured_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+         ON CONFLICT (contractor_id, entity_jobber_id, configuration_id) DO UPDATE SET
+           entity = $2, jobber_client_id = $4, label = $6,
+           value_dropdown = $7, value_text = $8, captured_at = NOW()`,
+        [contractorId, entity, recordId, clientId, configurationId,
+          field.label ?? null, valueDropdown, valueText]
+      );
+      written += 1;
+    }
+  }
+  return written;
+}
+
 async function captureClientFacts(db, { contractorId, client }) {
   if (!contractorId) throw new Error('captureClientFacts: contractorId is required');
   if (!client) throw new Error('captureClientFacts: client is required');
@@ -394,7 +451,20 @@ async function captureClientFacts(db, { contractorId, client }) {
   const invoices = await writeInvoiceFacts(db, contractorId, invoiceNodes);
   const links    = await writeInvoiceJobLinks(db, contractorId, invoiceNodes);
 
-  return { requests, quotes, jobs, invoices, links };
+  // ── CUSTOM-FIELD FACTS, THREE STAGES (7c-2) ────────────────────────────────
+  // ⚠ THE ENTITY IS PASSED IN RATHER THAN DERIVED FROM THE TABLE THE ID CAME FROM. Ruling 1's
+  // resolution order is expressed in stages — invoice, then job, then the linked quote — so the
+  // stage has to be a stored fact. Deriving it later from "which connection was this in" would be a
+  // second definition of the same thing, and the two could disagree.
+  // ⚠ AND THE ENUM VALUES ARE JOBBER'S OWN (`CustomFieldAppliesTo`), not our words for them, so a
+  // row joins to `contractor_jobber_fields.entity` without a translation table in between. There is
+  // deliberately no REQUEST entity: a custom field cannot attach to a request.
+  const customFields =
+      await writeCustomFieldFacts(db, contractorId, 'ALL_QUOTES', quoteNodes)
+    + await writeCustomFieldFacts(db, contractorId, 'ALL_JOBS', jobNodes)
+    + await writeCustomFieldFacts(db, contractorId, 'ALL_INVOICES', invoiceNodes);
+
+  return { requests, quotes, jobs, invoices, links, customFields };
 }
 
 module.exports = {
@@ -403,6 +473,7 @@ module.exports = {
   writeJobFacts,
   writeInvoiceFacts,
   writeInvoiceJobLinks,
+  writeCustomFieldFacts,
   captureClientFacts,
   toMoneyString,
 };

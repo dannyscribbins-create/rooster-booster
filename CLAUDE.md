@@ -424,8 +424,60 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2305 server tests across 387 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the targeted-re-capture commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2305 · suites 387 · pass 2305 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE TARGETED-RE-CAPTURE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2337 server tests across 392 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the 7c-2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2337 · suites 392 · pass 2337 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE 7c-2 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.** Server 2305 → 2337
+  is **+32**, one new file (`categorySource.test.js`); suites 387 → 392 is that file's **five**
+  top-level describes. React did not move — **no `src/` file was touched at all** — and was
+  re-measured. **All four predicted before the run and matched.** Counted with an anchored `^\s*it\(`
+  (32); every loop was checked for POSITION — two in `beforeEach`, one in the seeder, one in the
+  comment-stripping helper, the rest inside `it()` bodies — so **none wraps a case**.
+  ⚠ **A GUARD-PROOF FOUND ONE OF THIS COMMIT'S OWN CENTRAL CASES VACUOUS, AND THE CAUSE IS A
+  PARAMETER ORDER — WHICH IS THE ENTRY WORTH KEEPING.** The seeder was
+  `seedConfigurations(tenant = TENANT, { linkInvoice } = {})` and one call site passed
+  `seedConfigurations({ linkInvoice: true })`, binding the OBJECT to `tenant`. **All four
+  configurations landed under contractor_id `[object Object]`, so the table was EMPTY for the real
+  tenant** — and the case named *"IGNORES a same-label field with NO link"*, which is the refusal
+  ruling 1 is built on, passed because **nothing was acceptable** rather than because the link was
+  followed. It passed identically under the label-matching injection: width 0 on the one case the
+  commit exists for.
+  ⚠ **FIXED BY THE SHAPE, NOT THE INSTANCE.** The seeder takes ONE options object now, so the
+  mis-call is unexpressible; and the case asserts its own precondition — all four configurations
+  present, the decoy UNLINKED and sharing the label, the counterpart LINKED — so it cannot go
+  vacuous again. **Found by a red count that disagreed with the prediction by one**, then measured by
+  printing the acceptable set from inside the resolver. Reading the test could not have found it.
+  ⚠ **AND A SECOND GUARD-PROOF CAME BACK GREEN ON A FENCE OF MINE THAT MATCHED ITS OWN COMMENT.**
+  The reads-vs-selects fence asserted `customFieldConfiguration { id }` against the whole file — and
+  that file carries a COMMENT containing the exact phrase, explaining why the record-level selection
+  takes no fragments. So injection (vi), which removes the real selection, left it green. **Comments
+  are stripped line-preservingly now**, with a floor asserting the comment copy still exists and
+  that exactly ONE occurrence survives the strip. ⚠ **This is "scans read comments" with the sign
+  flipped — prose SATISFYING a required pattern** — the same shape as the lock-door fence satisfied
+  by the word "doors".
+  ⚠ **SIX GUARD-PROOFS, EVERY REVERT BYTE-IDENTICAL BY sha256.** (i) the acceptable set matched by
+  LABEL → **2** (after the repair; **1** before, which is how the vacuity surfaced); (ii) the invoice
+  copy ignored when present → **7**; (iii) a blank invoice copy no longer falls through → **5**;
+  (iv) a differing copy not recorded → **3**; (v) the job fallback removed → **7**; (vi) the capture
+  drops the configuration id → **exactly 1** (after the fence repair; **0** before).
+  ⚠ **AND ONE INJECTION WAS INVALID AND WAS DISCARDED RATHER THAN READ.** A permissive form written
+  `AND label IS NOT NULL AND $2 IS NOT NULL` left `$2`'s type undeterminable, so Postgres refused the
+  statement and **18 of 32** went red. **18 red from a one-line change is a tell, not a result** —
+  the SQL-breaking shape this file already records twice.
+  ⚠ **AND MY OWN HARNESS EXECUTED ON IMPORT, WHICH IS A SOURCE EDIT DISGUISED AS A LIBRARY.**
+  Importing it to reuse one helper re-ran all six proofs and then fought a manual patch, leaving a
+  file momentarily divergent. Recovered and verified. One-off scripts carry
+  `if __name__ == "__main__":` now; the proof harness still needs it.
+  ⚠ **TWO SCHEMA FACTS THAT LOOK ALIKE AND HAVE OPPOSITE REQUIREMENTS, BOTH VERIFIED LIVE AT THE
+  PINNED 2026-05-12.** `transferedFrom` on a CONFIGURATION is a **UNION** — `transferedFrom { id }` is
+  REJECTED and it needs an inline fragment per member (all six carry it). `customFieldConfiguration`
+  on a RECORD is the **CONCRETE** matching type — `{ id }` is correct and fragments are rejected with
+  **thirty** errors, one per illegal pair. ⚠ **And the record-level union is `CustomFieldUnion`, not
+  `CustomField`**; introspecting the obvious name returns null.
+  ⚠ **THE LIVE DATA VALIDATED RULING 2 BEFORE A LINE OF IT WAS TESTED.** A real Accent job reports
+  `""` on `730114` while its invoice copy (`730115`) reports `"Out of Pocket"` — so "blank is absent,
+  fall through" is a production shape, not a defensive branch.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE TARGETED-RE-CAPTURE COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2305 / 387 / 1398 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE TARGETED-RE-CAPTURE COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2286 → 2305 is **+19**, one new file (`recaptureClients.test.js`); suites 384 → 387 is that
   file's **three** top-level describes. React did not move — **no `src/` file was touched at all** —
   and was re-measured. **All four predicted before the run and matched.** Counted with an anchored

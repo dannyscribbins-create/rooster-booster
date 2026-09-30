@@ -320,7 +320,18 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
   // fragment in the query, so an Area configuration arrived with no `id` and no `name` and was
   // dropped by the `!node.name` filter — a whole field type invisible, with the mapping table
   // carrying an entry for it. Confirmed selectable against the live schema.
-  const CONFIG_FIELDS = `id name appliesTo transferable archived`;
+  // ⚠ `transferedFrom` IS A UNION, SO THE OBVIOUS SELECTION IS REJECTED — VERIFIED, NOT GUESSED.
+  // Its type is `CustomFieldConfiguration` (kind: UNION), and `transferedFrom { id }` fails outright
+  // with *"Selections can't be made directly on unions"*. Inline fragments per member are the only
+  // accepted form, and all six members were introspected at the pinned 2026-05-12 and DO carry
+  // `transferedFrom` (as well as `transferable` and `archived`), so the shared constant below is safe
+  // for every branch rather than only for the two this arc happened to look at.
+  // ⚠ ONLY `id` IS TAKEN FROM THE LINK. The counterpart's own name and entity are already stored in
+  // this same table under its own row, so selecting them here would be a second copy of a fact that
+  // can rot independently of the first.
+  const LINK_MEMBERS = ['Text', 'Dropdown', 'Numeric', 'TrueFalse', 'Link', 'Area']
+    .map(t => `... on CustomFieldConfiguration${t} { id }`).join(' ');
+  const CONFIG_FIELDS = `id name appliesTo transferable archived transferedFrom { ${LINK_MEMBERS} }`;
   const query = `
     query GetCustomFieldConfigurations($after: String) {
       customFieldConfigurations(first: 100, after: $after) {
@@ -433,18 +444,24 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
       : null;
     await pool.query(
       `INSERT INTO contractor_jobber_fields
-         (contractor_id, jobber_field_id, label, field_type, options, entity, transferable, archived, discovered_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+         (contractor_id, jobber_field_id, label, field_type, options, entity, transferable, archived,
+          transfered_from, discovered_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
        ON CONFLICT (contractor_id, jobber_field_id) DO UPDATE SET
          label = $3, field_type = $4, options = $5, entity = $6,
-         transferable = $7, archived = $8, discovered_at = NOW()`,
+         transferable = $7, archived = $8, transfered_from = $9, discovered_at = NOW()`,
       [contractorId, node.id, node.name, fieldType, optionsValue,
         // ⚠ NULL RATHER THAN A GUESS when Jobber does not report it. An invented entity is worse
         // than an absent one: the admin screen would state it with the same confidence as a real
         // value, and the whole point of 7c-1 is that the entity is knowable rather than assumed.
         typeof node.appliesTo === 'string' ? node.appliesTo : null,
         typeof node.transferable === 'boolean' ? node.transferable : null,
-        typeof node.archived === 'boolean' ? node.archived : null]
+        typeof node.archived === 'boolean' ? node.archived : null,
+        // ⚠ THE LINK, AND IT MUST BE CARRIED ON THE `ON CONFLICT` BRANCH TOO. Discovery re-runs on
+        // every admin click, so a value written only on INSERT would be present for a brand-new
+        // contractor and permanently NULL for Accent — the convergence failure
+        // `waiting_for_financed_payment` was given its own guard-proof for.
+        typeof node.transferedFrom?.id === 'string' ? node.transferedFrom.id : null]
     );
   }
 
@@ -452,7 +469,8 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
   console.log('[discoverFields] Upsert complete. Rows processed:', usable.length);
 
   const result = await pool.query(
-    `SELECT jobber_field_id, label, field_type, options, entity, transferable, archived, discovered_at
+    `SELECT jobber_field_id, label, field_type, options, entity, transferable, archived,
+            transfered_from, discovered_at
      FROM contractor_jobber_fields
      WHERE contractor_id = $1
      ORDER BY label ASC, entity ASC NULLS LAST`,

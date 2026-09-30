@@ -131,7 +131,53 @@ const CLIENT_SCALARS = `
 // quote facts was the IMPORT, whose own query does select it (repImportScope.js); the moment a
 // LIVE door captures, the omission decides every quote. Same shape as the font columns the
 // branding loader never selected: a consumer reading a field no query asks for takes the default.
-const QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id } client { id }`;
+// ── CUSTOM FIELDS ON A RECORD (7c-2) ─────────────────────────────────────────
+//
+// The category a payout schedule is chosen from lives on a contractor's own custom field, and
+// nothing stored it before 7c-2 — `evaluateReferral` read it off the live invoice object, which is
+// why commit 7 could not be driven from saved facts at all.
+//
+// ⚠ `customFields` IS A UNION (`CustomField`), so a bare `{ label }` is REJECTED outright with
+// *"Selections can't be made directly on unions"*. Inline fragments per member are the only accepted
+// form — verified against the live schema at the pinned 2026-05-12 rather than assumed.
+//
+// ⚠ BUT `customFieldConfiguration` ON A RECORD IS **NOT** A UNION, AND ASSUMING IT WAS COST A
+// REJECTED QUERY. Inside `... on CustomFieldDropdown` it is the CONCRETE
+// `CustomFieldConfigurationDropdown`, so `customFieldConfiguration { id }` is correct and spreading
+// fragments there fails with *"Fragment on CustomFieldConfigurationText can't be spread inside
+// CustomFieldConfigurationDropdown"* — thirty of those, one per illegal pair.
+// ⚠ THIS IS THE EXACT OPPOSITE OF `transferedFrom` ON A CONFIGURATION, which IS a union and DOES
+// require fragments (see `discoverJobberFields`). Two selections that look alike and have opposite
+// requirements, so both sites say which is which rather than leaving the next reader to find out
+// from a 30-error response.
+// Only `id` is taken from it: the configuration's name and entity already live in
+// `contractor_jobber_fields` under their own row, and selecting them here would be a second copy of
+// a fact that can rot independently of the first.
+//
+// ⚠ THE CONFIGURATION ID IS THE WHOLE POINT, AND IT IS WHAT RULING 1 TURNS ON. Accent has THREE
+// configurations named "Job Type", and the ALL_INVOICES one shares an identical 19-option list with
+// the ALL_JOBS one — so matching a value by LABEL cannot tell them apart and neither can the option
+// list. `writeCustomFieldFacts` keys on this id, and a fence fails if the selection loses it.
+//
+// ⚠ ONLY THE TWO VALUE SHAPES THIS PRODUCT READS ARE SELECTED — dropdown and text. A numeric,
+// true/false, link or area field is captured for its label and configuration with both value columns
+// NULL, which is honest: the row records that the field exists on the record without claiming a
+// category value it cannot supply.
+const CUSTOM_FIELD_MEMBERS = [
+  ['Dropdown', 'valueDropdown'],
+  ['Text', 'valueText'],
+  ['Numeric', null],
+  ['TrueFalse', null],
+  ['Link', null],
+  ['Area', null],
+];
+const CUSTOM_FIELDS = `customFields {
+                  __typename
+                  ${CUSTOM_FIELD_MEMBERS.map(([t, v]) => `... on CustomField${t} { label${v ? ` ${v}` : ''} customFieldConfiguration { id } }`).join('\n                  ')}
+                }`;
+
+const QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id } client { id }
+                ${CUSTOM_FIELDS}`;
 
 // ── REQUESTS (3d Phase 1a Commit 7a) ─────────────────────────────────────────
 //
@@ -175,7 +221,8 @@ const REQUEST_FIELDS = `id requestStatus createdAt
 const JOB_FIELDS = `id jobNumber jobStatus jobType title
                 createdAt updatedAt startAt endAt completedAt
                 total invoicedTotal uninvoicedTotal
-                client { id } quote { id } request { id } salesperson { id }`;
+                client { id } quote { id } request { id } salesperson { id }
+                ${CUSTOM_FIELDS}`;
 
 const INVOICE_FIELDS = `id invoiceNumber invoiceStatus
                 createdAt updatedAt issuedDate dueDate receivedDate
@@ -184,7 +231,8 @@ const INVOICE_FIELDS = `id invoiceNumber invoiceStatus
                 amounts { total subtotal invoiceBalance paymentsTotal
                           depositAmount discountAmount taxAmount }
                 jobs(first: ${INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }
-                archivedJobs(first: ${INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }`;
+                archivedJobs(first: ${INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }
+                ${CUSTOM_FIELDS}`;
 
 const BASE_QUERY = `query GetClient($id: EncodedId!) {
           client(id: $id) {${CLIENT_SCALARS}

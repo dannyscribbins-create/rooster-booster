@@ -2837,6 +2837,23 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   // points at a since-archived field can SAY so instead of silently resolving nothing.
   await pool.query(`ALTER TABLE contractor_jobber_fields
     ADD COLUMN IF NOT EXISTS archived BOOLEAN`);
+  // ⚠ `transfered_from` IS THE LINK, AND RULING 1 IS DEFINED IN TERMS OF IT — so without this
+  // column the ruling is not implementable at all (7c-2, Danny 2026-09-30). Jobber spells it with
+  // one 'r'; the column matches the API rather than correcting it, because a reader comparing the
+  // two should not have to wonder whether they are the same thing.
+  //
+  // ⚠ WHY A LINK RATHER THAN A LABEL OR AN OPTION LIST, MEASURED ON THE LIVE TENANT: Accent has
+  // THREE configurations named "Job Type", and the ALL_INVOICES one (730115) has the **same 19
+  // options** as the ALL_JOBS one (730114). So the label cannot distinguish them and neither can
+  // the option list. `transferedFrom` on 730115 names 730114 explicitly, and it is the only thing
+  // that can. Ruling 1 therefore says: follow the link, never the name.
+  //
+  // ⚠ NULLABLE WITH NO DEFAULT, AND THAT IS THE OPPOSITE OF A FALSE-Y DEFAULT ON PURPOSE. NULL
+  // means "this configuration is not a transferred copy of anything", which is true of most of
+  // them and is a real answer. A defaulted empty string would make "not a copy" and "nobody
+  // looked" the same reading — the distinction `waiting_for_financed_payment` was given a NULL for.
+  await pool.query(`ALTER TABLE contractor_jobber_fields
+    ADD COLUMN IF NOT EXISTS transfered_from TEXT`);
 
   // ⚠ THE MAPPING'S SHAPE CHANGES FROM A LABEL TO AN OBJECT, AND BOTH FORMS MUST READ.
   // `contractor_settings.contractor_field_mappings` is JSONB and held e.g.
@@ -2874,6 +2891,78 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
       label: 'Job Type',
     })]
   );
+
+  // ── CUSTOM-FIELD FACTS (7c-2) ───────────────────────────────────────────────────────
+  //
+  // One row per (record, configuration). The category a payout schedule is chosen from lives on a
+  // contractor's own custom field, and until now NOTHING stored it: `evaluateReferral` read it off
+  // the LIVE invoice object every time, which is why commit 7 could not be driven from facts at all.
+  // ⚠ `crm_job_facts.job_type` IS A DIFFERENT THING WITH A CONFUSINGLY IDENTICAL NAME — it is
+  // Jobber's own `Job.jobType` enum, and measured in production it reads `ONE_OFF` for all 6,277
+  // rows while the live schedules are keyed on "New Construction" / "Skylight Install" /
+  // "Restoration". Reading that column instead of this table would return `no_job_type_found` for
+  // every client, which is the blocker 7c was split out to remove.
+  //
+  // ⚠ KEYED ON THE CONFIGURATION ID, NEVER THE LABEL, AND THAT IS RULING 1 IN THE SCHEMA. Accent
+  // has three configurations named "Job Type" and two of them share an identical 19-option list,
+  // so a label-keyed table could not tell them apart and would silently mix a quote-vocabulary
+  // value into a job-reading schedule.
+  //
+  // ⚠ BOTH VALUE COLUMNS ARE STORED SEPARATELY RATHER THAN COALESCED INTO ONE. A dropdown and a
+  // free-text field are different contracts: a dropdown value is one of a known option list (which
+  // is what the admin guardrail checks against) and a text value is anything. Flattening them would
+  // make "the contractor typed something not on the list" indistinguishable from "the contractor
+  // picked an option", and the unmatched-option warning depends on that distinction.
+  //
+  // ⚠ `entity` IS THE `CustomFieldAppliesTo` ENUM VALUE (ALL_JOBS / ALL_QUOTES / ALL_INVOICES here),
+  // stored alongside the record id because the resolution order in ruling 1 is expressed in terms of
+  // stages — invoice, then job, then quote — and deriving the stage from which table an id happens
+  // to be in would be a second definition of the same fact.
+  await pool.query(`CREATE TABLE IF NOT EXISTS crm_custom_field_facts (
+    contractor_id     TEXT NOT NULL,
+    entity            TEXT NOT NULL,
+    entity_jobber_id  TEXT NOT NULL,
+    jobber_client_id  TEXT NOT NULL,
+    configuration_id  TEXT NOT NULL,
+    label             TEXT,
+    value_dropdown    TEXT,
+    value_text        TEXT,
+    captured_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (contractor_id, entity_jobber_id, configuration_id)
+  )`);
+  // The resolver reads "every custom-field fact for this client", so the client is the leading
+  // column. Without this the lookup is a full scan per conversion decision.
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_ccff_client
+    ON crm_custom_field_facts (contractor_id, jobber_client_id)`);
+
+  // ── CATEGORY MISMATCHES (7c-2, Danny ruling 3) ──────────────────────────────────────
+  //
+  // When the invoice copy and the job both carry a value and they DIFFER, the invoice wins (it is
+  // the later stage) and the disagreement is RECORDED so an admin can review it. The ruling is
+  // explicitly not "pick one silently": a contractor who changed the job's category after invoicing
+  // has told us two different things, and which one they meant is a question only they can answer.
+  //
+  // ⚠ IT RECORDS BOTH VALUES AND THE INVOICE, because a row saying only "there was a mismatch" sends
+  // the reader to Jobber to find out what it was — the same failure the rebuild's kept-rows log was
+  // ruled against. The client, the invoice and both values are what makes the row actionable.
+  //
+  // ⚠ ONE ROW PER (client, invoice, configuration), UPSERTED. A conversion decision can be retried,
+  // and a redelivered webhook must not produce a second identical review item — the same
+  // exactly-once reasoning `referral_conversions` gets from its UNIQUE constraint.
+  // ⚠ AND `resolved` EXISTS SO THE LIST CAN SHRINK. A tracking table that can only grow stops being
+  // a list of open work and becomes a list of things that were once true — which is why
+  // `error_log.resolved` is recorded in CLAUDE.md as a column that has never been set on any row.
+  await pool.query(`CREATE TABLE IF NOT EXISTS category_mismatches (
+    contractor_id     TEXT NOT NULL,
+    jobber_client_id  TEXT NOT NULL,
+    jobber_invoice_id TEXT NOT NULL,
+    configuration_id  TEXT NOT NULL,
+    invoice_value     TEXT,
+    job_value         TEXT,
+    detected_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved          BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (contractor_id, jobber_client_id, jobber_invoice_id, configuration_id)
+  )`);
 
   await backfillAssignedAt(pool);
   await applyAssignedAtNotNull(pool);

@@ -1057,3 +1057,85 @@ both sides, removing the trim no longer changed the outcome, so the injection ha
 around fixtures where the two forms genuinely differ. *An injection that cannot reach a
 discriminating value is not a guard-proof* — and a configuration change can quietly turn a valid one
 into a vacuous one.
+
+---
+
+## 7c-2 — WHERE THE PAYOUT CATEGORY COMES FROM (Danny, 2026-09-30)
+
+Three rulings, and each was reached by rejecting a plausible alternative — which is why they are
+recorded here rather than left to be inferred from the code.
+
+### RULING 1 — the mapped field, followed by its LINK. Never by label.
+
+Invoice counterpart (via `customFieldConfiguration.transferedFrom`) → else the job → else the linked
+quote.
+
+**REJECTED: match by LABEL.** It is the obvious implementation and it cannot work here. Accent has
+**three** configurations named "Job Type". A label match would pick whichever Jobber returned first,
+which is how discovery already kept the right one *by luck* before 7c-1.
+
+**REJECTED: match by comparing OPTION LISTS.** Plausible — a transferred copy ought to have the same
+options as its source — and measurably useless: `730115` (ALL_INVOICES) has the **same 19 options** as
+`730114` (ALL_JOBS), so the option list is exactly what cannot tell them apart. The thing that looks
+like a discriminator is the thing the two share.
+
+**REJECTED: infer the link from adjacent ids.** Observed live that Jobber allocates the invoice copy's
+id right after the job's (`681762`/`681763`, `1637875`/`1637876`, `730114`/`730115`). It is a real
+pattern and it is not a contract; reading it would be deriving a fact about identity from a NAME,
+which this project has a resident rule against.
+
+**AND THE LINK IS FOLLOWED IN ONE DIRECTION ONLY.** Accepting the reverse direction would walk up to a
+quote-level source and silently widen the mapping to a field the contractor never chose.
+
+### RULING 2 — the latest stage WITH A VALUE wins; blank is absent.
+
+**REJECTED: the latest stage, full stop.** It is simpler and it loses money. Both directions of the
+blank case exist in production *today*: a live job carries `""` while its invoice copy has a value,
+and invoice **60504** is the mirror — a blank invoice copy over a job that says "Out of Pocket".
+Taking the later stage unconditionally returns `no_job_type_found` for one of those two.
+
+**REJECTED: collapse blank to NULL at capture time.** That would make "the contractor cleared this
+field" and "this field has no value column" the same row. The distinction belongs to the resolver, so
+the fact row keeps `''` as `''`.
+
+### RULING 3 — on a conflict the invoice wins, and the disagreement is RECORDED.
+
+**REJECTED: pick the invoice silently.** A contractor who changed the job's category after invoicing
+has told us two different things, and which they meant is a question only they can answer. A silent
+pick is a decision disguised as a lookup.
+
+**REJECTED: refuse to convert on a conflict.** It fails closed, and it fails closed on the
+contractor's own data-entry habit rather than on anything risky — withholding a referrer's bonus to
+register our own uncertainty.
+
+**Agreement is judged by the shared matcher**, so case and a trailing space are not a conflict; two of
+Accent's nineteen live options carry a trailing space, and a byte comparison would manufacture
+mismatches out of the contractor's own option list. **A blank is not a conflict either** — ruling 2
+already made it absent.
+
+---
+
+## SPLIT CAPTURE FROM DECISION (Danny, 2026-09-30) — ruled, built immediately after 7c-2
+
+**Facts are saved in their own transaction first; the stage decision runs in a separate locked
+transaction afterwards.** A decision failure then never discards facts.
+
+**WHY, AND IT SUPERSEDES THE "the two inconsistencies are symmetrical" READING I FILED.** The
+coupling was filed as *not obviously wrong*, on the grounds that splitting it trades one inconsistency
+for another. That is true and the two are **not** equal: *"facts stored, stage stale"* leaves the
+already-handled `status_derived_at IS NULL` state, which the next pass converges out of; *"stage
+written, facts discarded"* is a decision resting on data that was rolled back, and it cost **seven
+clients their facts** on the invoice-paid door with nothing left to re-derive from.
+
+**THE SAFETY NET IS PART OF THE RULING, NOT AN ADDITION.** A failed decision **raises an alert**, and
+a small job **re-decides any client whose facts are newer than their decision** — from saved facts
+only, no Jobber calls.
+
+⚠ **THE CATCH-UP JOB IS WHAT MAKES THE SPLIT SAFE RATHER THAN MERELY DIFFERENT.** Without it, "the
+next pass will fix it" is a hope: a client whose decision failed and who then has no further webhook
+would keep a stale stage indefinitely. With it, the divergence is bounded by the job's cadence and is
+observable — `facts newer than decision` is a query anyone can run.
+
+⚠ **AND THE ALERT IS THE OTHER HALF, FOR THE REASON THE `$3` DEFECT DEMONSTRATED**: that failure ran
+for three hours at severity INFO with `alert: false`, and nothing surfaced it. A correct behaviour
+nobody can see is how a 10-minute expiry survived on a 30-minute tick.

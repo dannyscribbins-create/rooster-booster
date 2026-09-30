@@ -683,7 +683,24 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         **What removes THIS half of the entry:** that script run against the 7, and their facts and
         stages re-read afterwards.
 
-      - [ ] **7c-2 — STORE `customFieldConfiguration.transferedFrom` WITH EACH DISCOVERED
+      - [x] ✅ **CLOSED 2026-09-30 BY 7c-2 — `transfered_from` IS STORED, AND TWO SCHEMA FACTS THAT
+        LOOK ALIKE HAVE OPPOSITE REQUIREMENTS.** `contractor_jobber_fields.transfered_from` is written
+        on BOTH the insert and the conflict branch (a value written only on INSERT would be present for
+        a new contractor and permanently NULL for Accent, since discovery re-runs on every admin
+        click), and a fence pins both halves.
+        ⚠ **THE SELECTION FORMS ARE THE ENTRY WORTH KEEPING, BOTH VERIFIED LIVE RATHER THAN ASSUMED.**
+        `transferedFrom` on a CONFIGURATION is a **UNION**, so `transferedFrom { id }` is REJECTED —
+        *"Selections can't be made directly on unions"* — and it needs an inline fragment per member
+        (all six carry it). But `customFieldConfiguration` on a RECORD is the **CONCRETE** matching
+        type, so `{ id }` is correct there and fragments are rejected with **thirty** errors, one per
+        illegal pair. Getting either backwards fails the whole query, so both sites say which is which.
+        ⚠ **AND THE RECORD-LEVEL UNION IS `CustomFieldUnion`, NOT `CustomField`** — introspecting the
+        obvious name returns null. Members: `CustomFieldDropdown · Text · Numeric · TrueFalse · Link ·
+        Area`, each carrying `label` and `customFieldConfiguration`.
+        Superseded entry follows, kept as the record of why this was a precondition rather than a nicety.
+
+      - [x] **⚠ SUPERSEDED — SEE THE CLOSED ENTRY ABOVE. Kept as the record of the reasoning, not as
+        open work.** — 7c-2 — STORE `customFieldConfiguration.transferedFrom` WITH EACH DISCOVERED
         CONFIGURATION. NOT STORED TODAY (filed 2026-09-30). IT BLOCKS RULING 1.** Discovery persists
         `entity`, `transferable` and `archived` (7c-1) and **not** the link. Verified read-only against
         the live tenant after a fresh Run Discovery: `contractor_jobber_fields` has
@@ -731,7 +748,29 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         **What removes this entry:** the fixtures migrated wherever a gated path is driven, plus that
         fence green with a guard-proof showing it fires.
 
-      - [ ] **THE TRANSACTION COUPLING THAT AMPLIFIED THE ABOVE — CONSIDER SPLITTING IT. NOT FIXED
+      - [ ] **✅ RULED 2026-09-30 (Danny) — SPLIT CAPTURE FROM DECISION. NOT YET BUILT; ITS OWN COMMIT
+        IMMEDIATELY AFTER 7c-2.** *(This replaces the "RULING PENDING" entry, which is kept below as the
+        record of what was filed and why the two inconsistencies were first read as symmetrical.)*
+        **THE RULING:** facts are saved in **their own transaction first**; the stage decision runs in a
+        **separate locked transaction** afterwards, so a decision failure never discards facts. It
+        leaves the `status_derived_at IS NULL` "not yet derived" state, which the next pass **already
+        handles**.
+        **THE SAFETY NET IS PART OF THE RULING, NOT AN ADDITION:** a failed decision **raises an
+        alert**, and a **small job re-decides any client whose facts are newer than their decision** —
+        from saved facts only, **no Jobber calls**.
+        ⚠ **THE CATCH-UP JOB IS WHAT MAKES THE SPLIT SAFE RATHER THAN MERELY DIFFERENT.** Without it,
+        "the next pass will fix it" is a hope: a client whose decision failed and who then gets no
+        further webhook keeps a stale stage indefinitely. With it the divergence is bounded by the job's
+        cadence and is **observable** — *facts newer than decision* is a query anyone can run.
+        ⚠ **AND THE ALERT IS THE OTHER HALF**, for the reason the `$3` defect demonstrated: it ran three
+        hours at INFO with `alert: false` and nothing surfaced it.
+        **GUARD-PROOFS THIS COMMIT MUST CARRY (Danny):** a decision failure leaves the facts saved
+        (restore the shared transaction → red); the catch-up job re-decides a client whose facts are
+        newer than its decision; and the alert fires on a decision failure.
+        **What removes this entry:** that commit, green, with those three proofs.
+
+      - [x] **⚠ SUPERSEDED BY THE RULING ABOVE — kept as the record of what was filed, including the
+        reading the ruling corrected.** — THE TRANSACTION COUPLING THAT AMPLIFIED THE ABOVE — CONSIDER SPLITTING IT. NOT FIXED
         (filed 2026-09-30).** `upsertAndTagClient` runs `captureClientFacts`, `decideFromFacts` and
         7b's referrer-visible-status UPDATE in **one** `withClientLock` transaction. Any failure in the
         status write therefore discards the capture — which is how a parameter-type typo cost seven
