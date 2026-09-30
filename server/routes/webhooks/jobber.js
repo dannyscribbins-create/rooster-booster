@@ -584,21 +584,39 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 
         const decided = await decideFromFacts(tx, { contractorId, jobberClientId: fullClient.id });
 
         // ── THE REFERRER-VISIBLE STAGE, FROM THE SAME FACTS (N4 commit 7b) ──────
-        // ⚠ ONLY FOR A REFERRED CLIENT, AND ONLY WHERE A ROW ALREADY EXISTS. This is an UPDATE,
-        // never an INSERT: `syncSingleClient` owns creating a `pipeline_cache` row, because it is
-        // the only path that knows the referrer name and the pre-start-date decision. A zero-row
-        // result here is the expected quiet outcome for a client the referral sync has not seen.
+        // ⚠ ONLY WHERE A ROW ALREADY EXISTS. This is an UPDATE, never an INSERT: `syncSingleClient`
+        // owns creating a `pipeline_cache` row, because it is the only path that knows the referrer
+        // name and the pre-start-date decision. A zero-row result is the expected quiet outcome for
+        // a client the referral sync has not seen.
+        // ⚠ THIS COMMENT USED TO OPEN "ONLY FOR A REFERRED CLIENT" AND THAT WAS FALSE OF THE GUARD.
+        // The condition tests `alsoDeriveReferredStatus` and derivability — NOT whether the client is
+        // referred — so the statement runs for every real Jobber client on an invoice-paid webhook
+        // and simply affects no rows for the rest. Harmless as behaviour, and the reason the
+        // parameter-type defect below hit SEVEN non-referred clients rather than nobody: a comment
+        // that describes the effect as though it described the gate hides the real blast radius.
         // ⚠ IT WRITES NO CONVERSION AND CREDITS NOBODY. That is commit 7d, and it is blocked on
         // 7c — the Job Type custom field is not captured, so `evaluateReferral` cannot run from
         // facts at all yet.
         if (alsoDeriveReferredStatus && isDerivableJobberClientId(fullClient.id)) {
           const ref = await deriveReferredStatus(tx, { contractorId, jobberClientId: fullClient.id });
           await tx.query(
+            // ⚠ `$3::text` IN BOTH PLACES, AND THE CAST IS THE WHOLE FIX. Written without it, `$3`
+            // appears twice in incompatible inference contexts — once assigned to
+            // `pipeline_status` (a VARCHAR(50) column) and once compared to a bare literal in the
+            // CASE — and Postgres refuses the statement at PREPARE with
+            // "inconsistent types deduced for parameter $3". ⚠ IT FAILS FOR EVERY INVOCATION, NOT
+            // FOR CERTAIN DATA: the error is a property of the SQL, so no value of `ref.status`
+            // could have made it work.
+            // ⚠ AND THE COST WAS NOT ONLY THE STATUS. This statement runs inside the same
+            // `withClientLock` transaction as `captureClientFacts` above, so the throw rolled the
+            // CAPTURE back too — client gid://Jobber/Client/154808209 reached 0 job facts. Seven
+            // clients over three hours on the invoice-paid door, logged at INFO with `alert: false`,
+            // so nothing surfaced it.
             `UPDATE pipeline_cache
-                SET pipeline_status   = $3,
+                SET pipeline_status   = $3::text,
                     updated_at        = NOW(),
                     paid_at           = CASE
-                      WHEN $3 = 'paid' AND pipeline_status != 'paid'
+                      WHEN $3::text = 'paid' AND pipeline_status != 'paid'
                       THEN COALESCE($4::timestamptz, paid_at)
                       ELSE paid_at
                     END,
@@ -614,9 +632,14 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 
       await logError({
         req: null,
         contractorId,
-        error: new Error(`[upsertAndTagClient] capture failed for client ${fullClient.id}, no stage decided: ${capErr.message}`),
+        error: new Error(`[upsertAndTagClient] capture failed for client ${fullClient.id}, no stage decided AND the fact capture was rolled back: ${capErr.message}`),
         source: 'upsertAndTagClient — capture',
-        alert: false,
+        // ⚠ IT ALERTS NOW, AND `alert: false` IS WHY THIS WENT UNNOTICED FOR THREE HOURS. The
+        // failure is not cosmetic: the whole locked transaction rolls back, so the client's FACTS
+        // are lost as well as its stage, on the door that decides money. A capture failure here is
+        // the definition of something a person needs to know about, and INFO with no alert made it
+        // indistinguishable from routine noise.
+        alert: true,
       });
       pipelineStage = null;
     }

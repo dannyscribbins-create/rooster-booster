@@ -424,8 +424,50 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2278 server tests across 382 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the 7c-1 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2278 · suites 382 · pass 2278 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE 7c-1 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2286 server tests across 384 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the invoice-paid parameter-cast commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2286 · suites 384 · pass 2286 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE INVOICE-PAID PARAMETER-CAST COMMIT ITSELF, BECAUSE IT SHIPS
+  TESTS.** Server 2278 → 2286 is **+8**, one new file (`invoicePaidDerivableClient.test.js`); suites
+  382 → 384 is that file's **two** top-level describes. React did not move — **no `src/` file was
+  touched at all** — and was re-measured. **All four predicted before the run and matched.** Counted
+  with an anchored `^\s*it\(` (8); the file's single loop sits inside `beforeEach`, iterating tables to
+  clear, so it wraps no case.
+  ⚠ **THE COMMIT FIXES A 7b REGRESSION THAT RAN FOR THREE HOURS ON THE MONEY DOOR, AND THE GATE WAS
+  GREEN THE WHOLE TIME BECAUSE THE CODE NEVER RAN.** 7b's `pipeline_cache` UPDATE used `$3` **twice** —
+  assigned to `pipeline_status` (a `VARCHAR(50)` column) and compared to a bare literal inside a `CASE`
+  — which Postgres refuses at PREPARE with *"inconsistent types deduced for parameter $3"*. ⚠ **It
+  failed on EVERY invocation, not on certain data**: the error is a property of the SQL text, so no
+  value could have made it work. Fixed with `$3::text` in both uses.
+  ⚠ **AND THE COST WAS NOT THE STATUS, IT WAS THE CAPTURE.** The statement shares its transaction with
+  `captureClientFacts`, so the throw rolled the capture back too — measured at **7 clients between
+  12:55 and 15:46 UTC**, one of them (`gid://Jobber/Client/154808209`) left with **0 job facts**. The
+  transaction coupling that amplified it is filed on `PRE_LAUNCH_CHECKLIST.md` rather than changed,
+  because one transaction is what makes capture-and-decide atomic and splitting it buys a *different*
+  inconsistency.
+  ⚠ **A NEW GUARD MADE EVERY PRE-EXISTING FIXTURE SKIP THE NEW BRANCH — THAT IS THE ENTRY WORTH
+  KEEPING.** `invoicePaidWebhook.test.js` drives the whole webhook end to end, and its client id is
+  `'jobber-c1'`, which commit 2's `isDerivableJobberClientId` **rejects**. So the guard added for good
+  reasons meant no existing case could reach the block 7b added. **When a commit puts a branch behind a
+  NEW predicate, one test must be shown to ENTER it — assert the precondition, not only the outcome.**
+  ⚠ **AND THE SUITE READS THE UPDATE OUT OF PRODUCTION SOURCE RATHER THAN RETYPING IT**, because the
+  defect was in the SQL TEXT: a retyped copy carrying the fix would pass while production stayed
+  broken. Non-vacuity floors prove the extraction found a statement at all.
+  ⚠ **THREE GUARD-PROOFS, EVERY REVERT AN INVERSE PATCH IN A `finally` PROVEN BYTE-IDENTICAL BY
+  sha256.** (i) the exact pre-fix SQL, `$3` uncast in BOTH uses → **6 red** (5 behavioural + the source
+  fence); (i-b) the plausible HALF-fix, casting the assignment and leaving the comparison bare →
+  **1 red, the source fence ONLY**; (ii) `alert: false` restored → **exactly 1**.
+  ⚠ **(i-b) IS RECORDED BECAUSE IT MEASURES THE FIX AS SMALLER THAN IT LOOKS.** One cast is
+  behaviourally sufficient; both are written anyway so no bare `$3` can return to either position, and
+  the fence is what pins that. **The second cast is belt-and-braces, not a correctness requirement, and
+  saying otherwise would overstate the fix.**
+  ⚠ **AND I REPORTED IT AS "NOT MINE, BUT REAL" — A TRUE MEASUREMENT WITH A FALSE INFERENCE.** I
+  established that the earliest occurrence (12:55) predated the 7c-0 deploy (13:09) and concluded it was
+  pre-existing. **I never asked whether it POSTDATED 7b**, which is also mine; the three-hour lag had a
+  checkable cause, in that the block runs only for invoice-paid AND only for a derivable client id, so
+  7b sat inert until the first qualifying webhook. **"It predates commit X" is not "it is not mine"
+  when there is a commit Y.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE 7c-1 COMMIT ITSELF, BECAUSE IT SHIPS
+  TESTS.* It read **2278 / 382 / 1398 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE 7c-1 COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2245 → 2278 is **+33**, one new file (`fieldMappingEntity.test.js`); suites 374 → 382 is that
   file's **eight** top-level describes. React did not move and was re-measured — **no phantom, asked
   before the run**: this commit adds no new non-test file under `src/utils`, `src/constants`,

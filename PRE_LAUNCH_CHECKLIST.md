@@ -634,6 +634,56 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         the allowed mapping keys, so the PATCH strips it and the hard-coded fallback always wins.
         **What removes this entry:** each fixed on its own, with the percentage one first.
 
+      - [x] ✅ **CLOSED 2026-09-30 — THE 7b INVOICE-PAID REGRESSION: `inconsistent types deduced for
+        parameter $3`. MINE, FIXED IN ITS OWN COMMIT, AND THE MIS-ATTRIBUTION IS PART OF THE RECORD.**
+        7b added a `pipeline_cache` UPDATE inside `upsertAndTagClient`'s locked transaction which used
+        `$3` **twice** — assigned to `pipeline_status` (a `VARCHAR(50)` column) and compared to a bare
+        literal inside a `CASE`. Postgres refuses that at PREPARE. ⚠ **It failed on every invocation,
+        not on certain data**: the error is a property of the SQL, so no value could have made it work.
+        **Measured blast radius: 7 clients between 12:55 and 15:46 UTC**, every one of them a
+        NON-referred client, and `gid://Jobber/Client/154808209` left with **0 job facts**.
+        ⚠ **THE COST WAS NOT THE STATUS, IT WAS THE CAPTURE.** The statement shares its transaction
+        with `captureClientFacts`, so the throw rolled the capture back too — on the invoice-paid
+        door, which is the door that decides money. Fixed with `$3::text` in both uses.
+        ⚠ **AND IT WHISPERED FOR THREE HOURS: `alert: false`, severity auto-classified to INFO.** A
+        failure that loses a client's facts is not routine noise. It alerts now, and the message says
+        the capture was rolled back rather than only that no stage was decided.
+        ⚠ **I TOLD DANNY "NOT MINE, BUT REAL", AND THAT WAS WRONG — A TRUE MEASUREMENT WITH A FALSE
+        INFERENCE.** I established the earliest occurrence (12:55) predated the 7c-0 deploy (13:09)
+        and concluded it was pre-existing. **I never asked whether it POSTDATED 7b**, which is also
+        mine. The three-hour lag had a checkable cause: the block runs only for invoice-paid AND only
+        for a derivable client id, so 7b (deployed 03:14) sat inert until the first qualifying webhook.
+        **"It predates commit X" is not "it is not mine" when there is a commit Y.**
+        ⚠ **AND NO TEST COULD HAVE CAUGHT IT, WHICH IS THE TRANSFERABLE PART.**
+        `invoicePaidWebhook.test.js` drives the whole webhook end to end and its client id is
+        `'jobber-c1'` — which `isDerivableJobberClientId` **rejects**. So the guard commit 2 added for
+        good reasons meant **every pre-existing fixture skipped the new block**: the gate was green
+        because the code never ran. **A fixture that satisfies every other assertion can still fail to
+        reach the one branch a commit added, and a new guard is an excellent way to arrange that.**
+        The rule: when a commit adds a branch behind a NEW predicate, one test must be shown to
+        ENTER it — assert the precondition, not just the outcome.
+        Closed by `server/test/invoicePaidDerivableClient.test.js`, which reads the UPDATE **out of the
+        production source** rather than retyping it, because the defect was in the SQL text and a
+        retyped copy carrying the fix would pass while production stayed broken.
+        ⚠ **ONE HONEST NUANCE: casting only the ASSIGNMENT is behaviourally sufficient.** Guard-proof
+        (i-b) leaves the comparison bare and every behavioural case still passes — only the source
+        fence fires. Both are cast anyway so no bare `$3` can return to either position, and the fence
+        is what pins that; **the second cast is belt-and-braces, not a correctness requirement**, and
+        saying otherwise would overstate the fix.
+
+      - [ ] **THE TRANSACTION COUPLING THAT AMPLIFIED THE ABOVE — CONSIDER SPLITTING IT. NOT FIXED
+        (filed 2026-09-30).** `upsertAndTagClient` runs `captureClientFacts`, `decideFromFacts` and
+        7b's referrer-visible-status UPDATE in **one** `withClientLock` transaction. Any failure in the
+        status write therefore discards the capture — which is how a parameter-type typo cost seven
+        clients their facts rather than just their stage.
+        ⚠ **NOT OBVIOUSLY WRONG, WHICH IS WHY IT IS FILED RATHER THAN CHANGED.** One transaction is
+        what makes capture-and-decide atomic, and that atomicity is the reason the lock exists at all.
+        Splitting the status UPDATE out would protect the capture and would also let a client end up
+        with facts stored and a stale referrer-visible stage — a different inconsistency, not obviously
+        a better one.
+        **What removes this entry:** a ruling on which inconsistency is preferable, then the change it
+        authorises. Until then the mitigation is the alert, which now fires.
+
       - [ ] **A CRON RUN THAT TAKES OVER AN EXPIRED LOCK MUST SAY SO IN `error_log`. NOT BUILT
         (filed 2026-09-30). Small.** The owner-scoped release from the cron-lock-owner commit makes
         a crashed holder's lock *takeable* once `timeout_at` passes — that is the self-healing half
@@ -693,8 +743,41 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         slip into a dependency commit. **Correct the project/service distinction; do not retire the
         block** — the rename is still deliberately not done, and four of its five members stand.
 
+      - [ ] **⚠ `npm audit` HIGH — `axios` `1.0.0 - 1.19.0`, SEVEN ADVISORIES, AND IT IS A DIRECT
+        RUNTIME DEPENDENCY. FILED 2026-09-30, NOT FIXED. THE MOST SERIOUS OPEN AUDIT FINDING, AND
+        THE ONLY ONE THAT IS NOT DEV-ONLY.** Measured, not inferred: `package.json` lists it under
+        **`dependencies`** as `^1.18.0`; `node_modules/axios/package.json` and the lockfile's
+        `node_modules/axios` both read **`1.18.0`** — inside the advisory range. Read from the
+        manifests and the installed package, **never from `npm ls`**, per the rule in `CLAUDE.md`.
+        ⚠ **THIS IS THE TRANSPORT FOR EVERY EXTERNAL CALL THE PRODUCT MAKES** — every Jobber
+        GraphQL request goes through it, and it is in the deployed tree by construction rather than
+        by a transitive accident. That is a different risk class from `undici`-under-`jsdom` and
+        must not be filed beside it as an equivalent.
+        ⚠ **THE ADVISORIES ARE NOT ALL THEORETICAL FOR THIS CODEBASE.** Two are prototype-pollution
+        gadgets that can **alter outbound requests** or **override the HTTP method** on the default
+        instance; one is a ReDoS in `shouldBypassProxy` host normalisation reachable **via an
+        untrusted redirect `Location`**; one is an HTTP/2 adapter that **bypasses configured DNS
+        lookup and proxy controls**. A client that follows redirects from a third-party API is the
+        shape those describe. **Whether any is reachable here is NOT established** — say so rather
+        than guessing in either direction.
+        ⚠ **AND IT WAS IN A COUNT I REPORTED WITHOUT ENUMERATING, WHICH IS WHY IT SAT UNFILED.**
+        The post-`undici` audit was reported this session as *"4 findings / 2 HIGH"*, correcting an
+        earlier tail-truncated *"3 / 1"*. **The corrected TOTAL was right and no breakdown was
+        written, so the new HIGH was invisible** — while the entry below still predicts *"3
+        findings"* after the bump. This file's own rule: **a total agreeing is not the check; the
+        breakdown is.** Name the packages, every time.
+        ⚠ **WHAT WILL REMOVE THIS ENTRY:** a bump that takes `axios` out of `npm audit`'s output, on
+        the four conditions Danny set for `undici` — smallest change, its own commit, full gate,
+        report before pushing. ⚠ **Unlike `undici` this one is NOT test-only, so the gate is not
+        sufficient evidence**: the React suite exercising jsdom proved the undici bump safe, and
+        nothing equivalent covers a runtime HTTP client. **Open question to settle in that commit:**
+        the fix is above `1.19.0`, so whether it is caret-compatible at all depends on whether a
+        `1.19.x` fix release exists or the fix is only in `2.x` — a major bump would be a breaking
+        change across every `axios.post` call site and is its own piece of work, not a bump.
+
       - [ ] **`npm audit` HIGH — `brace-expansion` `4.0.0 - 5.0.11`. THE NEW STANDING HIGH, FILED
-        2026-09-30, NOT FIXED.** It replaced `undici` as the sole HIGH the moment that one cleared,
+        2026-09-30, NOT FIXED.** ⚠ **"THE SOLE HIGH" IS NO LONGER TRUE — see the `axios` entry
+        directly above, which is both HIGH and runtime.** It replaced `undici` as the sole HIGH the moment that one cleared,
         and it is **not** something the undici commit introduced: it is present against the
         unmodified HEAD lockfile too, measured in the same session. Also open: `ip-address`
         `<=10.7.0` (moderate, four advisories) and `multer` `2.2.0 - 2.3.0` (moderate).
@@ -3281,6 +3364,16 @@ check — which is why this is a named build rather than a checklist line.
 - [ ] **`inconsistent types deduced for parameter $5`** — 8 occurrences, route `unknown`, last
       seen 2026-05-26. A real SQL bug, quiet three months. Low priority; **needs a route before
       it can be found** — blocked on the `source` sweep above.
+      ⚠ **PARTLY UNBLOCKED 2026-09-30: IT DOES NOT NEED A ROUTE, BECAUSE THE MECHANISM IS VISIBLE
+      IN THE SOURCE.** The 7b regression closed above is the same error on `$3`, and its cause was
+      general: **one parameter used in two different inference contexts** — assigned to a typed
+      column AND compared to a bare literal — which Postgres refuses at PREPARE, on every
+      invocation, regardless of the values. So this is findable by reading the SQL rather than by
+      waiting for attribution: **grep `server/` for a statement whose `$5` appears twice, once as
+      an assignment target and once in a comparison against an untyped literal.** The fix is an
+      explicit `::type` cast at each use. ⚠ **"Last seen 2026-05-26" does NOT mean it was fixed** —
+      the statement fails on every invocation, so a silent three months means the path stopped
+      being taken, not that it started working.
 - [ ] **Swallowed catch blocks — audit, with a named example.** A missing `require` left a
       value undefined inside the invoice-paid webhook's invite branch; the handler threw and
       **swallowed it**, so a homeowner never received their invite and nothing reported it.
