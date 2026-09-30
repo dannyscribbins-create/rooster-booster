@@ -1,5 +1,8 @@
 const { removeTagsByPrefix, upsertTag, replaceTagGroup, removeExactTag } = require('./tags');
 const { logError } = require('../middleware/errorLogger');
+// ⚠ A mapping value may be the legacy label string or the 7c-1 { field_id, entity, label }
+// object. One parser for both, so the two shapes cannot be handled differently in two places.
+const { parseMappingEntry } = require('./fieldMapping');
 const { isInvoicePaid } = require('./invoicePaid');
 
 // Normalize a string for use as a tag suffix: lowercase, non-alphanumeric → underscore.
@@ -52,11 +55,29 @@ async function deriveAndSaveTags(pool, contractorId, jobberClientId, clientData,
   try {
     const identifier = { jobber_client_id: jobberClientId };
 
-    const workCategoryLabel  = contractorFieldMappings.work_category      || 'Job Type';
-    const materialTypeLabel  = contractorFieldMappings.material_type      || 'Material Type';
-    const assignedRepLabel   = contractorFieldMappings.assigned_rep       || 'Sales Representative';
-    const jobSourceLabel     = contractorFieldMappings.job_source         || 'Source';
-    const insuranceLabel     = contractorFieldMappings.insurance_company  || 'Insurance Company';
+    // ⚠ A MAPPING VALUE IS NO LONGER A BARE STRING (7c-1), AND READING IT AS ONE WOULD SILENTLY
+    // STOP ALL TAGGING. It is now { field_id, entity, label }, and `object || 'Job Type'` yields the
+    // OBJECT — which `getCustomFieldValue` then calls `.toLowerCase()` on, throwing a TypeError that
+    // this function's own try/catch swallows. Every tag for every client would quietly disappear
+    // with one row in error_log. `mappedLabel` tolerates both shapes.
+    //
+    // ⚠ AND THE LABEL IS STILL WHAT MATCHES ON A RECORD, WHICH IS A LIMIT WORTH STATING. A record's
+    // `customFields` entries carry a label and a value; they CAN also carry
+    // `customFieldConfiguration { id }` — verified against the live schema — but the capture queries
+    // do not select it yet. So 7c-1 makes the CONFIGURATION unambiguous (and therefore the option
+    // list and the entity), while matching a VALUE on a record is still by label. Within one entity
+    // that is effectively unique; across entities it is the entity that disambiguates. **7c-2 should
+    // select the configuration id on records and match on that**, at which point the stored label
+    // becomes display-only here too.
+    const mappedLabel = (key, fallback) => {
+      const entry = parseMappingEntry(contractorFieldMappings[key]);
+      return (entry && entry.label) || fallback;
+    };
+    const workCategoryLabel  = mappedLabel('work_category',     'Job Type');
+    const materialTypeLabel  = mappedLabel('material_type',     'Material Type');
+    const assignedRepLabel   = mappedLabel('assigned_rep',      'Sales Representative');
+    const jobSourceLabel     = mappedLabel('job_source',        'Source');
+    const insuranceLabel     = mappedLabel('insurance_company', 'Insurance Company');
 
     const jobs     = clientData.jobs     || [];
     const invoices = clientData.invoices || [];

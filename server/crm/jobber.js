@@ -270,6 +270,22 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
 // Runs GetCustomFieldConfigurations, upserts into contractor_jobber_fields,
 // and returns the full field list from the DB.
 // tokenOverride: pass a fresh token directly (e.g. from OAuth callback) to skip DB read.
+// ── TEST SEAM FOR THE JOBBER HTTP TRANSPORT (7c-1) ────────────────────────────
+// Production always uses real axios.post. ⚠ THIS EXISTS BECAUSE A GUARD-PROOF CAME BACK WITH NO
+// BEHAVIOURAL RED: restoring discovery's de-duplication-by-label failed only a SOURCE fence, because
+// the suite seeded `contractor_jobber_fields` rows directly and so could not observe what discovery
+// does to a response. A test that injects the stored rows cannot discover that discovery discards
+// them — the same shape as a test injecting a value it claims something upstream supplies.
+let _jobberAxiosPost = (...args) => axios.post(...args);
+
+// test seam — inert in production, never called outside server/test/
+function _setJobberHttpForTest({ axiosPost } = {}) {
+  if (axiosPost !== undefined) _jobberAxiosPost = axiosPost;
+}
+function _resetJobberHttp() {
+  _jobberAxiosPost = (...args) => axios.post(...args);
+}
+
 async function discoverJobberFields(contractorId, tokenOverride = null) {
   let token = tokenOverride;
   if (!token) {
@@ -284,55 +300,96 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
     token = tokenResult.rows[0].access_token;
   }
 
+  // ── 7c-1 — EVERY CONFIGURATION, WITH ITS ENTITY, PAGED ───────────────────────────────
+  //
+  // ⚠ THIS QUERY USED TO SELECT id/name/__typename AND NOTHING ELSE, AND THE CODE BELOW THEN
+  // DE-DUPLICATED BY NAME. On Accent that discarded 10 of 27 configurations and kept whichever of
+  // three "Job Type" fields Jobber happened to return first — a coin-flip deciding which field the
+  // payout engine is configured against. It kept the right one.
+  //
+  // `appliesTo` is the entity: enum CustomFieldAppliesTo, seven values, read from the live schema at
+  // the pinned 2026-05-12 rather than assumed —
+  // ALL_PROPERTIES · ALL_CLIENTS · ALL_QUOTES · ALL_JOBS · ALL_INVOICES ·
+  // ALL_PRODUCTS_AND_SERVICES · TEAM. ⚠ **There is no REQUEST entity.**
+  //
+  // ⚠ `transferable` IS SELECTED BECAUSE THE PAYOUT RESOLUTION ORDER DEPENDS ON IT (R-7c-3), and
+  // `archived` because discovery has been offering dead fields as live ones — eleven of Accent's 27
+  // are archived in Jobber and the mapping screen listed them indistinguishably.
+  //
+  // ⚠ AND `CustomFieldConfigurationArea` NOW HAS A FRAGMENT. It was in TYPE_MAP all along with no
+  // fragment in the query, so an Area configuration arrived with no `id` and no `name` and was
+  // dropped by the `!node.name` filter — a whole field type invisible, with the mapping table
+  // carrying an entry for it. Confirmed selectable against the live schema.
+  const CONFIG_FIELDS = `id name appliesTo transferable archived`;
   const query = `
-    query GetCustomFieldConfigurations {
-      customFieldConfigurations {
+    query GetCustomFieldConfigurations($after: String) {
+      customFieldConfigurations(first: 100, after: $after) {
         nodes {
-          ... on CustomFieldConfigurationText {
-            id
-            name
-            __typename
-          }
-          ... on CustomFieldConfigurationDropdown {
-            id
-            name
-            __typename
-            dropdownOptions
-          }
-          ... on CustomFieldConfigurationNumeric {
-            id
-            name
-            __typename
-          }
-          ... on CustomFieldConfigurationTrueFalse {
-            id
-            name
-            __typename
-          }
-          ... on CustomFieldConfigurationLink {
-            id
-            name
-            __typename
-          }
+          __typename
+          ... on CustomFieldConfigurationText      { ${CONFIG_FIELDS} }
+          ... on CustomFieldConfigurationDropdown  { ${CONFIG_FIELDS} dropdownOptions }
+          ... on CustomFieldConfigurationNumeric   { ${CONFIG_FIELDS} }
+          ... on CustomFieldConfigurationTrueFalse { ${CONFIG_FIELDS} }
+          ... on CustomFieldConfigurationLink      { ${CONFIG_FIELDS} }
+          ... on CustomFieldConfigurationArea      { ${CONFIG_FIELDS} }
         }
+        pageInfo { hasNextPage endCursor }
       }
     }
   `;
 
+  // diagnostic log — intentional
   console.log('[discoverFields] Starting field discovery for contractor:', contractorId);
 
-  const response = await retryWithBackoff(
-    () => axios.post(
-      'https://api.getjobber.com/api/graphql',
-      { query },
-      { headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'X-JOBBER-GRAPHQL-VERSION': '2026-05-12'
-      } }
-    ),
-    { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
-  );
+  // ⚠ PAGED, AND IT WAS NOT BEFORE. The old call sent this query with NO `first:` and NO cursor, so
+  // it took whatever Jobber's default page happened to be and silently kept only that. Accent has
+  // 27 configurations and fits in one page, which is precisely why the omission was invisible — the
+  // same shape as the invoice `jobs(first: 10)` truncation this repo already paid for.
+  //
+  // ⚠ AND THE CAP RAISES RATHER THAN TRUNCATES. `MAX_PAGES` exists so a broken `hasNextPage` cannot
+  // spin forever, and reaching it THROWS instead of returning a short list: a field discovery that
+  // quietly returns nine tenths of a contractor's fields would let an admin map the wrong one and
+  // give no sign. Better to fail the discovery and say so.
+  const MAX_PAGES = 20;
+  const nodes = [];
+  let after = null;
+  let pages = 0;
+  for (;;) {
+    const response = await retryWithBackoff(
+      () => _jobberAxiosPost(
+        'https://api.getjobber.com/api/graphql',
+        { query, variables: { after } },
+        { headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'X-JOBBER-GRAPHQL-VERSION': '2026-05-12'
+        } }
+      ),
+      { retries: 3, initialDelayMs: 1000, shouldRetry: jobberShouldRetry }
+    );
+    // ⚠ GRAPHQL ERRORS ARRIVE INSIDE A 200, so an unchecked response yields `nodes: []` and reads as
+    // "this contractor has no custom fields" — which is what the DELETE below would then act on.
+    const errs = response.data?.errors;
+    if (Array.isArray(errs) && errs.length) {
+      throw new Error(`discoverJobberFields: Jobber returned errors: ${errs.map(e => e.message).join('; ')}`);
+    }
+    const conn = response.data?.data?.customFieldConfigurations;
+    if (!conn) {
+      throw new Error('discoverJobberFields: no customFieldConfigurations in the response');
+    }
+    nodes.push(...(conn.nodes || []));
+    pages += 1;
+    if (!conn.pageInfo?.hasNextPage) break;
+    after = conn.pageInfo.endCursor;
+    if (!after) break;
+    if (pages >= MAX_PAGES) {
+      throw new Error(
+        `discoverJobberFields: more than ${MAX_PAGES} pages of custom field configurations — `
+        + 'refusing to store a partial set, because a short list lets an admin map the wrong field '
+        + 'with no sign anything was missing'
+      );
+    }
+  }
 
   const TYPE_MAP = {
     CustomFieldConfigurationText:      'text',
@@ -343,46 +400,62 @@ async function discoverJobberFields(contractorId, tokenOverride = null) {
     CustomFieldConfigurationArea:      'area',
   };
 
-  const nodes = response.data?.data?.customFieldConfigurations?.nodes || [];
+  // ⚠ EVERY CONFIGURATION IS KEPT. The de-duplication that used to sit here filtered by `name` and
+  // kept the FIRST occurrence — on Accent that discarded 10 of 27 and decided, by Jobber's response
+  // order, which of three "Job Type" fields the payout engine would be configured against.
+  // Uniqueness is `(contractor_id, jobber_field_id)`, which is the real key, so the table could
+  // always have held them all.
+  //
+  // ⚠ A NODE WITH NO id OR NO name IS STILL DROPPED, and that is not the same filter. Those are
+  // configurations of a type this query has no fragment for; keeping them would write rows nothing
+  // can identify. If one ever appears, the count logged below will not match `nodes.length` — which
+  // is why both numbers are logged rather than one.
+  const usable = nodes.filter(node => node && node.id && node.name);
 
-  // Deduplicate by name — Jobber returns the same field at multiple levels
-  // (job, client, quote). Keep first occurrence of each unique name only.
-  const seen = new Set();
-  const uniqueNodes = nodes.filter(node => {
-    if (!node.name || seen.has(node.name)) return false;
-    seen.add(node.name);
-    return true;
-  });
+  // diagnostic log — intentional
+  console.log('[discoverFields] configurations returned:', nodes.length,
+    '· usable:', usable.length,
+    '· distinct labels:', new Set(usable.map(n => n.name)).size,
+    '· pages:', pages);
 
-  console.log('[discoverFields] Fields found:', uniqueNodes.length, uniqueNodes.map(n => n.name));
-
-  // Clear existing fields for this contractor before re-inserting clean set
+  // ⚠ DELETE-THEN-INSERT IS KEPT, AND IT IS WHAT MAKES A FIELD DELETED IN JOBBER DISAPPEAR HERE.
+  // The upsert alone would leave a stale row behind forever, and a mapping pointing at a field that
+  // no longer exists must resolve to nothing rather than to a remembered copy.
   await pool.query(
     'DELETE FROM contractor_jobber_fields WHERE contractor_id = $1',
     [contractorId]
   );
 
-  for (const node of uniqueNodes) {
+  for (const node of usable) {
     const fieldType = TYPE_MAP[node.__typename] || 'other';
     const optionsValue = (node.__typename === 'CustomFieldConfigurationDropdown' && Array.isArray(node.dropdownOptions) && node.dropdownOptions.length)
       ? JSON.stringify(node.dropdownOptions.filter(o => o && o.trim() !== ''))
       : null;
     await pool.query(
-      `INSERT INTO contractor_jobber_fields (contractor_id, jobber_field_id, label, field_type, options, discovered_at)
-       VALUES ($1, $2, $3, $4, $5, NOW())
+      `INSERT INTO contractor_jobber_fields
+         (contractor_id, jobber_field_id, label, field_type, options, entity, transferable, archived, discovered_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
        ON CONFLICT (contractor_id, jobber_field_id) DO UPDATE SET
-         label = $3, field_type = $4, options = $5, discovered_at = NOW()`,
-      [contractorId, node.id, node.name, fieldType, optionsValue]
+         label = $3, field_type = $4, options = $5, entity = $6,
+         transferable = $7, archived = $8, discovered_at = NOW()`,
+      [contractorId, node.id, node.name, fieldType, optionsValue,
+        // ⚠ NULL RATHER THAN A GUESS when Jobber does not report it. An invented entity is worse
+        // than an absent one: the admin screen would state it with the same confidence as a real
+        // value, and the whole point of 7c-1 is that the entity is knowable rather than assumed.
+        typeof node.appliesTo === 'string' ? node.appliesTo : null,
+        typeof node.transferable === 'boolean' ? node.transferable : null,
+        typeof node.archived === 'boolean' ? node.archived : null]
     );
   }
 
-  console.log('[discoverFields] Upsert complete. Rows processed:', uniqueNodes.length);
+  // diagnostic log — intentional
+  console.log('[discoverFields] Upsert complete. Rows processed:', usable.length);
 
   const result = await pool.query(
-    `SELECT jobber_field_id, label, field_type, options, discovered_at
+    `SELECT jobber_field_id, label, field_type, options, entity, transferable, archived, discovered_at
      FROM contractor_jobber_fields
      WHERE contractor_id = $1
-     ORDER BY label ASC`,
+     ORDER BY label ASC, entity ASC NULLS LAST`,
     [contractorId]
   );
 
@@ -595,4 +668,4 @@ async function fetchRequestsUpdatedSince(since, token, cursor = null, _httpPost 
   };
 }
 
-module.exports = { refreshTokenIfNeeded, getContractorAccessToken, getFreshContractorAccessToken, fetchPipelineForReferrer, discoverJobberFields, fetchRequestById, fetchRequestsUpdatedSince };
+module.exports = { refreshTokenIfNeeded, getContractorAccessToken, getFreshContractorAccessToken, fetchPipelineForReferrer, discoverJobberFields, fetchRequestById, fetchRequestsUpdatedSince, _setJobberHttpForTest, _resetJobberHttp };

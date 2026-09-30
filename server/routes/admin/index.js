@@ -30,6 +30,8 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { resendShouldRetry, jobberShouldRetry } = require('../../utils/retryHelpers');
 const { discoverJobberFields } = require('../../crm/jobber');
+// ⚠ ONE RESOLVER for "which field did the contractor choose?" — by entity + CRM id (7c-1).
+const { describeField } = require('../../utils/fieldMapping');
 const { isEmailSuppressed } = require('../../utils/emailSuppression');
 const { normalizeTagGroupVisibility } = require('../../utils/tagGroupVisibility');
 const { generateSlug, buildInviteUrl } = require('../../utils/inviteTokens');
@@ -2166,13 +2168,19 @@ router.get('/api/admin/jobber/fields', requirePermission('integrations'), async 
   const { contractorId } = adminSession;
   try {
     const result = await pool.query(
-      `SELECT jobber_field_id, label, field_type, options, discovered_at
+      `SELECT jobber_field_id, label, field_type, options, entity, transferable, archived, discovered_at
        FROM contractor_jobber_fields
        WHERE contractor_id = $1
-       ORDER BY label ASC`,
+       ORDER BY label ASC, entity ASC NULLS LAST`,
       [contractorId]
     );
-    res.json({ fields: result.rows });
+    // ⚠ `display_label` IS WHAT MAKES TWO SAME-NAMED FIELDS PICKABLE (7c-1). Accent has THREE
+    // configurations called "Job Type" — on ALL_JOBS, ALL_INVOICES and ALL_QUOTES — and until now
+    // the mapping screen listed them as three identical rows with no way to tell which was which.
+    // They render as "Job Type (Job)", "Job Type (Invoice)", "Job Type (Quote)".
+    res.json({
+      fields: result.rows.map(f => ({ ...f, display_label: describeField(f) })),
+    });
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: 'Internal server error' });
@@ -2223,11 +2231,42 @@ router.patch('/api/admin/jobber/field-mappings', requirePermission('integrations
     return res.status(400).json({ error: `Invalid mapping keys: ${invalidKeys.join(', ')}. Allowed keys: ${VALID_MAPPING_KEYS.join(', ')}` });
   }
 
+  // ⚠ THE STORED SHAPE IS NOW { field_id, entity, label } (7c-1), AND A BARE STRING IS REFUSED
+  // RATHER THAN ACCEPTED. A label cannot name a field: Accent has three configurations called
+  // "Job Type" on three different entities, one of them with a different option list entirely.
+  // Accepting a string here would keep writing ambiguous mappings through a new endpoint.
+  // ⚠ AND THE id IS VERIFIED AGAINST WHAT DISCOVERY FOUND, not taken on trust. An id that names no
+  // discovered field would resolve to nothing, and a mapping that resolves to nothing means a
+  // contractor silently stops qualifying — so it is a 400 now rather than a puzzle later.
   const payload = {};
+  const rejected = [];
   for (const key of VALID_MAPPING_KEYS) {
-    if (body[key] && typeof body[key] === 'string') {
-      payload[key] = body[key];
+    const v = body[key];
+    if (!v) continue;
+    if (typeof v === 'string') {
+      rejected.push(`${key}: a bare label is no longer accepted — send { field_id, entity }`);
+      continue;
     }
+    if (typeof v !== 'object' || Array.isArray(v) || typeof v.field_id !== 'string' || !v.field_id.trim()) {
+      rejected.push(`${key}: field_id is required`);
+      continue;
+    }
+    const { rows } = await pool.query(
+      `SELECT jobber_field_id, label, entity FROM contractor_jobber_fields
+        WHERE contractor_id = $1 AND jobber_field_id = $2`,
+      [contractorId, v.field_id.trim()]
+    );
+    if (rows.length === 0) {
+      rejected.push(`${key}: field_id does not match any discovered field — run discovery first`);
+      continue;
+    }
+    // ⚠ ENTITY AND LABEL ARE TAKEN FROM THE DISCOVERED ROW, NEVER FROM THE REQUEST BODY. A client
+    // that sent a stale or wrong entity beside a correct id would otherwise persist a mapping whose
+    // own two halves disagree, and the display would then contradict the resolution.
+    payload[key] = { field_id: rows[0].jobber_field_id, entity: rows[0].entity, label: rows[0].label };
+  }
+  if (rejected.length > 0) {
+    return res.status(400).json({ error: 'invalid_mapping', details: rejected });
   }
 
   try {

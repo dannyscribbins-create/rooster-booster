@@ -509,6 +509,31 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         which may well be intentional and is already covered by the unassigned-label warning.
         Detail and every query: `COMMIT_7C_DESIGN.md` §0, §d and §d2.
 
+      - [ ] **RETIRE THE `|| 'Job Type'` LABEL FALLBACK IN BOTH READERS — IN 7c-3, OR THE COMMIT
+        AFTER (Danny, 2026-09-30). NOT NOW.** Two places default the category field's label to the
+        literal `'Job Type'` when a contractor has no mapping: `server/referralRules.js` (added by
+        7c-0) and `server/utils/deriveJobberTags.js` (original).
+        ⚠ **7c-0 KEPT IT DELIBERATELY AND THAT WAS RIGHT AT THE TIME.** The two readers must resolve
+        the SAME field for an unmapped contractor, or their tags and their payouts disagree about what
+        a client's category is. Removing it in 7c-0 would have looked like a cleanup and would have
+        stopped **every unmapped contractor** qualifying for any bonus — a regression, not a tidy-up.
+        A test case pins the fallback for exactly that reason.
+        ⚠ **WHAT MAKES IT RETIRABLE IS 7c-3, NOT A CHANGE OF MIND.** Once the **default schedule**
+        exists, a contractor with no category field mapped has somewhere correct to land: their
+        default. The fallback's whole job is to stop them landing nowhere, and the default does that
+        properly rather than by guessing at a field name Accent happens to use.
+        ⚠ **AND IT IS A GUESS ABOUT ONE TENANT DRESSED AS A DEFAULT — WHICH IS THE SHAPE THIS REPO
+        HAS PAID FOR BEFORE** (the brand kit on a drive, the single-tenant palette). `'Job Type'` is
+        Accent's label. For any other contractor it resolves a field that probably does not exist, so
+        the behaviour is *silently no category* while looking like a considered default.
+        **What removes this entry:** 7c-3 ships the default schedule, then both `|| 'Job Type'`
+        fallbacks are deleted **in the same commit or the next**, and the 7c-0 test case that pins the
+        fallback is INVERTED openly (quoting the old assertion) rather than deleted — it was correct
+        about the old design.
+        ⚠ **BOTH SITES, OR NEITHER.** Retiring one and leaving the other is worse than leaving both:
+        it would make the tag path and the payout path resolve different fields for the same
+        contractor, which is the divergence 7c-0 exists to have closed.
+
       - [ ] ⚠ **A SALE SPANNING SEVERAL JOBS WITH DIFFERENT CATEGORIES — WHOSE SCHEDULE GOVERNS THE
         BONUS? NEEDS DANNY'S RULING BEFORE SALE VALUE IS BUILT. NOT BUILT (filed 2026-09-30).**
         Sale grouping already puts several jobs into one sale inside the contractor's

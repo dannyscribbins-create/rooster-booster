@@ -424,7 +424,65 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2245 server tests across 374 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the 7c-0 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2245 · suites 374 · pass 2245 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2278 server tests across 382 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the 7c-1 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2278 · suites 382 · pass 2278 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE 7c-1 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2245 → 2278 is **+33**, one new file (`fieldMappingEntity.test.js`); suites 374 → 382 is that
+  file's **eight** top-level describes. React did not move and was re-measured — **no phantom, asked
+  before the run**: this commit adds no new non-test file under `src/utils`, `src/constants`,
+  `src/components/admin` or `src/components/superAdmin` (it EDITS `CRMSettings.jsx`, and
+  `adminBranding.test.jsx` emits one case per swept FILE, not per edit). **All four predicted before
+  the run and matched.** Counted with an anchored `^\s*it\(` (33); every loop was checked for POSITION
+  and all sit inside `it()` bodies.
+  ⚠ **A LABEL IS NOT AN IDENTIFIER, AND ON THE LIVE TENANT IT COLLIDES ON THE FIELD THAT DECIDES
+  MONEY.** Measured against Jobber 2026-05-12: `accent-roofing-dev` has **27** custom field
+  configurations and **THREE** named "Job Type" — `Dropdown/730114` on **ALL_JOBS** (transferable, 19
+  options), `Dropdown/730115` on **ALL_INVOICES** (the *same* 19 options), `Dropdown/1573072` on
+  **ALL_QUOTES** (7 different options). "Insurance Company" appears **four** times. Discovery
+  de-duplicated **by name** and kept the first, discarding **10 of 27** and letting Jobber's response
+  order decide which field the payout engine was configured against. **It kept the right one by
+  luck**, and the collision had already put quote-vocabulary values on a job-reading schedule.
+  ⚠ **THE ENTITY IS `appliesTo`, AN ENUM WITH SEVEN VALUES, AND THERE IS NO REQUEST ENTITY.**
+  `ALL_PROPERTIES · ALL_CLIENTS · ALL_QUOTES · ALL_JOBS · ALL_INVOICES · ALL_PRODUCTS_AND_SERVICES ·
+  TEAM`. "quote, job, invoice, client, request" is the natural guess and it is wrong — a custom field
+  cannot attach to a request, so nothing downstream may offer one.
+  ⚠ **AND THE MIGRATION CREATED A NEW STATE THAT WOULD HAVE BROKEN FOUR READERS, TWO OF THEM
+  SILENTLY — THIS IS THE ENTRY WORTH KEEPING.** The mapping's value changes from a string to
+  `{ field_id, entity, label }`, and `object || 'Job Type'` yields the OBJECT. `deriveJobberTags`
+  then calls `.toLowerCase()` on it, throwing a TypeError **it catches itself** — every tag for every
+  client stops, with one `error_log` row. `evaluateReferral` normalises it to null, matches no field,
+  and returns `no_job_type_found` for **every referral** — undoing exactly what 7c-0 had repaired.
+  **Neither raises anything a person would see.** All four readers route through one parser now, with
+  a source fence and a harness floor proving the needle catches the pre-7c-1 form.
+  ⚠ **A GUARD-PROOF CAME BACK WITH NO BEHAVIOURAL RED AND THAT WAS A FINDING, NOT A PASS.** Restoring
+  the de-duplication failed only a SOURCE fence: every case in the new file **seeded
+  `contractor_jobber_fields` rows directly**, so none could observe what discovery does to a
+  RESPONSE. **A test that injects the stored rows cannot discover that discovery discarded them** —
+  the same shape as a test injecting a value it claims something upstream supplies. A transport seam
+  (`_setJobberHttpForTest`) was added and seven cases now drive the real function; (i) reds
+  **2 = 1 behavioural + 1 structural**.
+  ⚠ **THREE WIDTHS.** (i) discovery de-duplicates by label again → **2 = 1 behavioural + 1
+  structural**; (ii) the mapping resolves by label despite holding an id → **2**, including the
+  QUOTE-field paired case that is the only thing able to tell the two apart, since the job and
+  invoice fields share an option list; (iii) Accent's migration pointed at the QUOTE field →
+  **2 = 1 behavioural + 1 source fence**. Every revert an inverse patch in a `finally`, byte-identical
+  by sha256, anchors unique in BOTH directions.
+  ⚠ **AND THREE THINGS DISCOVERY WAS DOING WRONG BESIDES THE DEDUPE, ALL SILENT.** It **never paged**
+  (no `first:`, no cursor — Accent's 27 fit in one page, which is why it was invisible); it stored
+  **archived** fields as live (**11 of 27** are archived, and the mapping screen listed them
+  indistinguishably); and `CustomFieldConfigurationArea` was in `TYPE_MAP` **with no fragment in the
+  query**, so those configurations arrived nameless and were dropped — a whole field type invisible
+  while the type map claimed to handle it.
+  ⚠ **WHAT 7c-1 DOES NOT ACHIEVE, SAID SO NOBODY OVERREADS IT.** It makes the CONFIGURATION
+  unambiguous, and therefore the option list and the entity. Matching a VALUE on a record is **still
+  by label**, because the capture queries select `{ label, valueDropdown }`. ⚠ **That id IS
+  selectable** — `customFieldConfiguration { id name appliesTo }` on a record's custom field,
+  verified live, and an Accent job reports `730114 / ALL_JOBS` through it. Selecting it is 7c-2's job.
+  ⚠ **AND THE ADMIN SCREEN WAS KEYED ON THE LABEL, SO THREE ROWS SHARED ONE SLOT.** Picking a target
+  on any "Job Type" row appeared to pick it on all three and only one could be saved. Re-keyed on the
+  CRM id, with the entity rendered ("Job Type (Job)") and a guard against two fields claiming one
+  target — a clash that was **unexpressible** while the rows were collapsed.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE 7c-0 COMMIT ITSELF, BECAUSE IT SHIPS
+  TESTS.* It read **2245 / 374 / 1398 / 85**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE 7c-0 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
   Server 2219 → 2245 is **+26 = 17 + 9**: seventeen in one new file (`categoryMatch.test.js`) and
   nine APPENDED to `referralRules.test.js` (8 → 17). Suites 369 → 374 is **+5 = 4 + 1** — the new

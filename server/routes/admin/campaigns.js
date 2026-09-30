@@ -28,6 +28,8 @@ const { safeLogoUrl, safeWebsiteUrl } = require('../../utils/safeUrl');
 const { isInvoicePaid } = require('../../utils/invoicePaid');
 // ⚠ ONE DEFINITION of category-value comparison, shared with the payout engine (7c-0).
 const { categoryListIncludes, findUnmatchedCategoryKeys } = require('../../utils/categoryMatch');
+// ⚠ ONE RESOLVER for "which field did the contractor choose?" — by entity + CRM id (7c-1).
+const { parseMappingEntry, resolveMappedField, describeField } = require('../../utils/fieldMapping');
 
 const router = express.Router();
 
@@ -924,14 +926,12 @@ router.get('/api/admin/campaigns/field-values', requirePermission('campaigns'), 
 
     let workCategoryValues = [];
 
-    if (mappings.work_category) {
-      const r = await pool.query(
-        'SELECT options FROM contractor_jobber_fields WHERE contractor_id = $1 AND label = $2 LIMIT 1',
-        [contractorId, mappings.work_category]
-      );
-      if (r.rows.length > 0 && Array.isArray(r.rows[0].options)) {
-        workCategoryValues = r.rows[0].options;
-      }
+    // ⚠ BY ENTITY + CRM ID (7c-1). `WHERE label = $2 LIMIT 1` picked one of Accent's THREE
+    // "Job Type" configurations by planner order, and the QUOTE one carries a completely different
+    // option list — so a campaign's Work-category filter could offer values that appear on no job.
+    const wcField = await resolveMappedField(pool, contractorId, parseMappingEntry(mappings.work_category));
+    if (Array.isArray(wcField?.options)) {
+      workCategoryValues = wcField.options;
     }
 
     res.json({ workCategoryValues });
@@ -1745,8 +1745,13 @@ router.post('/api/admin/campaigns/:id/pull', requirePermission('campaigns.manage
     }
 
     // Filter 3 — workCategory (supports per-item include/exclude mode; backward-compat with plain string arrays)
-    if (Array.isArray(filters.workCategory) && filters.workCategory.length > 0 && mappings.work_category) {
-      const label = mappings.work_category;
+    // ⚠ GATED ON THE RESOLVED LABEL, NOT ON THE RAW MAPPING BEING TRUTHY (7c-1). An object is
+    // truthy, so the old condition would enter this block with `label` possibly null, and
+    // `f.label === null` matches no field — which does not disable the filter, it makes it exclude
+    // EVERY contact. A filter that silently returns nobody looks like a campaign with no audience.
+    const wcLabel = parseMappingEntry(mappings.work_category)?.label || null;
+    if (Array.isArray(filters.workCategory) && filters.workCategory.length > 0 && wcLabel) {
+      const label = wcLabel;
       const includes = filters.workCategory
         .filter(f => (typeof f === 'string' ? 'include' : (f.mode ?? 'include')) === 'include')
         .map(f => typeof f === 'string' ? f : f.value);
@@ -1792,10 +1797,11 @@ router.post('/api/admin/campaigns/:id/pull', requirePermission('campaigns.manage
         jobValue: invoice?.amounts?.total ?? job.total,
         jobDate: job.completedAt,
         invoiceStatus: invoice?.invoiceStatus ?? null,
-        workCategory: getField(job.customFields, mappings.work_category),
-        jobSource: getField(job.customFields, mappings.job_source),
-        materialType: getField(job.customFields, mappings.material_type),
-        assignedRep: getField(job.customFields, mappings.assigned_rep),
+        // ⚠ EACH MAPPING VALUE RESOLVED TO ITS LABEL (7c-1) — an object here would match nothing.
+        workCategory: getField(job.customFields, parseMappingEntry(mappings.work_category)?.label),
+        jobSource: getField(job.customFields, parseMappingEntry(mappings.job_source)?.label),
+        materialType: getField(job.customFields, parseMappingEntry(mappings.material_type)?.label),
+        assignedRep: getField(job.customFields, parseMappingEntry(mappings.assigned_rep)?.label),
       };
     });
 
@@ -2667,15 +2673,19 @@ router.get('/api/admin/schedules', requirePermission('finance_settings'), async 
       [contractorId]
     );
     const mappings = settingsResult.rows[0]?.contractor_field_mappings || {};
-    if (mappings.work_category) {
-      const fieldResult = await pool.query(
-        'SELECT options FROM contractor_jobber_fields WHERE contractor_id = $1 AND label = $2 LIMIT 1',
-        [contractorId, mappings.work_category]
-      );
-      if (Array.isArray(fieldResult.rows[0]?.options)) {
-        all_labels = fieldResult.rows[0].options;
-        options_known = all_labels.length > 0;
-      }
+    // ⚠ RESOLVED BY ENTITY + CRM ID, NOT BY LABEL (7c-1). This was
+    // `WHERE label = $2 LIMIT 1`, and on Accent THREE configurations are named "Job Type" — one on
+    // ALL_JOBS, one on ALL_INVOICES, one on ALL_QUOTES, the last with a completely different option
+    // list. `LIMIT 1` over a non-unique label picked one by whatever order Postgres felt like, and
+    // the options it returned became the qualifying values the admin picked from. That is how
+    // Accent's flagship schedule came to be keyed on quote-vocabulary values the engine could never
+    // see. `resolveMappedField` uses the id when the mapping has one and falls back to the label
+    // only for an unmigrated contractor, which is the legacy path and is marked as such.
+    const categoryEntry = parseMappingEntry(mappings.work_category);
+    const categoryField = await resolveMappedField(pool, contractorId, categoryEntry);
+    if (Array.isArray(categoryField?.options)) {
+      all_labels = categoryField.options;
+      options_known = all_labels.length > 0;
     }
     if (all_labels.length === 0) {
       const allJt = await pool.query(
@@ -2722,7 +2732,15 @@ router.get('/api/admin/schedules', requirePermission('finance_settings'), async 
       all_labels,
       unassigned_labels,
       options_known,
-      category_field_label: mappings.work_category || null,
+      // ⚠ A DESCRIPTION, NOT AN IDENTITY (7c-1). "Job Type (Job)" so a warning can name the field
+      // unambiguously when the contractor has three of that name. It comes from the RESOLVED row, so
+      // it reports the field actually in use rather than the string someone typed into the mapping.
+      category_field_label: describeField(categoryField),
+      category_field_entity: categoryField?.entity || null,
+      // ⚠ SURFACED SO AN AMBIGUOUS MAPPING CAN SAY SO. A legacy label-only mapping still resolves,
+      // but by a rule 7c-1 exists to retire; the admin panel should be able to prompt a re-pick
+      // rather than present a coin-flip as a settled choice.
+      category_mapping_is_legacy: categoryEntry ? categoryEntry.legacy === true : false,
     });
   } catch (err) {
     await logError({ req, error: err });

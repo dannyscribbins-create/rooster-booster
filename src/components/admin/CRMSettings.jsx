@@ -148,11 +148,28 @@ const CFM_KEY_LABELS = {
   assigned_rep:  'Assigned rep',
 };
 
+// ⚠ KEYED ON THE FIELD'S CRM ID, NOT ITS LABEL (7c-1). Accent has THREE custom fields named
+// "Job Type" — on jobs, invoices and quotes, the quote one with a different option list — and this
+// screen keyed every selection by `field.label`. All three rows therefore shared ONE slot: picking a
+// target on any of them appeared to pick it on all three, and only one could ever be saved. The
+// label is display text now; the id is the identity.
 function cfmSelectionsFromMappings(fields, mappings) {
-  const reverse = {};
-  for (const [key, label] of Object.entries(mappings)) reverse[label] = key;
+  const byId = {};
+  const byLabel = {};
+  for (const [key, value] of Object.entries(mappings || {})) {
+    if (value && typeof value === 'object' && value.field_id) byId[value.field_id] = key;
+    // ⚠ THE LEGACY STRING FORM STILL HAS TO LIGHT UP THE RIGHT ROW, or a contractor who has not
+    // re-picked yet opens this screen and sees their mapping as unset — which invites them to
+    // "fix" a setting that was never broken.
+    else if (typeof value === 'string' && value.trim()) byLabel[value.trim().toLowerCase()] = key;
+  }
   const initial = {};
-  for (const field of fields) initial[field.label] = reverse[field.label] || '';
+  for (const field of fields) {
+    initial[field.jobber_field_id] =
+      byId[field.jobber_field_id]
+      || byLabel[(field.label || '').trim().toLowerCase()]
+      || '';
+  }
   return initial;
 }
 
@@ -566,9 +583,22 @@ export default function CRMSettings() {
   async function handleCfmSave() {
     setCfmSaving(true);
     try {
+      // ⚠ SENDS { field_id } (7c-1). A bare label is refused by the endpoint now, because it cannot
+      // name one of several same-named configurations.
       const payload = {};
-      for (const [fieldLabel, key] of Object.entries(cfmSelections)) {
-        if (key && CFM_VALID_KEYS.includes(key)) payload[key] = fieldLabel;
+      const dupes = [];
+      for (const [fieldId, key] of Object.entries(cfmSelections)) {
+        if (!key || !CFM_VALID_KEYS.includes(key)) continue;
+        // ⚠ TWO FIELDS CANNOT SHARE ONE TARGET, AND THIS IS NEWLY REACHABLE. Until 7c-1 the
+        // same-named rows were collapsed into one, so the clash could not be expressed; now all
+        // three "Job Type" rows are visible and pickable. The payload is keyed by TARGET, so
+        // without this the last one silently wins and the admin is never told which.
+        if (payload[key]) { dupes.push(CFM_KEY_LABELS[key] || key); continue; }
+        payload[key] = { field_id: fieldId };
+      }
+      if (dupes.length > 0) {
+        cfmShowToast(`Two fields are both mapped to ${dupes.join(', ')}. Pick one.`, 'error');
+        return;
       }
       const res = await fetch(`${BACKEND_URL}/api/admin/jobber/field-mappings`, {
         method: 'PATCH',
@@ -1217,14 +1247,20 @@ export default function CRMSettings() {
                     background: i % 2 === 0 ? 'transparent' : 'rgba(28,45,77,0.04)',
                   }}>
                     <div>
-                      <span style={{ fontSize: 14, color: AD.textPrimary }}>{field.label}</span>
+                      {/* ⚠ display_label CARRIES THE ENTITY — "Job Type (Job)" vs "Job Type (Invoice)"
+                          vs "Job Type (Quote)" (7c-1). Without it these are three identical rows and
+                          the admin cannot tell which one the payout engine will read. */}
+                      <span style={{ fontSize: 14, color: AD.textPrimary }}>{field.display_label || field.label}</span>
                       {field.field_type && (
                         <span style={{ marginLeft: 8, fontSize: 11, color: AD.textTertiary }}>{field.field_type}</span>
                       )}
+                      {field.archived && (
+                        <span style={{ marginLeft: 8, fontSize: 11, color: AD.amberText }}>archived in Jobber</span>
+                      )}
                     </div>
                     <select
-                      value={cfmSelections[field.label] || ''}
-                      onChange={e => setCfmSelections(s => ({ ...s, [field.label]: e.target.value }))}
+                      value={cfmSelections[field.jobber_field_id] || ''}
+                      onChange={e => setCfmSelections(s => ({ ...s, [field.jobber_field_id]: e.target.value }))}
                       style={{
                         background: AD.bgCardTint, border: `1px solid ${AD.border}`,
                         borderRadius: AD.radiusMd, color: AD.textPrimary,

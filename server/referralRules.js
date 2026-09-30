@@ -26,6 +26,9 @@ const { isInvoicePaid } = require('./utils/invoicePaid');
 const { categoryListIncludes, normalizeCategoryValue } = require('./utils/categoryMatch');
 // ⚠ 7c-0 adds the first catch block in this module, and CLAUDE.md requires logError in every one.
 const { logError } = require('./middleware/errorLogger');
+// ⚠ A mapping value may be the legacy label string or the 7c-1 { field_id, entity, label }
+// object; one parser for both.
+const { parseMappingEntry } = require('./utils/fieldMapping');
 
 // ── MAIN EXPORT ───────────────────────────────────────────────────────────────
 // contractorId: string — e.g. 'accent-roofing'
@@ -141,7 +144,12 @@ async function evaluateReferral(contractorId, invoiceData, referredBy) {
       'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
       [contractorId]
     );
-    workCategoryLabel = mappingResult.rows[0]?.contractor_field_mappings?.work_category || 'Job Type';
+    // ⚠ THROUGH THE PARSER (7c-1). The stored value is now { field_id, entity, label }, and
+    // `object || 'Job Type'` yields the OBJECT — which normalises to null, matches no field, and
+    // returns `no_job_type_found` for EVERY referral. The migration that introduced the new shape
+    // would have broken the money path this function's 7c-0 change had just repaired.
+    workCategoryLabel = parseMappingEntry(mappingResult.rows[0]?.contractor_field_mappings?.work_category)?.label
+      || 'Job Type';
   } catch (mappingErr) {
     // ⚠ FALL BACK, NEVER ABORT. A settings read failing must not turn into an unpaid referral; the
     // default is the same one deriveJobberTags uses, so the behaviour degrades to the pre-7c-0 path

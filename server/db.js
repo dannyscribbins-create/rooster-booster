@@ -2802,6 +2802,79 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`ALTER TABLE pipeline_cache
     ADD COLUMN IF NOT EXISTS status_derived_at TIMESTAMPTZ`);
 
+
+  // ── 7c-1 — A CUSTOM FIELD IS IDENTIFIED BY ENTITY + CRM ID, NEVER BY ITS LABEL ─────────
+  //
+  // ⚠ LABELS COLLIDE, AND ON THE LIVE TENANT THEY COLLIDE ON THE ONE FIELD THAT DECIDES MONEY.
+  // Measured against Jobber 2026-05-12 on 2026-09-30: Accent has **27** custom field
+  // configurations and **THREE** of them are named "Job Type" —
+  //   · CustomFieldConfigurationDropdown/730114  appliesTo ALL_JOBS      transferable  19 options
+  //   · CustomFieldConfigurationDropdown/730115  appliesTo ALL_INVOICES                19 options
+  //   · CustomFieldConfigurationDropdown/1573072 appliesTo ALL_QUOTES                   7 options
+  // "Insurance Company" appears FOUR times, "OTHER" three, and "Material Type", "Source" and
+  // "Sales Representative" twice each. A bare label cannot name any of them.
+  //
+  // ⚠ AND DISCOVERY USED TO DE-DUPLICATE BY NAME AND KEEP THE FIRST, so 10 of the 27 were
+  // silently discarded and which survived was decided by Jobber's response order. It kept the
+  // right "Job Type" by luck.
+  //
+  // `appliesTo` IS the entity, exposed as the enum CustomFieldAppliesTo with seven values:
+  // ALL_PROPERTIES · ALL_CLIENTS · ALL_QUOTES · ALL_JOBS · ALL_INVOICES ·
+  // ALL_PRODUCTS_AND_SERVICES · TEAM. ⚠ **There is no REQUEST entity** — a custom field cannot
+  // be attached to a request, so nothing downstream should offer one.
+  await pool.query(`ALTER TABLE contractor_jobber_fields
+    ADD COLUMN IF NOT EXISTS entity TEXT`);
+  // ⚠ `transferable` IS STORED BECAUSE THE PAYOUT RESOLUTION ORDER DEPENDS ON IT (R-7c-3). A
+  // transferable field's value is copied by Jobber onto the job's invoices, which is what makes
+  // "read the job" sufficient for a quote-level field. Accent's ALL_JOBS "Job Type" is
+  // transferable: true. Storing it means the resolution order can be DERIVED rather than assumed.
+  await pool.query(`ALTER TABLE contractor_jobber_fields
+    ADD COLUMN IF NOT EXISTS transferable BOOLEAN`);
+  // ⚠ AND `archived`, BECAUSE DISCOVERY HAS BEEN OFFERING DEAD FIELDS AS LIVE ONES. Eleven of
+  // Accent's 27 are archived in Jobber — "Lead Status", "Campaign", all three "OTHER", one
+  // "Source", one "Sales Representative" — and the mapping screen listed them indistinguishably
+  // from the live ones. Stored rather than filtered out at fetch time, so a mapping that already
+  // points at a since-archived field can SAY so instead of silently resolving nothing.
+  await pool.query(`ALTER TABLE contractor_jobber_fields
+    ADD COLUMN IF NOT EXISTS archived BOOLEAN`);
+
+  // ⚠ THE MAPPING'S SHAPE CHANGES FROM A LABEL TO AN OBJECT, AND BOTH FORMS MUST READ.
+  // `contractor_settings.contractor_field_mappings` is JSONB and held e.g.
+  //   {"work_category": "Job Type"}
+  // and now holds
+  //   {"work_category": {"field_id": "Z2lk…NzMwMTE0", "entity": "ALL_JOBS", "label": "Job Type"}}
+  // The `label` is carried for DISPLAY ONLY and is never matched on — it is there so an admin
+  // screen can name the field without a join, and so a stale mapping can report the name it was
+  // configured under.
+  //
+  // ⚠ NO DATA MIGRATION IS RUN HERE FOR OTHER CONTRACTORS, DELIBERATELY. Resolving a bare label
+  // to one of several same-named configurations is exactly the ambiguity 7c-1 exists to remove,
+  // so guessing at it during a boot migration would bake in the coin-flip rather than end it.
+  // The reader tolerates the legacy string form (and resolves it the old way, by label), so an
+  // unmigrated contractor keeps working until an admin re-picks the field.
+  //
+  // ⚠ ACCENT IS MIGRATED EXPLICITLY, BECAUSE ITS ANSWER WAS MEASURED RATHER THAN GUESSED.
+  // 730114 is the ALL_JOBS "Job Type", confirmed by `appliesTo` from the live API, and it is the
+  // field the engine has in fact been reading. The migration is conditional on the value still
+  // being the legacy STRING form, so it is a no-op on re-run and never overwrites a later
+  // deliberate choice.
+  await pool.query(`
+    UPDATE contractor_settings
+       SET contractor_field_mappings = jsonb_set(
+             contractor_field_mappings,
+             '{work_category}',
+             $2::jsonb,
+             true)
+     WHERE contractor_id = $1
+       AND jsonb_typeof(contractor_field_mappings -> 'work_category') = 'string'
+       AND contractor_field_mappings ->> 'work_category' = 'Job Type'`,
+    ['accent-roofing-dev', JSON.stringify({
+      field_id: 'Z2lkOi8vSm9iYmVyL0N1c3RvbUZpZWxkQ29uZmlndXJhdGlvbkRyb3Bkb3duLzczMDExNA==',
+      entity: 'ALL_JOBS',
+      label: 'Job Type',
+    })]
+  );
+
   await backfillAssignedAt(pool);
   await applyAssignedAtNotNull(pool);
 
