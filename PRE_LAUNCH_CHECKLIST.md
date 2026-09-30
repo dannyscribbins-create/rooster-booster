@@ -670,6 +670,45 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         fence fires. Both are cast anyway so no bare `$3` can return to either position, and the fence
         is what pins that; **the second cast is belt-and-braces, not a correctness requirement**, and
         saying otherwise would overstate the fix.
+        ⚠ **THE CODE IS FIXED AND THE LOST DATA IS A SEPARATE JOB — SAID HERE BECAUSE AN ENTRY THAT
+        RECORDS A LOSS WITHOUT RECORDING ITS RECOVERY IS HALF A RECORD.** Jobber does not redeliver a
+        webhook, so the facts those 7 captures would have written do not come back on their own.
+        **Measured 2026-09-30, and the loss is real rather than theoretical: 3 of the 7 hold ZERO
+        invoice facts** despite each having had an invoice-PAID webhook, and one
+        (`gid://Jobber/Client/154808209`) holds **zero job facts**; the remaining fact rows are stale,
+        dated 09-27 or the 02:00-03:00 nightly sync rather than the webhook. **Their displayed stage is
+        therefore derived from facts that predate the payment**, which is how five of them read `sold`.
+        **The recovery tool is `server/scripts/recaptureClients.js`** (job: `server/jobs/recaptureClients.js`)
+        — facts plus the normal stage decision, under the per-client lock, for a named list of ids.
+        **What removes THIS half of the entry:** that script run against the 7, and their facts and
+        stages re-read afterwards.
+
+      - [ ] **RIGHT AFTER 7c-2 — MIGRATE TEST FIXTURES OFF SYNTHETIC CLIENT IDS WHEREVER CODE IS
+        GATED BY `isDerivableJobberClientId`, AND FENCE IT. NOT DONE (filed 2026-09-30). THE SECOND
+        TIME A SYNTHETIC ID HID REAL BEHAVIOUR.** Fixtures across the server suite use ids like
+        `'jobber-c1'`, `'c1'`, `'client-1'`. `isDerivableJobberClientId` **rejects** every one of
+        them — correctly, since none decodes to `gid://Jobber/Client/` — so any branch behind that
+        predicate is **unreachable from those fixtures**, and a suite driving it reports green while
+        the branch never runs.
+        ⚠ **BOTH INSTANCES WERE INVISIBLE UNTIL SOMETHING ELSE EXPOSED THEM, WHICH IS WHY A FENCE IS
+        THE FIX RATHER THAN A SWEEP.** (1) N4 commit 2 measured **120 cases across 12 suites** that
+        would break if the guard were wired into `decideFromFacts`, and backed the wiring out rather
+        than migrate them mid-commit. (2) The 7b `$3` defect then shipped **because**
+        `invoicePaidWebhook.test.js` — which drives the whole webhook end to end — uses
+        `'jobber-c1'`, so no pre-existing fixture could enter the block 7b added. **The gate was
+        green because the code never ran**, for three hours, on the door that decides money.
+        ⚠ **THE MIGRATION ALONE IS NOT THE FIX.** Replacing the ids makes today's gated branches
+        reachable and says nothing about the next one. **The fence is the durable half: a test that
+        drives a path gated by `isDerivableJobberClientId` with a NON-derivable id must FAIL,
+        naming the file and the id** — so the next commit that puts a branch behind that predicate
+        cannot be green by never entering it.
+        ⚠ **AND THE GENERAL RULE IS WORTH STATING WHERE THE WORK IS, BECAUSE IT OUTLIVES THIS
+        PREDICATE:** when a commit puts a branch behind a NEW predicate, one test must be shown to
+        **ENTER** it — assert the precondition, not only the outcome. A fixture that satisfies every
+        other assertion can still fail to reach the one branch the commit added, and a new guard is
+        an excellent way to arrange exactly that.
+        **What removes this entry:** the fixtures migrated wherever a gated path is driven, plus that
+        fence green with a guard-proof showing it fires.
 
       - [ ] **THE TRANSACTION COUPLING THAT AMPLIFIED THE ABOVE — CONSIDER SPLITTING IT. NOT FIXED
         (filed 2026-09-30).** `upsertAndTagClient` runs `captureClientFacts`, `decideFromFacts` and
@@ -683,6 +722,17 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         a better one.
         **What removes this entry:** a ruling on which inconsistency is preferable, then the change it
         authorises. Until then the mitigation is the alert, which now fires.
+        ⚠ **DANNY'S RECOMMENDED DIRECTION, RECORDED 2026-09-30, RULING STILL PENDING: SPLIT THEM.**
+        Save the facts in their **own** transaction first, then decide in a **separate** locked
+        transaction. A decision failure then never discards facts — it leaves the "not yet derived"
+        state, which is a state the next pass **already handles** (`status_derived_at` is NULL and the
+        COALESCE leaves the stored stage standing), so the inconsistency it creates is one the system
+        is already built to converge out of rather than a new one.
+        ⚠ **THAT IS THE ARGUMENT THE ENTRY ABOVE WAS MISSING, AND IT IS WHY THE TWO INCONSISTENCIES ARE
+        NOT SYMMETRICAL AFTER ALL.** "Facts stored, stage stale" is recoverable by any later capture;
+        "stage written, facts discarded" is a decision resting on data that was rolled back, and it
+        cost seven clients their facts with nothing to re-derive from. **A small commit after 7c-2**,
+        once Danny rules.
 
       - [ ] **A CRON RUN THAT TAKES OVER AN EXPIRED LOCK MUST SAY SO IN `error_log`. NOT BUILT
         (filed 2026-09-30). Small.** The owner-scoped release from the cron-lock-owner commit makes
@@ -9385,6 +9435,20 @@ check found a clean tree at `c5830e2` and neither fact table in any local databa
       25, then either repair them to role form or wrap the genuine records in
       `citecheck:record` markers, and only then re-measure.** **OWNER: unassigned — a standalone docs
       pass, not a rider on a build phase.**
+      ⚠ **SIZED AGAIN 2026-09-30, AND THE SHAPE IS WORTH RECORDING BECAUSE IT REPEATS ON EVERY
+      CHECKLIST EDIT.** Inserting **+38 lines** into `PRE_LAUNCH_CHECKLIST.md` (the re-capture filings)
+      made `--changed-files` report **14 LIKELY ROTTED · 0 content changed · 19 target touched**. Every
+      one of the 14 is a **line citation INTO this checklist FROM an untracked Phase-0 report** —
+      `CDL_3c_PHASE0_REPORT.md` and `CDL_3c_PHASE05_RULINGS.md`.
+      ⚠ **NOT REPAIRED, DELIBERATELY, AND NOT BY ADDING 38.** `LIKELY ROTTED` means "your edit moved
+      the target line", never "this citation was correct before" — and this repo has already measured a
+      commit where **all eleven** of its own flagged citations were wrong beforehand, so adding the
+      delta would certify fourteen numbers as repaired without any of them having been read.
+      ⚠ **AND THE STRUCTURAL POINT: the citing documents are UNTRACKED, so `git grep` cannot see them
+      and no tracked-file sweep ever will.** Any checklist edit of more than a few lines will keep
+      reporting a dozen of these until those reports cite by role. **That is the job, and it is the
+      same job as the 25 above** — same fix, same owner, sized here so the next session does not
+      re-discover it as a surprise.
 
 ### Canvass-6 — the Home tab: Today's Focus and the stats (SHIPPED 2026-09-18)
 

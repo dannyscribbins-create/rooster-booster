@@ -268,6 +268,22 @@ const SANCTIONED_WRITERS = [
   { key: 'server/routes/webhooks/jobber.js :: function upsertAndTagClient', spans: 2 },
   { key: 'server/routes/webhooks/jobber.js :: function handleStageWebhook', spans: 1 },
   { key: 'server/utils/requestAttribution.js :: function writeStage', spans: 1 },
+  // ⚠ ADDED 2026-09-30 BY THE TARGETED RE-CAPTURE, AND THIS FENCE IS WHAT CAUGHT IT — the gate
+  // went red naming `recaptureClients.js:194` before the commit landed, which is precisely the
+  // event the allow-list exists for: a new writer of the displayed stage must be argued for, not
+  // arrive.
+  // ⚠ IT IS SANCTIONED RATHER THAN CARVED OUT, because it satisfies the property the fence
+  // enforces rather than being excused from it: under `withClientLock` it runs
+  // `captureClientFacts`, then `decideFromFacts`, then writes what that decided — the same
+  // capture-then-decide shape as the doors above, for a named list of clients instead of a
+  // webhook's one. It is the invoice-paid door minus identity and tags.
+  // ⚠ ONE SPAN, PINNED, and the job's own suite asserts separately that there is exactly one
+  // `UPDATE jobber_clients` in it — so a second stage write cannot hide behind this entry from
+  // either side.
+  // ⚠ AND IT WRITES NO `pipeline_status` AT ALL, DELIBERATELY: the job REFUSES any client holding a
+  // `pipeline_cache` row, because the referrer-visible status has one owner and writing the
+  // displayed stage alone would put the two surfaces back out of step.
+  { key: 'server/jobs/recaptureClients.js :: function runRecaptureClients', spans: 1 },
 ];
 
 const EXPIRING_WRITERS = [

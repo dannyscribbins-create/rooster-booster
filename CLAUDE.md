@@ -424,8 +424,66 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2286 server tests across 384 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the invoice-paid parameter-cast commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2286 · suites 384 · pass 2286 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE INVOICE-PAID PARAMETER-CAST COMMIT ITSELF, BECAUSE IT SHIPS
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2305 server tests across 387 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the targeted-re-capture commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2305 · suites 387 · pass 2305 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE TARGETED-RE-CAPTURE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2286 → 2305 is **+19**, one new file (`recaptureClients.test.js`); suites 384 → 387 is that
+  file's **three** top-level describes. React did not move — **no `src/` file was touched at all** —
+  and was re-measured. **All four predicted before the run and matched.** Counted with an anchored
+  `^\s*it\(` (19); the file's six loops were each checked for POSITION — two in `beforeEach`, one in
+  the comment-stripping helper, three inside `it()` bodies — so **none wraps a case**.
+  ⚠ **`oneStatusDerivation.test.js` GAINED AN ALLOW-LIST ENTRY AND NO CASE, SO IT CONTRIBUTES 0** —
+  the expected shape when a list grows rather than a describe.
+  ⚠ **THE GATE WENT RED FIRST AT `fail 1`, AND IT WAS N4 COMMIT 1's OWN FENCE CATCHING THIS COMMIT
+  UNPROMPTED — WHICH IS THE ENTRY WORTH KEEPING.** The new job writes the displayed stage, so the
+  writer-accounting fence failed naming `server/jobs/recaptureClients.js:194 — function
+  runRecaptureClients` before the commit could land. **That is the allow-list mechanism working on a
+  real arrival rather than on an injection**: commit 1 built it so a new writer of `pipeline_stage`
+  has to be ARGUED FOR instead of arriving, and it has now been paid for once. Registered as
+  **SANCTIONED rather than carved out**, because the job satisfies the property the fence enforces —
+  capture, then decide, then write what was decided — rather than being excused from it. Its span
+  count is pinned at 1, and the job's own suite separately asserts exactly one `UPDATE
+  jobber_clients`, so a second stage write cannot hide behind the entry from either side.
+  ⚠ **AND A GUARD-PROOF CAME BACK GREEN ON A FENCE I HAD WRITTEN WRONG, WHICH IS THE OTHER ENTRY.**
+  The new suite forbids the job writing `pipeline_status`, and the needle was
+  `(INSERT INTO|UPDATE|DELETE FROM)\s+pipeline_status`. ⚠ **`pipeline_status` IS A COLUMN.** The real
+  statement is `UPDATE pipeline_cache SET pipeline_status = …`, so the verb is followed by the TABLE
+  and the needle could never match the defect it was named for; injection (v) added exactly that
+  write and all 18 cases stayed green. ⚠ **MY NON-VACUITY FLOOR HID IT, AND THAT IS THE
+  TRANSFERABLE PART: it asserted the needle matched `UPDATE pipeline_status SET x = 1`** — a string
+  nobody would ever write. **A floor built from the NEEDLE's shape rather than from the DEFECT's
+  shape only confirms the needle matches itself.** Both needles now read the table and the
+  assignment, every floor uses a statement in the shape production would really take, and the
+  paired negative is LIVE rather than synthetic — the job genuinely `SELECT`s `pipeline_cache`, so
+  the verb anchor is load-bearing and the real source proves it.
+  ⚠ **AND THE HARNESS LEFT A FILE INJECTED, FOR THE BOTH-DIRECTIONS REASON THIS FILE ALREADY
+  RECORDS FROM `db.js`.** Injection (v) was written as the anchor PLUS an extra line, so the
+  reverse anchor — the original line — was still present inside the injected text; `patch` correctly
+  refused, and the `finally` raised **before writing**. Recovered by hand and re-verified. Two fixes:
+  the injected text no longer contains the anchor it replaces (`client: client`, behaviourally
+  identical), and the harness now keeps the ORIGINAL BYTES and restores them if the inverse patch
+  refuses. **The inverse patch is still the primary revert — it proves the injection was exactly
+  undone — and this is the floor under it**, not a `git checkout`, which on an uncommitted file
+  discards real work.
+  ⚠ **SIX GUARD-PROOFS, EVERY REVERT PROVEN BYTE-IDENTICAL BY sha256.** (i) the `pipeline_cache`
+  refusal disabled → **2**; (ii) the stage no longer decided from saved facts → **6**; (iii) the
+  stage write dropped → **8**; (iv) the stage UPDATE loses its contractor scope → **exactly 1**;
+  (v) a forbidden `pipeline_status` write added → **2** (after the needle was repaired; **0**
+  before, which is how the defect was found); (vi) the per-client lock removed → **0 behavioural**,
+  see below.
+  ⚠ **(vi) IS RECORDED AS WIDTH 0 RATHER THAN QUIETLY FIXED.** Removing `withClientLock` changed
+  nothing, and correctly so: every case in the file drives ONE re-capture and **a single caller is
+  serialised by definition**, so nothing a single-threaded test asserts can tell locked from
+  unlocked. The anomaly the lock prevents is a LOST UPDATE between two concurrent units, which needs
+  real concurrency (`clientLock.test.js` owns that property and pays for it in elapsed time). A
+  STRUCTURAL case now pins the POSITION — capture, decide and the stage write inside the locked
+  extent, the Jobber fetch outside and before it — and (vi) reds **exactly 1** against it.
+  ⚠ **AND THE BACKGROUND TASK REPORTED exit 0 WHILE THE LOG'S OWN `EXIT=` LINE READ 1** — the
+  fourth recorded instance of that disagreement. **Read the `EXIT=` written into the log.** On that
+  red run the React step never ran at all, because the gate chains with `&&`, so a tail would have
+  shown no React numbers and no reason.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE INVOICE-PAID PARAMETER-CAST COMMIT
+  ITSELF, BECAUSE IT SHIPS TESTS.* It read **2286 / 384 / 1398 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE INVOICE-PAID PARAMETER-CAST COMMIT, BECAUSE IT SHIPS
   TESTS.** Server 2278 → 2286 is **+8**, one new file (`invoicePaidDerivableClient.test.js`); suites
   382 → 384 is that file's **two** top-level describes. React did not move — **no `src/` file was
   touched at all** — and was re-measured. **All four predicted before the run and matched.** Counted
