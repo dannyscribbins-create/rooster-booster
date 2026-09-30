@@ -16,7 +16,7 @@ const axios = require('axios');
 const { pool } = require('../../db');
 const { syncSingleClient, classifyPipelineStatus } = require('../../crm/pipelineSync');
 const { writeReferralConversion } = require('../../utils/referralConversion');
-const { deriveReferredStatus } = require('../../utils/referredStatus');
+const { writeReferredStatus } = require('../../utils/referredStatus');
 const { isDerivableJobberClientId } = require('../../utils/derivableClient');
 const { refreshClientSales } = require('../../utils/clientSales');
 const { logError } = require('../../middleware/errorLogger');
@@ -564,7 +564,28 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 
   // the tag block below is gated on it. Since 4b `paying_client` can be REMOVED, so deriving
   // tags from a partial fetch could strip a real one; the guard-proof for that is in
   // captureThenDecide.test.js.
+  // ⚠ CAPTURE AND DECISION ARE TWO SEPARATE LOCKED TRANSACTIONS (Danny's ruling, 2026-09-30), AND
+  // THE RULING CORRECTED A READING I HAD FILED. The coupling was filed as *not obviously wrong*, on
+  // the grounds that splitting it trades one inconsistency for another. That is true and the two are
+  // NOT equal:
+  //   - "facts stored, stage stale" leaves `status_derived_at IS NULL` / an unmoved stage, which the
+  //     next pass and the catch-up job already converge out of;
+  //   - "stage written, facts discarded" is a decision resting on data that was rolled back — and it
+  //     cost SEVEN clients their facts on the invoice-paid door, with nothing left to re-derive from.
+  // So: facts commit first, on their own. The decision runs afterwards in its own locked transaction
+  // and CANNOT take the capture down with it.
+  //
+  // ⚠ THE SECOND LOCK IS NOT REDUNDANT. The decision still reads every fact for this client and
+  // writes the referrer-visible status, so two events for one client must not interleave between the
+  // read and the write — that is the LOST UPDATE `clientLock.js` exists for, and it is unchanged by
+  // the split. What the split removes is only the shared FATE of the two units.
+  //
+  // ⚠ AND THE TWO FAILURE PATHS MEAN DIFFERENT THINGS, so they are caught separately and say so. A
+  // capture failure means the facts are NOT saved; a decision failure means they ARE, and the client
+  // is left in the "not yet derived" state the catch-up job looks for. Collapsing them into one catch
+  // would make the alert unable to tell an operator which happened.
   let pipelineStage = null;
+  let captureCommitted = false;
   if (relatedData) {
     try {
       // ⚠ CAPTURE AND DECIDE ARE ONE LOCKED TRANSACTION (Commit 6), keyed on
@@ -578,8 +599,34 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 
       // COALESCEd there, so a failed capture leaves the stored stage standing.
       // ⚠ AND THE JOBBER FETCH IS ALREADY DONE BY THE TIME THIS RUNS — a pooled connection must
       // never be held across a call to Jobber. See server/utils/clientLock.js.
-      pipelineStage = await withClientLock(pool, { contractorId, jobberClientId: fullClient.id, door }, async (tx) => {
+      // ── TRANSACTION 1 — CAPTURE, AND NOTHING ELSE ────────────────────────────
+      await withClientLock(pool, { contractorId, jobberClientId: fullClient.id, door }, async (tx) => {
         await captureClientFacts(tx, { contractorId, client: relatedData });
+      });
+      captureCommitted = true;
+    } catch (capErr) {
+      await logError({
+        req: null,
+        contractorId,
+        error: new Error(`[upsertAndTagClient] CAPTURE failed for client ${fullClient.id}, the facts were NOT saved and no stage was decided: ${capErr.message}`),
+        source: 'upsertAndTagClient — capture',
+        // ⚠ IT ALERTS, AND `alert: false` IS WHY THE `$3` DEFECT WENT UNNOTICED FOR THREE HOURS. A
+        // failure that loses a client's facts is the definition of something a person needs to know
+        // about, and INFO with no alert made it indistinguishable from routine noise.
+        alert: true,
+      });
+      pipelineStage = null;
+    }
+  }
+
+  // ── TRANSACTION 2 — DECIDE, ONLY IF THE FACTS ARE ACTUALLY THERE ────────────
+  // ⚠ GATED ON THE CAPTURE HAVING COMMITTED, not merely on `relatedData`. Deciding after a failed
+  // capture is the one thing the pre-split code did that this ruling exists to stop: the facts may be
+  // absent or stale, and a confident wrong stage is worse than none because the next event sees a
+  // stored answer and has no reason to look again.
+  if (captureCommitted) {
+    try {
+      pipelineStage = await withClientLock(pool, { contractorId, jobberClientId: fullClient.id, door }, async (tx) => {
         // `tx`, not `pool` — a read on another connection would sit outside the lock.
         const decided = await decideFromFacts(tx, { contractorId, jobberClientId: fullClient.id });
 
@@ -597,48 +644,28 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 
         // ⚠ IT WRITES NO CONVERSION AND CREDITS NOBODY. That is commit 7d, and it is blocked on
         // 7c — the Job Type custom field is not captured, so `evaluateReferral` cannot run from
         // facts at all yet.
+        // ⚠ ONE COPY OF THE STATEMENT, IN `server/utils/referredStatus.js`. The split gives this
+        // write a SECOND caller — the catch-up job — and a pasted copy of a money-adjacent UPDATE is
+        // exactly what this repo has already paid for twice. `writeReferredStatus` carries the
+        // `$3::text` casts, the write-once `paid_at` CASE and the UPDATE-never-INSERT rule with it.
         if (alsoDeriveReferredStatus && isDerivableJobberClientId(fullClient.id)) {
-          const ref = await deriveReferredStatus(tx, { contractorId, jobberClientId: fullClient.id });
-          await tx.query(
-            // ⚠ `$3::text` IN BOTH PLACES, AND THE CAST IS THE WHOLE FIX. Written without it, `$3`
-            // appears twice in incompatible inference contexts — once assigned to
-            // `pipeline_status` (a VARCHAR(50) column) and once compared to a bare literal in the
-            // CASE — and Postgres refuses the statement at PREPARE with
-            // "inconsistent types deduced for parameter $3". ⚠ IT FAILS FOR EVERY INVOCATION, NOT
-            // FOR CERTAIN DATA: the error is a property of the SQL, so no value of `ref.status`
-            // could have made it work.
-            // ⚠ AND THE COST WAS NOT ONLY THE STATUS. This statement runs inside the same
-            // `withClientLock` transaction as `captureClientFacts` above, so the throw rolled the
-            // CAPTURE back too — client gid://Jobber/Client/154808209 reached 0 job facts. Seven
-            // clients over three hours on the invoice-paid door, logged at INFO with `alert: false`,
-            // so nothing surfaced it.
-            `UPDATE pipeline_cache
-                SET pipeline_status   = $3::text,
-                    updated_at        = NOW(),
-                    paid_at           = CASE
-                      WHEN $3::text = 'paid' AND pipeline_status != 'paid'
-                      THEN COALESCE($4::timestamptz, paid_at)
-                      ELSE paid_at
-                    END,
-                    status_derived_at = NOW()
-              WHERE contractor_id = $1 AND jobber_client_id = $2`,
-            [contractorId, fullClient.id, ref.status, ref.paidAt]
-          );
+          await writeReferredStatus(tx, { contractorId, jobberClientId: fullClient.id });
         }
 
         return decided.currentStatus;
       });
-    } catch (capErr) {
+    } catch (decErr) {
+      // ⚠ A DECISION FAILURE IS A DIFFERENT EVENT FROM A CAPTURE FAILURE, AND THE MESSAGE SAYS SO.
+      // The facts ARE saved — that is the whole point of the split — so this is recoverable, and the
+      // client is now in the state the catch-up job looks for: facts newer than its decision.
+      // ⚠ IT STILL ALERTS. "Recoverable" is not "invisible": the catch-up job is bounded by its own
+      // cadence, and a decision that fails every time would otherwise be a client silently stuck on
+      // a stale stage. The `$3` defect is the whole argument — three hours at INFO with no alert.
       await logError({
         req: null,
         contractorId,
-        error: new Error(`[upsertAndTagClient] capture failed for client ${fullClient.id}, no stage decided AND the fact capture was rolled back: ${capErr.message}`),
-        source: 'upsertAndTagClient — capture',
-        // ⚠ IT ALERTS NOW, AND `alert: false` IS WHY THIS WENT UNNOTICED FOR THREE HOURS. The
-        // failure is not cosmetic: the whole locked transaction rolls back, so the client's FACTS
-        // are lost as well as its stage, on the door that decides money. A capture failure here is
-        // the definition of something a person needs to know about, and INFO with no alert made it
-        // indistinguishable from routine noise.
+        error: new Error(`[upsertAndTagClient] DECISION failed for client ${fullClient.id}; the facts ARE saved, so this is recoverable — the catch-up job will re-decide it from saved facts: ${decErr.message}`),
+        source: 'upsertAndTagClient — decision',
         alert: true,
       });
       pipelineStage = null;
@@ -690,11 +717,25 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 
   // as fixed. A function name does not drift; a line number does, and says nothing
   // about whether it was ever right.
   await pool.query(
+    // ⚠ `stage_derived_at` IS STAMPED ONLY WHEN A STAGE WAS ACTUALLY DECIDED, AND THE GUARD IS THE
+    // WHOLE POINT OF THE COLUMN. This upsert runs whether or not the decision succeeded — it writes
+    // identity from the FETCH — so an unconditional `NOW()` would claim a decision on every client
+    // whose decision had just FAILED, and the catch-up job would then never find them. That is the
+    // exact shape of the defect the split exists to make recoverable, reintroduced one column along.
+    // ⚠ AND IT READS THE BARE PARAMETER, NOT `EXCLUDED.pipeline_stage`, FOR THE REASON 7b RECORDED:
+    // on the conflict branch `EXCLUDED` carries whatever the INSERT's own expression produced, so
+    // reading it is one COALESCE away from never being null. `$10` is the decision, and null means
+    // "not decided this pass".
     `INSERT INTO jobber_clients
        (jobber_client_id, contractor_id, first_name, last_name, email, phone,
-        is_company, is_lead, is_archived, pipeline_stage, last_synced_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+        is_company, is_lead, is_archived, pipeline_stage, stage_derived_at, last_synced_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+             CASE WHEN $10::text IS NOT NULL THEN NOW() ELSE NULL END, NOW())
      ON CONFLICT (jobber_client_id, contractor_id) DO UPDATE SET
+       stage_derived_at = CASE
+         WHEN $10::text IS NOT NULL THEN NOW()
+         ELSE jobber_clients.stage_derived_at
+       END,
        first_name = COALESCE(EXCLUDED.first_name, jobber_clients.first_name),
        last_name = COALESCE(EXCLUDED.last_name, jobber_clients.last_name),
        email = COALESCE(EXCLUDED.email, jobber_clients.email),
@@ -2329,6 +2370,21 @@ router._captureQueries = {
   INVOICE_JOBS_PAGE_QUERY,
   INVOICE_ARCHIVED_JOBS_PAGE_QUERY,
 };
+// ⚠ THE REAL DOOR, exported for the capture/decision split's BEHAVIOURAL guard-proof. Inert in
+// production — nothing outside server/test/ reads it.
+//
+// ⚠ IT IS THE ACTUAL FUNCTION, NOT AN INDIRECTION SEAM, AND THAT DISTINCTION MATTERS HERE. Commit 3
+// DELETED two `_`-prefixed seams because a seam's `(...args) =>` default forwards arguments with no
+// literal for a fence to read, and because the failure they existed to inject was reachable at the
+// axios layer anyway. This is the opposite shape: the same reasoning as `_captureFetches` directly
+// above — the test must drive the REAL capture-then-decide path, because a test that reimplements the
+// split cannot discover that production no longer does it.
+//
+// ⚠ AND WITHOUT IT, DANNY'S FIRST GUARD-PROOF HAS NO BEHAVIOURAL CASE. Measured: restoring the shared
+// transaction reddened only a SOURCE assertion — width 1 — which proves the shape is written, never
+// that a decision failure leaves the facts behind. That is the entire property of the ruling.
+router._upsertAndTagClient = upsertAndTagClient;
+
 // The per-entity field selections, for the mechanical reads-vs-selects fence. Separate from the
 // queries above because a whole-query check passes when a field appears anywhere in it.
 router._captureFields = {

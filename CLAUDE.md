@@ -424,8 +424,64 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2337 server tests across 392 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the 7c-2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2337 · suites 392 · pass 2337 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE 7c-2 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.** Server 2305 → 2337
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2359 server tests across 394 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the capture/decision-split commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2359 · suites 394 · pass 2359 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CAPTURE/DECISION-SPLIT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2337 → 2359 is **+22**, one new file (`captureDecisionSplit.test.js`); suites 392 → 394 is
+  that file's **two** top-level describes. React did not move — no `src/` file was touched — and was
+  re-measured. **All four predicted before the run and matched.** ⚠ **Two EXISTING suites were
+  changed and contribute 0**, which is the expected shape: `oneStatusDerivation.test.js` gained
+  allow-list ENTRIES and no case, and `invoicePaidDerivableClient.test.js` was RE-POINTED, not extended.
+  ⚠ **THE FIRST GUARD-PROOF EXPOSED A GAP IN MY OWN TESTING, AND THAT IS THE ENTRY WORTH KEEPING.**
+  Danny's proof (a) — restore the shared transaction — reddened **only a SOURCE assertion: width 1.**
+  A text check proves the shape is WRITTEN and says nothing about whether a decision failure leaves
+  the facts behind, **which is the entire property of the ruling.** A BEHAVIOURAL case was added: it
+  forces a real failure with a trigger on `pipeline_cache`, drives the REAL `upsertAndTagClient`, and
+  asserts the job facts SURVIVE, the stage and `stage_derived_at` stay unset, the referrer-visible
+  status is untouched, the alert names the DECISION rather than the capture, and the catch-up job now
+  finds the client. (a) then reds **2**.
+  ⚠ **AND IT FORCED AN HONEST SPLIT ON THE ALERT: the error_log ROW is behavioural, the `alert: true`
+  FLAG is not.** The flag controls whether Resend sends, which no test observes without stubbing
+  Resend, so it is pinned by a source assertion. Saying which half is which is the difference between
+  a proof and a claim.
+  ⚠ **TWO PROOFS WERE REPORTING SIX PRE-EXISTING FAILURES AS INJECTION RESULTS, CAUGHT BY QUESTIONING
+  A WIDTH THAT LOOKED WRONG.** (c) changes one `alert` flag and reddened **7**, which cannot be right.
+  Baseline check: `invoicePaidDerivableClient.test.js` was **already failing 6 of 8 on the clean
+  tree** — it reads the `pipeline_cache` UPDATE **out of production source**, and this commit EXTRACTED
+  that statement to `server/utils/referredStatus.js` so the door and the catch-up job share one copy
+  of a money-adjacent write. **It failed LOUDLY on a moved target rather than slicing past it and
+  asserting nothing**, which is precisely what that design is for. Re-pointed, not deleted: the
+  subject moved, the claims did not. **Always baseline a suite an injection includes.**
+  ⚠ **FIVE GUARD-PROOFS, TRUE WIDTHS AFTER THE REPAIRS.** (a) the shared transaction restored →
+  **2 = 1 behavioural + 1 source**; (b) the catch-up selector neutralised → **8**; (c) the decision
+  failure stops alerting → **exactly 1**; (d) the decision runs even when the capture FAILED →
+  **2**; (e) the catch-up job reaches Jobber → **exactly 1**.
+  ⚠ **AND THE BACKTICK RULE, HIT BY THE SESSION THAT HAS QUOTED IT ALL DAY.** A comment inside a SQL
+  template literal quoted `` `captured_at` `` in backticks, which CLOSES the string. It surfaced as
+  `SyntaxError: missing ) after argument list` with **`tests 1 · suites 0 · fail 1`** — the exact
+  module-load signature this file names, and the LOUD variant. **Reworded, never escaped**, and the
+  five files this arc touched were swept for the same shape (0 found). **Knowing the rule is not the
+  mechanism; the `suites 0` reading is.**
+  ⚠ **AND AN INVERSE PATCH REFUSED AGAIN, FOR THE OVERLAPPING-ANCHOR REASON — AND THE FLOOR HELD.**
+  Injection (e) prepends a line, so the reverse anchor sits inside the injected text; `patch` refused,
+  and the saved-original-bytes fallback restored the file byte-identically by sha256. **That fallback
+  exists because the same refusal once left a file injected**, and this is the second time it has
+  fired — the floor is not decoration.
+  ⚠ **A REAL LIMITATION FOUND AND FILED RATHER THAN SMOOTHED OVER: `crm_quote_facts` AND
+  `crm_request_facts` HAVE NO `captured_at`.** Only the job and invoice fact tables do, so the
+  catch-up job's "facts are newer" branch cannot see a quote-only change. Their `created_at` is the
+  JOBBER record's own date, and reading it would call every old quote newer than the decision forever
+  — absent is better than wrong. ⚠ **The branch the ruling depends on is unaffected**:
+  `stage_derived_at IS NULL` catches every failed or never-made decision. A case named *"CURRENT
+  LIMITATION"* asserts from `information_schema` exactly which tables have the column, so closing it
+  means deleting a named case.
+  ⚠ **AND `stage_derived_at` IS DELIBERATELY NOT BACKFILLED.** Backfilling from `last_synced_at` would
+  have avoided a large first run and would have asserted of ~19,565 clients that they were decided at
+  a moment that column does not describe — so a client whose decision had FAILED would look decided
+  and be missed. **Doing extra idempotent work is recoverable; missing a client is permanent and
+  invisible.** The job is bounded by a limit and reports what it did not reach.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE 7c-2 COMMIT ITSELF, BECAUSE IT SHIPS
+  TESTS.* It read **2337 / 392 / 1398 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE 7c-2 COMMIT, BECAUSE IT SHIPS TESTS.** Server 2305 → 2337
   is **+32**, one new file (`categorySource.test.js`); suites 387 → 392 is that file's **five**
   top-level describes. React did not move — **no `src/` file was touched at all** — and was
   re-measured. **All four predicted before the run and matched.** Counted with an anchored `^\s*it\(`

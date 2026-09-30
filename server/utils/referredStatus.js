@@ -106,4 +106,48 @@ async function deriveReferredStatus(db, { contractorId, jobberClientId } = {}) {
   return { status: currentStatus, paidAt };
 }
 
-module.exports = { deriveReferredStatus, earliestPaidAt };
+/**
+ * Derive AND store the referrer-visible status for one client.
+ * Inputs: a db/tx (must be inside the per-client lock), { contractorId, jobberClientId }.
+ * Output: { status, paidAt, rowCount } — `rowCount` 0 is the expected quiet outcome for a client
+ * the referral sync has never seen.
+ *
+ * ⚠ EXTRACTED HERE SO THERE IS ONE COPY OF THIS STATEMENT, AND THAT IS NOT TIDINESS. It is the
+ * money-adjacent write on the referrer's surface, and the capture/decision split gives it a SECOND
+ * caller (the catch-up job). A pasted copy is exactly what
+ * `cashoutBalanceSingleSource.test.js` exists to catch one table along, and what this repo has
+ * already paid for twice — once when a corrected balance aggregate was written inline with a comment
+ * claiming it was not a second formula, and once when the test for it pasted the same SQL a third
+ * time inside the very file fencing against a second copy.
+ *
+ * ⚠ IT IS AN UPDATE, NEVER AN INSERT. `syncSingleClient` alone owns creating a `pipeline_cache` row,
+ * because it is the only path that knows the referrer name and the pre-start-date decision.
+ *
+ * ⚠ `$3::text` IN BOTH PLACES, AND THE CAST IS LOAD-BEARING. Written without it, `$3` appears in two
+ * incompatible inference contexts — assigned to a `VARCHAR(50)` column and compared to a bare
+ * literal in the CASE — and Postgres refuses the statement at PREPARE with "inconsistent types
+ * deduced for parameter $3". ⚠ **It fails for EVERY invocation, not for certain data**, which is how
+ * it rolled back seven clients' fact captures over three hours on the invoice-paid door.
+ *
+ * ⚠ `paid_at` IS WRITTEN ONCE AND NEVER OVERWRITTEN — the CASE only fills it on the transition INTO
+ * 'paid'. It is the source of truth for cadence timing.
+ */
+async function writeReferredStatus(db, { contractorId, jobberClientId } = {}) {
+  const ref = await deriveReferredStatus(db, { contractorId, jobberClientId });
+  const { rowCount } = await db.query(
+    `UPDATE pipeline_cache
+        SET pipeline_status   = $3::text,
+            updated_at        = NOW(),
+            paid_at           = CASE
+              WHEN $3::text = 'paid' AND pipeline_status != 'paid'
+              THEN COALESCE($4::timestamptz, paid_at)
+              ELSE paid_at
+            END,
+            status_derived_at = NOW()
+      WHERE contractor_id = $1 AND jobber_client_id = $2`,
+    [contractorId, jobberClientId, ref.status, ref.paidAt]
+  );
+  return { ...ref, rowCount };
+}
+
+module.exports = { deriveReferredStatus, earliestPaidAt, writeReferredStatus };

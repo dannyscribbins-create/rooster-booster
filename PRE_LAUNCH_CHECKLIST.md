@@ -748,6 +748,25 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         **What removes this entry:** the fixtures migrated wherever a gated path is driven, plus that
         fence green with a guard-proof showing it fires.
 
+      - [ ] **`crm_quote_facts` AND `crm_request_facts` HAVE NO CAPTURE TIMESTAMP, WHICH NARROWS THE
+        CATCH-UP JOB. NOT FIXED (filed 2026-09-30).** Only `crm_job_facts` and `crm_invoice_facts` carry
+        a `captured_at`. The other two have none — their `created_at` is the **Jobber record's own**
+        creation date, so reading it as a capture time would compare a client's quote date against our
+        decision clock and call every old quote "newer than the decision" forever.
+        ⚠ **WHAT IT COSTS, AND WHAT IT DOES NOT.** The branch the ruling depends on is
+        `stage_derived_at IS NULL` — every client whose decision failed, or was never made, is caught
+        regardless. The gap bites only on the refinement: a client **already decided** whose QUOTE later
+        changed keeps its stage until some other event touches it. A quote moves a client between `lead`
+        and `inspection`, so this is a real if narrow staleness.
+        ⚠ **A CASE IS NAMED FOR IT RATHER THAN THE GAP BEING SILENT** — *"CURRENT LIMITATION: a
+        quote-only change is NOT detected"* in `captureDecisionSplit.test.js`, which asserts from
+        `information_schema` exactly which tables have the column. When that assertion fails, the fix
+        has landed and the case should be deleted.
+        **What removes this entry:** `captured_at` added to both tables AND their writers stamping it on
+        the `ON CONFLICT` branch too — a column that records only the FIRST capture is the wrong signal
+        for staleness, which is the same convergence trap `waiting_for_financed_payment` needed its own
+        guard-proof for. Then widen the selector's UNION and delete the limitation case.
+
       - [ ] **✅ RULED 2026-09-30 (Danny) — SPLIT CAPTURE FROM DECISION. NOT YET BUILT; ITS OWN COMMIT
         IMMEDIATELY AFTER 7c-2.** *(This replaces the "RULING PENDING" entry, which is kept below as the
         record of what was filed and why the two inconsistencies were first read as symmetrical.)*
@@ -767,7 +786,26 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         **GUARD-PROOFS THIS COMMIT MUST CARRY (Danny):** a decision failure leaves the facts saved
         (restore the shared transaction → red); the catch-up job re-decides a client whose facts are
         newer than its decision; and the alert fires on a decision failure.
-        **What removes this entry:** that commit, green, with those three proofs.
+        ⚠ **BUILT 2026-09-30, AND THE FIRST PROOF EXPOSED A GAP IN MY OWN TESTING — WHICH IS THE ENTRY
+        WORTH KEEPING.** Restoring the shared transaction reddened **only a SOURCE assertion: width 1.**
+        That proves the shape is WRITTEN and says nothing about whether a decision failure leaves the
+        facts behind, which is the entire property of the ruling. A BEHAVIOURAL case was added — it
+        forces a real failure with a trigger on `pipeline_cache`, drives the REAL `upsertAndTagClient`,
+        and asserts the job facts survive, the stage and `stage_derived_at` stay unset, the
+        referrer-visible status is untouched, the alert names the DECISION rather than the capture, and
+        the catch-up job now finds the client. The proof then reds **2**.
+        ⚠ **AND IT FORCED AN HONEST DISTINCTION ABOUT THE ALERT.** The error_log ROW is behavioural; the
+        `alert: true` FLAG is not observable from a test without stubbing Resend, so it is pinned by a
+        source assertion. Saying which half is which is the difference between a proof and a claim.
+        ⚠ **A SECOND SUITE HAD TO BE RE-POINTED, AND IT FAILED LOUDLY RATHER THAN QUIETLY.**
+        `invoicePaidDerivableClient.test.js` reads the `pipeline_cache` UPDATE **out of production
+        source**; the split EXTRACTED that statement to `server/utils/referredStatus.js` so the door and
+        the catch-up job share one copy, so 6 of its 8 cases went red on a moved target. Re-pointed, not
+        deleted: the subject moved, the claims did not. ⚠ **And it was caught by questioning a
+        guard-proof width that looked too wide** — two proofs were reporting six pre-existing failures
+        as injection results.
+        **What removes this entry:** the push, and the `stage_derived_at` population converging to 0
+        remaining.
 
       - [x] **⚠ SUPERSEDED BY THE RULING ABOVE — kept as the record of what was filed, including the
         reading the ruling corrected.** — THE TRANSACTION COUPLING THAT AMPLIFIED THE ABOVE — CONSIDER SPLITTING IT. NOT FIXED

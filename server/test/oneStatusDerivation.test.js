@@ -261,11 +261,26 @@ const SANCTIONED_WRITERS = [
   // value into another table rather than deriving it. The count is pinned so a THIRD write cannot
   // hide behind this entry.
   { key: 'server/crm/pipelineSync.js :: function syncSingleClient', spans: 2 },
-  // ⚠ TWO SPANS SINCE N4 COMMIT 7b, NOT ONE. It writes the jobber_clients stage as before, and now
-  // ALSO the referrer-visible pipeline_cache status for a referred client — the fifth caller of the
-  // shared derivation (Danny's ruling), opt-in via `alsoDeriveReferredStatus` so the two doors that
-  // already call syncSingleClient do not write it twice.
-  { key: 'server/routes/webhooks/jobber.js :: function upsertAndTagClient', spans: 2 },
+  // ⚠ BACK TO ONE SPAN AT THE CAPTURE/DECISION SPLIT, AND THE CLOSURE CASE IS WHAT CAUGHT IT —
+  // *"listed 2, found 1"*, before the commit could land. It was two from N4 commit 7b (the
+  // jobber_clients stage, plus the referrer-visible pipeline_cache status); the split EXTRACTED that
+  // second write to `writeReferredStatus` so the door and the new catch-up job share one copy of a
+  // money-adjacent statement instead of pasting it. So this entry shrinking is the extraction being
+  // real rather than nominal — and the pinned count is what made it impossible to do quietly.
+  { key: 'server/routes/webhooks/jobber.js :: function upsertAndTagClient', spans: 1 },
+  // ⚠ ADDED BY THE CAPTURE/DECISION SPLIT — THE ONE COPY OF THE REFERRER-VISIBLE WRITE. Sanctioned
+  // rather than carved out: it derives from saved facts (`deriveReferredStatus` → `decideFromFacts`)
+  // and writes what that decided, which is the property this fence enforces. It exists as its own
+  // function precisely so there is ONE of it: the split gave the statement a second caller, and a
+  // pasted copy of a money-adjacent UPDATE is what this repo has already paid for twice.
+  { key: 'server/utils/referredStatus.js :: function writeReferredStatus', spans: 1 },
+  // ⚠ AND THE CATCH-UP JOB, which is the other half of the ruling. One span: the `jobber_clients`
+  // stage UPDATE. Its referrer-visible write is NOT a second span here because it goes through
+  // `writeReferredStatus` above — which is the whole point of extracting it, and is visible in this
+  // list as one entry rather than two.
+  // ⚠ IT READS SAVED FACTS AND MAKES NO JOBBER CALL, which its own suite fences by scanning the
+  // job's source for a fetcher and for `axios`.
+  { key: 'server/jobs/redecideStaleClients.js :: function redecideOne', spans: 1 },
   { key: 'server/routes/webhooks/jobber.js :: function handleStageWebhook', spans: 1 },
   { key: 'server/utils/requestAttribution.js :: function writeStage', spans: 1 },
   // ⚠ ADDED 2026-09-30 BY THE TARGETED RE-CAPTURE, AND THIS FENCE IS WHAT CAUGHT IT — the gate

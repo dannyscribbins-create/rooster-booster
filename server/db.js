@@ -2964,6 +2964,31 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     PRIMARY KEY (contractor_id, jobber_client_id, jobber_invoice_id, configuration_id)
   )`);
 
+  // ── WHEN THE DISPLAYED STAGE WAS LAST DECIDED (capture/decision split) ──────────────
+  //
+  // Danny's ruling splits capture from decision so a decision failure never discards facts, and its
+  // safety net is a job that re-decides **any client whose facts are newer than their decision**.
+  // That sentence is not expressible without a decision timestamp, and there was none:
+  // `last_synced_at` is bumped by the identity upsert, which runs whether or not a stage was decided,
+  // so it answers "when did we last look at this client", not "when did we last decide".
+  //
+  // ⚠ NULLABLE WITH NO DEFAULT, AND NOT BACKFILLED — BOTH DELIBERATE, AND THE CHOICE IS ABOUT WHICH
+  // ERROR IS SAFER. A NULL means "never decided, or decided before this column existed", and the
+  // catch-up job treats that as work to do. Backfilling it from `last_synced_at` would have avoided a
+  // large first run, and would have asserted of ~19,565 clients that they were decided at a moment
+  // that column does not describe — so any client whose decision had in fact failed would look
+  // decided and be MISSED. **Doing extra idempotent work is recoverable; missing a client is
+  // permanent and invisible**, which is the same reasoning `waiting_for_financed_payment` was given a
+  // NULL rather than a defaulted FALSE for.
+  // ⚠ THE FIRST RUNS ARE THEREFORE LARGE, AND THE JOB IS BOUNDED BY A LIMIT FOR THAT REASON — it
+  // reads saved facts only and makes no Jobber call, so the cost is database work, not API budget.
+  await pool.query(`ALTER TABLE jobber_clients
+    ADD COLUMN IF NOT EXISTS stage_derived_at TIMESTAMPTZ`);
+  // The catch-up job's population is "facts newer than the decision", per contractor. Without this
+  // the scan is over the whole book on every run.
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_jc_stage_derived
+    ON jobber_clients (contractor_id, stage_derived_at)`);
+
   await backfillAssignedAt(pool);
   await applyAssignedAtNotNull(pool);
 

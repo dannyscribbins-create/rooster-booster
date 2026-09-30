@@ -61,11 +61,22 @@ beforeEach(async () => {
  * SQL text — so a retyped copy carrying the fix would pass while production stayed broken. This
  * extracts the template literal from the file and executes it.
  */
+// ⚠ RE-POINTED AT THE STATEMENT'S NEW HOME BY THE CAPTURE/DECISION SPLIT, AND THE PROPERTY IS
+// UNCHANGED. This suite reads the UPDATE out of PRODUCTION SOURCE rather than retyping it, precisely
+// so a retyped copy carrying the fix cannot pass while production stays broken — and that design is
+// what made this re-point necessary and visible: the split EXTRACTED the statement to
+// `server/utils/referredStatus.js` so the door and the new catch-up job share one copy of a
+// money-adjacent write, and this suite failed LOUDLY on a moved target rather than slicing past it and
+// asserting nothing. That is the non-vacuity floor doing its job, the same way `jobberSyncRepair`'s
+// T11b did when a query moved out of a function.
+// ⚠ IT WOULD HAVE BEEN WRONG TO DELETE THESE CASES. The subject moved; the claims did not. The
+// statement must still execute without a type-inference failure, still cast `$3` in both uses, still
+// write `paid_at` once, and still run inside a locked transaction beside a capture.
 function productionUpdateSql() {
   const src = fs.readFileSync(
-    path.join(__dirname, '..', 'routes', 'webhooks', 'jobber.js'), 'utf8');
+    path.join(__dirname, '..', 'utils', 'referredStatus.js'), 'utf8');
   const start = src.indexOf('`UPDATE pipeline_cache');
-  assert.ok(start > 0, 'harness: the UPDATE must be findable in the webhook source');
+  assert.ok(start > 0, 'harness: the UPDATE must be findable in referredStatus.js');
   const end = src.indexOf('`', start + 1);
   assert.ok(end > start, 'harness: the template literal must terminate');
   const sql = src.slice(start + 1, end);
