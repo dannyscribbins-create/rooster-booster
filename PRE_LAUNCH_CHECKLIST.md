@@ -1344,6 +1344,18 @@ mode proves no harm was done; it proves nothing about whether the logic is right
       admin crash WARNING via the `/admin` needle and leave a referrer-surface crash at INFO.
       ⚠ **AND THE SAME ALERT NAMED THE WRONG TENANT** — filed with the phantom-id literals under
       *Contractor-ID reconciliation*, because it is that fallback rather than a second defect.
+      ✅ **RULED 2026-10-01 (Danny, ruling 3) — SCHEDULED IN THE CLEANUP COMMIT RIGHT AFTER N4: AN
+      ERROR-BOUNDARY CATCH IS REPORTED AT A SEVERITY THAT ALERTS, REGARDLESS OF ROUTE.** A full page
+      gone is a severity in its own right; which page it was does not change that.
+      ⚠ **SO THE CLASSIFIER MUST LEARN A SECOND INPUT, NOT A BIGGER NEEDLE LIST.** `classifySeverity`
+      takes only a route today, and no route string can express "the boundary caught this" — which is
+      why the two candidate shapes above both involve the boundary reporting its own KIND. Widening the
+      needles cannot implement this ruling at all, which is worth saying because it is the cheaper-
+      looking move.
+      ⚠ **AND IT WILL ALERT ON FIRST OCCURRENCE AND EVERY TENTH, like every other row** — so the
+      dedup key matters: with the contractor fallback fixed (ruling 4) a boundary crash will dedup per
+      tenant rather than all under one phantom lineage. **The two rulings interact, and doing only this
+      one would make a page-blanking crash alert loudly under the wrong contractor.**
 
 - [ ] **19 ADMIN COMPONENTS, ~13,750 LINES, ARE MOUNTED BY NO TEST — AND ONE OF THEM JUST SHIPPED A
       PRODUCTION CRASH.** Measured 2026-10-01 after the CRM Settings `ReferenceError`, by checking
@@ -1368,6 +1380,35 @@ mode proves no harm was done; it proves nothing about whether the logic is right
       `AdminNoAccessScreen` (101) are reached by people who cannot get in by any other route, so a
       crash there has no fallback path at all; `AdminCampaigns` is large but an admin can navigate
       away from it.
+      ✅ **RULED 2026-10-01 (Danny, ruling 1) — SCHEDULED IN THE CLEANUP COMMIT RIGHT AFTER N4: A MOUNT
+      TEST FOR EACH OF THE NINETEEN, WITH PRODUCTION-SHAPED DATA, ASSERTING EACH RENDERS ITS OWN
+      CONTENT — NOT MERELY THAT `render()` RETURNED.** `AdminSetPasswordScreen` and
+      `AdminNoAccessScreen` **first**, per the render-surface priority above.
+      ⚠ **"ASSERTS ITS OWN CONTENT" IS THE LOAD-BEARING HALF, AND IT IS NOT PEDANTRY.** A component
+      that throws during render leaves an **EMPTY container** rather than raising out of `render()`, so
+      a test that only checks `render()` did not throw **passes against the exact crash this item comes
+      from**. `src/components/admin/CRMSettings.test.jsx` is the worked pattern: it waits for real
+      text, asserts the cards AFTER the crashing one exist, and asserts no `ReferenceError` reached the
+      console.
+      ⚠ **AND PRODUCTION-SHAPED MEANS READ, NOT INVENTED.** The CRMSettings fixtures came from the
+      handler's own `res.json({…})` serialization plus read-only DB rows — nine real `ALL_CLIENTS`
+      configurations with their true archived flags, rows whose `entity` is NULL, and an older payload
+      missing a field the component now reads. **A fixture built from what the component EXPECTS cannot
+      discover that production sends something else.**
+
+- [ ] ✅ **RULED 2026-10-01 (Danny, ruling 2) — ENABLE THE SINGLE ESLint RULE `no-undef`, NOT A PRESET.
+      SCHEDULED IN THE CLEANUP COMMIT RIGHT AFTER N4.** A clean lint shipped a `ReferenceError` that
+      blanked an entire admin page, and `no-undef` names the three offending references exactly —
+      verified by running that one rule out-of-tree against `CRMSettings.jsx` before the fix.
+      ⚠ **THIS DOES NOT REOPEN THE PRESET QUESTION, AND THE DISTINCTION IS THE WHOLE RULING.**
+      `CLAUDE.md` says the lint is react-hooks-only by design and **never add a recommended preset** —
+      that stands. One named rule, adopted because a specific defect class reached production, is not a
+      preset arriving by the back door.
+      ⚠ **EXPECT PRE-EXISTING FINDINGS AND BUDGET FOR THEM RATHER THAN DISCOVERING THEM.** The rule
+      needs a `languageOptions.globals` set or it reports `window`, `document`, `fetch`,
+      `setInterval`/`clearInterval` and friends as undefined — the out-of-tree run showed exactly that
+      noise from an incomplete globals list. **Getting the globals right IS the work;** the rule itself
+      is one line.
 
 - [ ] **`DELETE /api/account/me`'s deletion-email branding lookup (`server/routes/account.js`) — hardcoded ghost `contractor_id = 'accent-roofing'`.**
       Only `'accent-roofing-dev'` exists, so this returns zero rows and the account-deletion
@@ -11512,6 +11553,13 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       key — so frontend errors from *every* future contractor will share one lineage under a tenant
       that does not exist. **Fix by ROUTING the real contractor in, not by changing the literal to
       `accent-roofing-dev`**, which would be a hardcoded right answer for exactly one tenant.
+      ✅ **RULED 2026-10-01 (Danny, ruling 4) — SCHEDULED IN THE CLEANUP COMMIT RIGHT AFTER N4:
+      `POST /api/log-client-error` READS THE SESSION'S CONTRACTOR WHEN ONE EXISTS**, so frontend errors
+      stop being filed under the phantom id. ⚠ **The route is unauthenticated by design** — a crashed
+      app must still be able to report, and a boundary catch may happen before any session is
+      rehydrated — so the contractor is read *when available* and the fallback remains for the genuinely
+      anonymous case. **That fallback must stop being the phantom literal**, which is the other half of
+      this item and is what makes the dedup lineage honest.
       ⚠ **`routes/stripe.js` IS DONE — CLOSED BY WAVE 1.1-e, 2026-08-29.** Both of its literals
       are gone: the module-level constant is **deleted** (not left unused) and the Stripe
       customer metadata stamp resolves from the session. This line used to cite them by line
@@ -14743,6 +14791,17 @@ source and, where stated, against a read-only production `SELECT` whose text is 
       suppression and no durable record that it ran.** Its idempotence rests on `referral_conversions`'
       UNIQUE constraint instead. Whether it should claim one is a ruling, not a tidy-up — and it is the
       reason this gate had to be answered from logs rather than from the database.
+      ✅ **RULED 2026-10-01 (Danny) — THE INVOICE-PAID ROUTE SHOULD CALL `claimWebhookDelivery`. ITS OWN
+      SMALL COMMIT, AFTER C2.**
+      ⚠ **TWO BENEFITS, AND THE SECOND IS WORTH LESS THAN IT LOOKS — SAY SO RATHER THAN OVERSELL IT.**
+      It gives the door (a) a durable record that it ran, and (b) duplicate suppression. **(b) is NOT
+      what stands between us and a double payout:** `referral_conversions`' UNIQUE constraint already
+      makes the conversion exactly-once, and CLAUDE.md records that the worst case of a redelivery is a
+      duplicate EMAIL, never a duplicate credit. This is observability plus a cheaper idempotence.
+      ⚠ **AND `claimWebhookDelivery` FAILS OPEN BY DESIGN** — with no usable `occurred_at` it returns
+      `{ claimed: true, keyed: false }`, because swallowing a genuine second event is unrecoverable
+      while processing twice is idempotent by write shape. **Adding it must not be read as making the
+      door exactly-once.**
 
 - [ ] ⚠ **RULED 2026-10-01 (Danny, ruling 4) — THE BACKUP DECISION IS DANNY'S, NOT CLAUDE'S.** Before
       any push that changes the database **SCHEMA** (DDL), **ask Danny to click Run Backup Now and wait

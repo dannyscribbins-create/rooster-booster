@@ -4326,6 +4326,27 @@ answer was read through.
   about nothing else.** Grep the `ℹ tests / suites / pass / fail / cancelled / skipped / todo`
   lines by name, every time.
 
+⚠ **AND THE SAME CLASS THROUGH A LOG FETCHER, RULED 2026-10-01 AFTER IT PRODUCED A CONFIDENT WRONG
+FINDING TWICE IN ONE SESSION: `railway logs` WITH NO `--lines` OR `--since` RETURNS A SHORT RECENT
+BUFFER AND EXITS. IT DOES NOT TAIL.** Measured: **35 lines** where the deployment's real history held
+**1,129**. I searched that buffer for `door=invoice-paid`, found zero, and reported *"no invoice-paid
+webhook arrived"* — twice, once in a written report. The full history showed **48 occurrences across 6
+clients**. The window happened to contain the reassuring absence and not the evidence.
+**Pass `--lines <n>` or `--since <iso>`, and remember logs are per-DEPLOYMENT** — a new deploy starts a
+new stream, so a question about yesterday's code needs that deployment's id:
+`railway logs <deployment-id> --service rooster-booster --lines 5000`.
+⚠ **THE RULE THAT GENERALISES, AND IT IS NOT ONLY ABOUT RAILWAY: ANY ABSENCE READ FROM LOGS MUST STATE
+THE WINDOW IT COVERED.** *"No invoice-paid webhook in the logs"* is not a finding; *"none in the 35-line
+buffer `railway logs` returned"* is one, and it is obviously worthless, which is the point — **naming
+the window is what makes a weak absence look weak.** An absence with no stated window is
+indistinguishable from a search that could never have found anything.
+⚠ **AND THE SECOND TRAP IN THE SAME INVESTIGATION WAS A DATABASE READ, NOT A LOG: ASK WHETHER THE TABLE
+CAN HOLD THE ROW BEFORE READING A ZERO AS AN OBSERVATION.** `jobber_webhook_events` returned **0 rows
+for `topic ILIKE '%INVOICE%'` across 5,379 events since 2026-09-18** — because `claimWebhookDelivery` is
+called from exactly TWO sites and the invoice-paid door is not one of them. **A zero from a table that
+structurally cannot hold the row is not evidence of anything.** It was checked only because the figure
+looked too clean, which is the one instinct that saved it.
+
 **Every one produced a PLAUSIBLE WRONG ANSWER rather than an error**, which is why none was
 caught by looking and why the rule cannot be "be careful with quoting."
 
