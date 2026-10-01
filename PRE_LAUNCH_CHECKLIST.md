@@ -1039,6 +1039,39 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         producing real capture-cost figures after the push is the last confirmation, and it is
         Danny's stated condition.
 
+      - [ ] **A DEPENDENCY COMMIT, SCHEDULED AFTER 7d — `npm audit fix` FOR THREE FINDINGS, REPORTED
+        BEFORE PUSHING LIKE THE axios COMMIT.** Ruled by Danny 2026-10-01. **Not now**: it is a
+        dependency change in the middle of a money-path arc, and the axios entry directly above is the
+        precedent for how one gets done — measured from the manifests, contract-tested where a green
+        suite would not exercise the real library, and reported before the push rather than after.
+        **Measured 2026-10-01, from `package-lock.json` and the installed packages, never `npm ls`**
+        (the rule in `CLAUDE.md`, which records `npm ls` printing a FIXED version while the lockfile
+        and `node_modules` both held the vulnerable one):
+        · **`ip-address` 10.4.0 — MODERATE, RUNTIME.** Four advisories: `isLinkLocal()` recognises
+          `fe80::/64` rather than `fe80::/10`; no classifier recognises the NAT64 local-use range
+          `64:ff9b:1::/48` (both SSRF / trust-boundary bypass); `isInSubnet()` compares addresses of
+          different families as if they shared an address space, so an allowlist can admit an address
+          outside its range; and an unbounded parse diagnostic lets one long string stall the process.
+        · **`multer` 2.3.0 — MODERATE, RUNTIME.** DoS via orphaned disk writes on aborted uploads.
+        · **`brace-expansion` 5.0.9 — HIGH, DEV ONLY.** Three DoS advisories (quadratic expansion and
+          two stack-exhaustion recursions).
+        ⚠ **THE HIGH DOES NOT SHIP, AND THAT IS MEASURED RATHER THAN ASSUMED.**
+        `npm audit --omit=dev` returns **only the two moderates**, and the lockfile marks
+        `brace-expansion` `dev: true`. So the severity ordering by headline is the opposite of the
+        ordering by exposure: the two MODERATES are in the deployed tree and the HIGH is not.
+        ⚠ **`multer` AND `ip-address` ARE DIFFERENT RISK CLASSES AND MUST NOT BE FILED AS EQUIVALENT.**
+        `multer` is reached by an authenticated upload route, so its DoS has a logged-in attacker as a
+        precondition. `ip-address` arrives transitively and its SSRF-shaped advisories are about
+        *allowlist checks admitting an address they should refuse* — **whether anything here performs
+        such a check on untrusted input is NOT established**, and saying otherwise would be inventing a
+        source. Establish that before deciding how urgent it is.
+        ⚠ **AND `npm audit fix` IS NOT SELF-EVIDENTLY SAFE JUST BECAUSE IT IS OFFERED.** All three
+        report `fix available`, but the axios entry above is the record of what a dependency bump
+        actually costs to verify: the server suite **stubs `axios.post` almost everywhere**, so a green
+        gate exercised very little of the real library and a contract test over real loopback HTTP was
+        the thing that settled it. Ask the same question of `multer` — which the suite also stubs —
+        before reading a green run as evidence.
+
       - [x] **⚠ SUPERSEDED — SEE THE CLOSED ENTRY DIRECTLY ABOVE. Kept as the record of what was
         found and how it was found, not as open work.** — `npm audit` HIGH — `axios` `1.0.0 - 1.19.0`, SEVEN ADVISORIES, AND IT IS A DIRECT
         RUNTIME DEPENDENCY. FILED 2026-09-30, NOT FIXED. THE MOST SERIOUS OPEN AUDIT FINDING, AND

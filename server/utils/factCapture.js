@@ -461,10 +461,29 @@ async function captureClientFacts(db, { contractorId, client }) {
   // ⚠ AND THE ENUM VALUES ARE JOBBER'S OWN (`CustomFieldAppliesTo`), not our words for them, so a
   // row joins to `contractor_jobber_fields.entity` without a translation table in between. There is
   // deliberately no REQUEST entity: a custom field cannot attach to a request.
+  //
+  // ⚠ FOUR STAGES NOW, NOT THREE — THE CLIENT'S OWN FIELDS ARE AN ENTITY LIKE ANY OTHER.
+  // `ALL_CLIENTS` is one of the seven `CustomFieldAppliesTo` values and Accent has nine such
+  // configurations, two of them live. Nothing captured them, so a client-level field could not be
+  // read from facts at all.
+  //
+  // ⚠ THE CLIENT IS PASSED AS A ONE-NODE LIST IN THE WRITER'S OWN RECORD SHAPE, rather than giving
+  // the writer a second code path. For a client-entity field the record IS the client, so
+  // `entity_jobber_id` and `jobber_client_id` are legitimately the same value — that is a property of
+  // the entity, not a fudge. Reusing the writer keeps ONE definition of "how a custom-field fact is
+  // stored", which is the whole reason that function exists.
+  //
+  // ⚠ AND IT FAILS CLOSED ON A MISSING id RATHER THAN BEING GUARDED HERE. `writeCustomFieldFacts`
+  // already skips a node with no `id` or no `client.id`, so a door whose query does not select the
+  // client's `id` writes nothing instead of writing a row keyed on `undefined`. That is exactly how
+  // this defect stayed invisible on the webhook door, so the behaviour is kept and named rather than
+  // papered over with a local `if`.
+  const clientFieldNode = { id: client.id, client: { id: client.id }, customFields: client.customFields };
   const customFields =
       await writeCustomFieldFacts(db, contractorId, 'ALL_QUOTES', quoteNodes)
     + await writeCustomFieldFacts(db, contractorId, 'ALL_JOBS', jobNodes)
-    + await writeCustomFieldFacts(db, contractorId, 'ALL_INVOICES', invoiceNodes);
+    + await writeCustomFieldFacts(db, contractorId, 'ALL_INVOICES', invoiceNodes)
+    + await writeCustomFieldFacts(db, contractorId, 'ALL_CLIENTS', [clientFieldNode]);
 
   // ── THE FULL-CAPTURE MARKER (catch-up schedule, Danny 2026-10-01) ───────────
   // ⚠ STAMPED ONLY WHEN THE FETCHER CERTIFIED EXHAUSTION, which is why this reads a Symbol rather

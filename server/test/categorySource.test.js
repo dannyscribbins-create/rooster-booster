@@ -512,7 +512,15 @@ describe('7c-2 — capturing the custom-field facts', () => {
     assert.equal(rows[0].value_dropdown, 'Restoration', 'and the later capture wins');
   });
 
-  it('captureClientFacts captures all THREE stages in one pass', async () => {
+  // ⚠ "THREE" IS TRUE OF THIS FIXTURE AND IS NO LONGER TRUE OF THE MECHANISM. Commit A added a
+  // FOURTH stage — `ALL_CLIENTS`, the client's own custom fields — because nothing captured them and
+  // a client-level field could not be read from facts at all. This fixture's client carries no
+  // `customFields` property, so that stage contributes 0 here and both assertions below still hold
+  // unchanged. **Neither was a defect and neither is relaxed**; the count and the entity list are
+  // pinned exactly as they were. What changed is only what a reader should take the name to mean, so
+  // the name says "the quote, job and invoice stages" rather than "all" — the four-stage case lives
+  // in `customFieldSelectionParity.test.js`, which asserts the client stage by name.
+  it('captureClientFacts captures the quote, job and invoice stages in one pass', async () => {
     const client = {
       id: CLIENT,
       quotes: { nodes: [{ id: QUOTE, quoteStatus: 'approved', client: { id: CLIENT }, createdAt: new Date().toISOString(), lastTransitioned: { approvedAt: new Date().toISOString() }, salesperson: null, customFields: [{ label: LABEL, valueDropdown: 'New Construction', customFieldConfiguration: { id: CFG_QUO } }] }] },

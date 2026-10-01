@@ -433,8 +433,73 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2399 server tests across 400 suites, and 1398 React tests across 85 files** (measured 2026-10-01 by the catch-up-schedule commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2399 · suites 400 · pass 2399 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CATCH-UP-SCHEDULE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2418 server tests across 402 suites, and 1398 React tests across 85 files** (measured 2026-10-01 by the Commit A capture-selection commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2418 · suites 402 · pass 2418 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE COMMIT A COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2399 → 2418 is **+19**, one new file (`customFieldSelectionParity.test.js`); suites 400 → 402
+  is that file's **two** top-level describes. React did not move — **no `src/` file was touched at
+  all** — and was re-measured. **All four predicted before the run and matched.** Counted with an
+  anchored `^\s*it\(` (19); the file's loops were each checked for POSITION — two in the
+  brace-matching helper, two in other helpers, one in `beforeEach`, the rest inside `it()` bodies —
+  so **none wraps a case**.
+  ⚠ **THE GATE WAS RUN TWICE AND THE SECOND RUN IS THE ONE CITED**, because a case in
+  `categorySource.test.js` was RENAMED while the first was running. A rename cannot change a count —
+  and *"it cannot have changed" is a prediction, not a measurement*, which is this block's own rule.
+  Both runs read `EXIT=0` and the same seven numbers.
+  ⚠ **THE COMMIT'S SUBJECT: THE MONEY DOOR CAPTURED ZERO CUSTOM-FIELD FACTS AND REPORTED SUCCESS.**
+  `writeCustomFieldFacts` skips any field with no configuration id, and `webhooks/jobber.js` selected
+  `customFieldConfiguration` **zero times** — measured with `grep -c`: webhook **0**,
+  `repImportScope` **0**, `recaptureClients` **0**, `jobberClientFetch` **3**. So the invoice-paid
+  door wrote no custom-field facts at all. **Two of its four selections carried no `customFields`
+  whatsoever** — the INVOICE and the QUOTE — and `categorySource`'s ruling 1 reads the invoice copy
+  FIRST, then the job, then the linked quote. 7d would therefore have returned `no_job_type_found`
+  for every credit: a gate that silently never fires.
+  ⚠ **THE reads-vs-selects FENCE STRUCTURALLY COULD NOT SEE IT, AND THAT IS NOT A FENCE FAILURE.**
+  `customFieldConfiguration.id` sits at **depth 2** inside `customFields`, and that fence's derivation
+  extracts top-level and single-nested fields only — a limit its own suite fences explicitly. **The
+  reach was written down, which is the only reason this was findable at all.** The new suite is the
+  depth-2 reader: it brace-matches every `customFields` block in the RESOLVED query text, per entity
+  rather than per file, and requires the configuration id AND both value members.
+  ⚠ **AND THE SECOND HALF OF THE SAME DEFECT: THE FULL-CAPTURE STAMP WAS DEAD ON EVERY WEBHOOK DOOR.**
+  `fetchClientRelatedData` **does** call `certifyFullyPaged`, but its client selection had no `id`, so
+  `captureClientFacts`'s stamp (`isCertifiedFullyPaged(client) && client.id`) was skipped — measured
+  **10 of 19,598 clients stamped** while the webhook doors are the most frequent capture path. ⚠ **So
+  adding `id` NEWLY ENABLES the stamp, which grows catch-up eligibility**; that is reported rather
+  than slipped in, and it is one word to revert.
+  ⚠ **A GUARD-PROOF MEASURED ONE OF MY OWN NEEDLES AT WIDTH 0 — THE SUBSTRING TRAP, IN THE FENCE.**
+  The client-id case asserted `/\bid\b/` over the client-level slice, and that slice OPENS with
+  `client(id: $id) {` and CONTAINS `customFieldConfiguration { id }`. Deleting the client's own `id`
+  left it **GREEN**. Replaced with a TOKEN check over the scalar head (cut at the first `{`, so every
+  sub-selection is dropped); injection (iv) then reds **2**, one of them behavioural.
+  ⚠ **AND THE END-TO-END CASE PROJECTS ITS FIXTURE FROM THE REAL QUERY TEXT**, because a stub that
+  answers a fixed fixture regardless of the query cannot discover a missing selection — the harness
+  defect this file already records twice, where dropping `updatedAt` left 37/37 green and dropping
+  `receivedDate` left 39/39 green. It asserts its own preconditions, so it cannot go vacuous quietly.
+  ⚠ **SEVEN GUARD-PROOFS, EVERY REVERT AN INVERSE PATCH IN A `finally` PROVEN BYTE-IDENTICAL BY
+  sha256 ACROSS THREE WATCHED FILES.** (i) the door's selections narrowed to the pre-fix shape → **3**;
+  (i-b) the INVOICE copy's custom fields dropped → **exactly 1**; (ii) the Dropdown member removed →
+  **3**; (iii) the `ALL_CLIENTS` write removed → **5**; (iv) the client `id` no longer selected → **2**
+  (after the needle repair; **0** before, which is how the vacuity surfaced); (v) the writer stops
+  skipping a field with no configuration id → **2**; (vi) the shared constant no longer exported →
+  **3**.
+  ⚠ **AND MY OWN HARNESS PARSED EVERY COUNT AS −1 THROUGH FOUR ANCHOR SPELLINGS, WHICH IS THE ENTRY
+  WORTH KEEPING.** First CRLF sat between the digits and `$`; then the prefix glyph decoded to three
+  `?` under the console's codepage; then I stripped the prefix with `while (!t[0].isalpha())` on the
+  assumption that it is a symbol. ⚠ **`unicodedata.category('ℹ')` is `Ll` — a lowercase
+  LETTER — so `isalpha()` is TRUE** and the loop stopped on the glyph itself. **A harness returning a
+  plausible wrong number is the failure class**, and the only thing that found it was printing
+  `repr()` rather than re-reading the code. It parses by TOKENS now. The printer is ASCII-folded,
+  which is also why a `UnicodeEncodeError` in a probe did not leave a file injected.
+  ⚠ **`repImportScope.js` IS DELIBERATELY EXCLUDED AND IT IS NOT AN OVERSIGHT.** It selects no
+  `customFields` at all and calls `writeCustomFieldFacts` never, so there was nothing to widen — and
+  it captures only the rep WINDOW per entity and can never stamp the full-capture marker, so facts
+  written from it would be incomplete by construction. **Adding them is a ruling, not a tidy-up.**
+  ⚠ **ONE EXISTING CASE WAS RENAMED AND CONTRIBUTES 0.** `categorySource.test.js`'s *"captures all
+  THREE stages"* is still TRUE of its fixture — that client carries no `customFields` — so both its
+  assertions hold **unchanged and unrelaxed**. Only the name misdescribed the mechanism once a fourth
+  stage existed.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CATCH-UP-SCHEDULE COMMIT ITSELF, BECAUSE
+  IT SHIPS TESTS.* It read **2399 / 400 / 1398 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE CATCH-UP-SCHEDULE COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2375 → 2399 is **+24 = 23 + 1**: twenty-three in one new file (`fullCaptureMarker.test.js`) and
   **one APPENDED** to `captureDecisionSplit.test.js` (22 → 23). Suites 395 → 400 is the new file's
   **five** top-level describes only — the appended case landed in a describe that already existed.

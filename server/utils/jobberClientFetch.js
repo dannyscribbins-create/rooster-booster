@@ -120,9 +120,13 @@ const MAX_PAGES = 200;
 // branding loader never selected: a consumer reading a field no query asks for takes the
 // default, and the default reads as an answer.
 
+// ⚠ `customFields` MOVED OUT OF HERE INTO `CLIENT_FIELDS`, WHICH COMPOSES THIS WITH THE SHARED
+// `CUSTOM_FIELDS`. It read `customFields { ... on CustomFieldText { label valueText } }` — no
+// configuration id, so every client-level field was SKIPPED by `writeCustomFieldFacts`, and no
+// Dropdown member, so a dropdown client field did not arrive at all. It is not removed, it is
+// widened; see `CLIENT_FIELDS` below for why the composition happens there and not here.
 const CLIENT_SCALARS = `
             id firstName lastName createdAt isArchived
-            customFields { ... on CustomFieldText { label valueText } }
             phones { number description }
             emails { address description }`;
 
@@ -235,8 +239,29 @@ const INVOICE_FIELDS = `id invoiceNumber invoiceStatus
                 archivedJobs(first: ${INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }
                 ${CUSTOM_FIELDS}`;
 
+// ── THE CLIENT'S OWN CUSTOM FIELDS (ALL_CLIENTS) ──────────────────────────────
+//
+// ⚠ A SEPARATE CONSTANT RATHER THAN INLINE IN BASE_QUERY, AND THAT IS WHAT MAKES IT CHECKABLE.
+// The fence over the other three stages reads each per-entity CONSTANT and asserts it carries
+// `CUSTOM_FIELDS`, because a whole-query check passes when the field appears somewhere else in it.
+// A client selection spelled inline would be the one stage that fence could not see, which is
+// exactly the asymmetry that let the webhook door go uncovered.
+//
+// ⚠ IT IS DECLARED HERE, BELOW `CUSTOM_FIELDS`, AND THE ORDER IS LOAD-BEARING. `const` is not
+// hoisted, so interpolating `CUSTOM_FIELDS` up at `CLIENT_SCALARS` would throw
+// "Cannot access 'CUSTOM_FIELDS' before initialization" at module load — the kind of failure that
+// surfaces as `tests 1 · suites 0`. Composing here keeps `CLIENT_SCALARS` where it is.
+//
+// ⚠ AND THE CLIENT ENTITY IS WHY THE NARROW FORM WAS NOT ENOUGH. `CLIENT_SCALARS` selected
+// `... on CustomFieldText { label valueText }` only: no configuration id, so `writeCustomFieldFacts`
+// skipped every one, AND no Dropdown member, so a contractor whose client field is a dropdown was
+// invisible on every door. Accent has two live ALL_CLIENTS fields and one of them IS a dropdown
+// ("Insurance Company"), so the gap was reachable rather than theoretical.
+const CLIENT_FIELDS = `${CLIENT_SCALARS}
+            ${CUSTOM_FIELDS}`;
+
 const BASE_QUERY = `query GetClient($id: EncodedId!) {
-          client(id: $id) {${CLIENT_SCALARS}
+          client(id: $id) {${CLIENT_FIELDS}
             quotes(first: ${PAGE_SIZE}) {
               nodes { ${QUOTE_FIELDS} }
               pageInfo { hasNextPage endCursor }
@@ -563,6 +588,13 @@ module.exports = {
   INVOICE_FIELDS,
   QUOTE_FIELDS,
   REQUEST_FIELDS,
+  // ⚠ EXPORTED SO THE WEBHOOK DOOR CAN SHARE THE SELECTION RATHER THAN PASTE IT. Before this,
+  // `webhooks/jobber.js` carried its own narrower `customFields` selections and selected
+  // `customFieldConfiguration` ZERO times, so `writeCustomFieldFacts` skipped every field and the
+  // money door captured no custom-field facts at all while reporting success. A second copy is how
+  // that happened; one shared constant is why it cannot happen again to one copy only.
+  CUSTOM_FIELDS,
+  CLIENT_FIELDS,
   REQUESTS_PAGE_QUERY,
   ASSIGNED_USERS_PAGE_SIZE,
 };

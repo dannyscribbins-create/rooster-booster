@@ -54,6 +54,12 @@ const {
   pageClientConnection,
   capturePost,
   attachInvoicesToJobs,
+  // ⚠ IMPORTED, NEVER PASTED. This file previously spelled its own narrower `customFields`
+  // selections — four of them — and selected `customFieldConfiguration` zero times, so
+  // `writeCustomFieldFacts` skipped every field and this door captured no custom-field facts while
+  // reporting success. A second copy of a selection is how one copy gets fixed and the other does
+  // not; sharing the constant is what makes that unexpressible.
+  CUSTOM_FIELDS,
 } = require('../../utils/jobberClientFetch');
 
 // ── HMAC SIGNATURE VERIFICATION ───────────────────────────────────────────────
@@ -124,11 +130,15 @@ function verifyJobberWebhookSignature(req, res) {
 // ⚠ 50 IS A PAGE SIZE, NOT A CAP. A cursor anomaly and the page cap both THROW rather than
 // returning a short set, and the caller's existing catch turns a throw into a recorded skip with
 // NO money-path action — see the invoice-paid handler's fetch block.
+// ⚠ WIDENED TO THE SHARED SELECTION RATHER THAN EXEMPTED. This one feeds `evaluateReferral`'s live
+// object, not `writeCustomFieldFacts`, so it is the selection a "only fix the capture doors" change
+// would have left narrow — and a file with one narrow selection left in it is exactly how the next
+// missing-field defect ships. CLAUDE.md's rule is reword, never exempt: the fence below requires
+// EVERY customFields selection in this file to carry the configuration id and both value members,
+// with no per-constant carve-out, so this one is widened too. The extra members are additive —
+// `evaluateReferral` matches on the label and ignores what it does not read.
 const INVOICE_JOB_NODE_FIELDS = `id
-                customFields {
-                  ... on CustomFieldText { label valueText }
-                  ... on CustomFieldDropdown { label valueDropdown }
-                }`;
+                ${CUSTOM_FIELDS}`;
 
 const INVOICE_WITH_JOBS_QUERY = `query GetInvoiceWithJobs($id: EncodedId!) {
           invoice(id: $id) {
@@ -300,11 +310,13 @@ const RELATED_JOB_FIELDS = `id jobNumber jobStatus jobType title
                 createdAt updatedAt startAt endAt completedAt
                 total invoicedTotal uninvoicedTotal
                 client { id } quote { id } request { id } salesperson { id }
-                customFields {
-                  ... on CustomFieldText { label valueText }
-                  ... on CustomFieldDropdown { label valueDropdown }
-                }`;
+                ${CUSTOM_FIELDS}`;
 
+// ⚠ customFields ADDED HERE, AND THE INVOICE COPY IS THE ONE THAT MATTERS MOST. This selection
+// carried NO custom fields at all, and `categorySource`'s ruling 1 reads the INVOICE copy FIRST —
+// so the money door could never see the field its payout schedule is chosen from. A real Accent job
+// reports `""` on the job while its invoice copy reports `"Out of Pocket"`, which is why "fall
+// through to the job" is not a substitute for selecting this.
 const RELATED_INVOICE_FIELDS = `id invoiceNumber invoiceStatus
                 createdAt updatedAt issuedDate dueDate receivedDate
                 waitingForFinancedPayment
@@ -312,20 +324,21 @@ const RELATED_INVOICE_FIELDS = `id invoiceNumber invoiceStatus
                 amounts { total subtotal invoiceBalance paymentsTotal
                           depositAmount discountAmount taxAmount }
                 jobs(first: ${RELATED_INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }
-                archivedJobs(first: ${RELATED_INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }`;
+                archivedJobs(first: ${RELATED_INVOICE_JOBS_PAGE_SIZE}) { nodes { id } pageInfo { hasNextPage } }
+                ${CUSTOM_FIELDS}`;
 
 // ⚠ `client { id }` ADDED IN COMMIT 5 — see the note at QUOTE_FIELDS in jobberClientFetch.js.
 // Without it writeQuoteFacts drops every quote and the capture writes nothing, silently.
-const RELATED_QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id } client { id }`;
+// ⚠ AND customFields ADDED, because ruling 1's last fall-through is the LINKED QUOTE. A quote-level
+// field was unreachable on this door for the same reason the invoice copy was: nothing selected it.
+const RELATED_QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id } client { id }
+                ${CUSTOM_FIELDS}`;
 
 const RELATED_BASE_QUERY = `query GetClientRelated($id: EncodedId!) {
           client(id: $id) {
-            isCompany isLead
+            id isCompany isLead
             tags { nodes { label } }
-            customFields {
-              ... on CustomFieldText { label valueText }
-              ... on CustomFieldDropdown { label valueDropdown }
-            }
+            ${CUSTOM_FIELDS}
             jobs(first: ${RELATED_PAGE_SIZE}) {
               nodes { ${RELATED_JOB_FIELDS} }
               pageInfo { hasNextPage endCursor }
