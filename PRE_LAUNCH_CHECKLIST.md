@@ -14313,6 +14313,49 @@ quadruples is evidence about the estimate, not about the wave:
       stored vs derived vs live (⚠ **three-way, not two-way** — a binary test that assumes the stored
       stage is `'paid'` misclassified the one `sold→lead` case in this investigation).
 
+## 7d — TWO RULINGS NEEDED BEFORE THE CREDIT CAN SHIP (raised 2026-10-01, build stopped)
+
+7d was built to the point where two questions turned out to be **Danny's to answer, not mine**, and
+both change what the money path does. The work is preserved outside the repo (the shared credit, the
+shared notify, the financed-gate change, the `categoryValues` parameter, the retirement of the
+handler's live-object block, and the re-pointed single-writer fence) and the tree was restored to
+`e48da54` rather than left half-wired.
+
+- [ ] **🔴 RULING 1 — WHERE DOES `referred_by` COME FROM WHEN CREDITING?** The retired path read it
+      from the **live Jobber client's "Referred by" custom field**, passed into the invoice-paid
+      handler. A fact-driven credit reads **`pipeline_cache.referred_by`**, which is the stored copy
+      of the same field.
+      ⚠ **THE DIFFERENCE IS A TIMING ONE AND IT IS ABOUT MONEY.** `pipeline_cache` rows are created by
+      the sync (`attributeReferredClient`), so a brand-new referred client whose first invoice-paid
+      webhook arrives **before** the sync has seen it would have been credited immediately under the
+      old path and is **not** credited under the fact path — until the sync creates the row and
+      something re-decides. Delay, not loss, and the catch-up converges it.
+      ⚠ **IT IS ALSO ALREADY TRUE OF THE REFERRER-VISIBLE STATUS**: `writeReferredStatus` is
+      UPDATE-only on `pipeline_cache`, so such a client already gets no status. Making the credit match
+      is consistent — **but it is a change, and it was found by a test, not by reasoning**:
+      `invoicePaidWebhook.test.js` seeds the custom field and no `pipeline_cache` row, so the credit
+      returned `not_referred` and three end-to-end cases went red.
+- [ ] **🔴 RULING 2 — HOW MANY PATHS SHOULD CREDIT, GIVEN WHAT THAT COSTS?** The instruction was "all
+      eight decision sites credit through the shared credit inside their lock". Measured: only **two**
+      of the eight write the referrer-visible status today — `upsertAndTagClient` (every webhook door
+      that passes `alsoDeriveReferredStatus`) and the catch-up job. Those two were wired and are the
+      natural home, because a credit is exactly "this referred client became paid".
+      ⚠ **THE OTHER FIVE WOULD EACH NEED `writeReferredStatus` ADDED FIRST** — `syncSingleClient`,
+      `jobberIncrementalSync`, `recaptureClients`, `handleStageWebhook` and `requestAttribution` write
+      the DISPLAYED stage only. That changes referrer-visible behaviour on paths that deliberately do
+      not touch it, which is N4's two-surface work extended rather than a wiring change.
+      ⚠ **AND THE SYNC SPECIFICALLY NEEDS A LOCK IT DOES NOT HAVE.** `attributeReferredClient`'s
+      `pipeline_cache` upsert runs on the **pool**, outside the per-client lock (the lock there wraps
+      only the capture). Crediting there "inside its lock" means restructuring that function.
+      ⚠ **CONSEQUENCE FOR THE GUARD-PROOFS: "a credit made by the SYNC path sends exactly one email"
+      cannot be satisfied until ruling 2 lands.** Said plainly rather than quietly skipped.
+- [ ] **AND ONE MEASUREMENT THAT MAKES BOTH SAFE TO DECIDE UNHURRIEDLY: nobody is credited today.**
+      All 20 referred clients on `accent-roofing-dev` are stopped — **17 at `invoice_not_paid`** (no
+      paid invoice fact) and **3 at `referrer_not_found`** (no `users` row matching `referred_by`).
+      None reaches the financed gate, so the TRUE-or-NULL change has **no live effect today**; the
+      three that clear the paid gate all carry NULL flags, so it is their second line of defence. And
+      `crm_custom_field_facts` is empty for all 20, so `no_job_type_found` would be a third.
+
 ## Security hardening — before launch
 
 - [ ] **🔴 `tokens.access_token` (Jobber OAuth) IS STORED IN PLAINTEXT. Encrypt CRM tokens at rest.**
