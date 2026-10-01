@@ -748,6 +748,100 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         **What removes this entry:** the fixtures migrated wherever a gated path is driven, plus that
         fence green with a guard-proof showing it fires.
 
+      - [ ] **NOTIFICATION AUDIT — EVERY EVENT EMAIL MUST BE TRIGGERED BY A RECORD WRITTEN EXACTLY
+        ONCE, SENT ONLY AFTER THAT TRANSACTION COMMITS, THROUGH ONE SHARED NOTIFY FUNCTION. NOT DONE
+        (filed 2026-09-30, Danny).** The rule exists so an event email can never send twice, and can
+        never be SKIPPED because a different path noticed the record first — which is exactly the
+        defect 7d would have shipped: the credit moves earlier in the request, the later notification
+        block sees `inserted: false`, and the referrer is credited in silence.
+        **Scheduled sends are OUT of scope** — campaigns and the engagement cadence are a different
+        problem with a different shape.
+        **Each event email, with whether it meets the rule today:**
+        - **#4 bonus earned** — record: `referral_conversions`, exactly-once by
+          `UNIQUE(user_id, jobber_client_id)`; gated on the writer's `inserted` flag, so no duplicate.
+          ⚠ **Sent INSIDE the handler that wrote it, and only that handler** — so it fails the
+          "one shared notify, whichever path noticed" half. 7d fixes this.
+        - **#13 first reward milestone** — same record, gated on `inserted && isFirstConversion`.
+          ⚠ **Same failure, plus a known race**: the prior-count read and the insert are two statements,
+          so two concurrent first conversions could both send it. Already recorded; the UNIQUE
+          constraint still makes the CREDIT exactly-once, so the worst case is a duplicate email.
+        - **Badge announcements** — NOT SENT TODAY, by design: badges are earned in the sync and shown
+          on the Profile tab. ⚠ **When push arrives it must follow this rule** — the awarder is
+          idempotent, which is what will make that safe.
+        - **Cash-out approved / paid** — record: `cashout_requests` status transition, under
+          BEGIN/COMMIT with the Stripe slot inside. ⚠ **Needs checking against the rule**: whether the
+          send happens after COMMIT, and whether a second approval path exists.
+        - **Referrer invite / pending referral** — record: `pending_referrals`. ⚠ **Needs checking**:
+          Wave 0.4 decoupled contact-writing from inviting, and the send gate keyed off
+          `(referred_by_email || referred_by_phone)`, whose MEANING changed without its text changing.
+        - **Admin alerts from `logError`** — not a referrer-facing event email; first-occurrence and
+          every-tenth-recurrence by design. Out of scope for this rule, noted so the list is complete.
+        ⚠ **AND THE SILENT-FAILURE ITEM BELOW IS PART OF THIS.** A shared notify that cannot tell a
+        delivered email from a 401 satisfies the rule on paper and not in fact.
+        **What removes this entry:** each row above resolved to MEETS or FIXED, with the shared notify
+        in place and a fence that a new event email cannot be added outside it.
+
+      - [ ] **QUIET HOURS FOR EVENT EMAILS — DANNY TO RULE. NOT DECIDED (filed 2026-09-30).** Once a
+        bonus can be credited by a BACKGROUND path — the 30-minute sync, the nightly sync, or the
+        catch-up job — the email that follows is no longer tied to a person doing something in
+        business hours. A referrer can be emailed at 03:00 because a cron noticed a paid invoice.
+        ⚠ **THIS IS NEW WITH 7d AND WAS NOT POSSIBLE BEFORE.** Until now an event email followed a
+        webhook, which follows a contractor's own action in Jobber during their working day. Making the
+        credit fact-driven deliberately removes that coupling — which is right for the money and
+        changes the notification's character.
+        **The question to rule:** hold event emails until the contractor's daytime (and in whose
+        timezone — the contractor's, or the referrer's?), or send immediately and accept night mail.
+        ⚠ **A HOLD NEEDS A QUEUE, AND A QUEUE NEEDS THE SAME EXACTLY-ONCE PROPERTY** as the audit
+        above, or "held" becomes "lost". Worth costing before choosing.
+
+      - [ ] **⚠ A FAILED RESEND SEND RESOLVES AND IS SILENTLY IGNORED AT ALL 29 CALL SITES. NOT
+        FIXED (filed 2026-09-30, found while building 7d-0). THIS AFFECTS EVERY EVENT EMAIL.**
+        Measured against `resend@6.12.4`: `resend.emails.send()` **does not reject** on an API
+        failure — it RESOLVES with `{ data: null, error: { message, name, statusCode } }`. Verified
+        live with an invalid key: `data = null`,
+        `error = {"message":"API key is invalid","name":"validation_error","statusCode":401}`.
+        ⚠ **NO CALL SITE READS `.error`.** A grep of all 29 `resend.emails.send(` sites finds zero
+        mentions of the error field in the surrounding lines. So a 401, a rate limit, a suppressed
+        domain or any 4xx/5xx is indistinguishable from a delivered email, everywhere.
+        ⚠ **AND `retryWithBackoff` CANNOT HELP, WHICH IS THE PART THAT MATTERS.** Every send is
+        wrapped with `shouldRetry: resendShouldRetry`, and that helper reads
+        `error?.response?.status` — it only ever runs on a **thrown** error. Because the SDK resolves,
+        **the retry never fires for an API-level failure**, and `logError` is never called either. The
+        wrapper is real protection against a transport throw and no protection at all against the
+        failure shape the SDK actually produces.
+        ⚠ **THIS IS "a mechanism that reports health it cannot observe" IN THE EMAIL PATH**, and it is
+        the same family as `getStripeRow()`'s manufactured "not connected" and the double that could
+        return a no-answer shape: a resolved promise carrying an error reads exactly like success.
+        ⚠ **IT IS IN SCOPE FOR THE NOTIFICATION AUDIT FILED BELOW**, and it is why that audit matters:
+        7d makes a bonus email reachable from eight paths, and today a silent failure on any of them
+        would leave a referrer credited and never told, with nothing in `error_log`.
+        **What removes this entry:** one shared send wrapper that inspects `.error`, throws (so the
+        existing retry and `logError` engage), and a fence asserting no site calls
+        `resend.emails.send` directly. Then a case proving an API error is logged rather than swallowed.
+
+      - [ ] **⚠ `redecideStaleClients` IS NOT SCHEDULED, SO THE SAFETY NET IS NOT ARMED YET. NOT DONE
+        (filed 2026-09-30). SMALL, AND IT MATTERS.** Danny's ruling gives the capture/decision split a
+        safety net: *a small job re-decides any client whose facts are newer than their decision.* The
+        job and its script are built and tested — **and nothing runs them.** Verified rather than
+        assumed: `grep` finds no reference to it outside its own job and script; `server/cron/index.js`
+        registers eight jobs and this is not one; and there is **no `cron_job_locks` seed row** for it.
+        The boot log confirms it — only `pipeline_sync`, `jobberIncrementalSync` and `repRequestSweep`
+        announce themselves.
+        ⚠ **A SAFETY NET THAT HAS TO BE RUN BY HAND IS NOT A SAFETY NET, IT IS A PROCEDURE.** The whole
+        argument for the split is that a decision failure becomes *recoverable*; recovery that depends
+        on somebody remembering is the shape this file records as *"a mechanism that reports health it
+        cannot observe"*, one step removed.
+        ⚠ **AND THE FIRST RUNS ARE LARGE BY DESIGN, WHICH IS WHY SCHEDULING NEEDS A DECISION RATHER THAN
+        A DEFAULT.** Measured 2026-09-30 right after the split deployed: **19,598 clients, 0 with
+        `stage_derived_at` stamped** — the column is deliberately not backfilled, so every client with
+        facts is initially eligible. A cron at the default limit of 200 would take roughly a hundred
+        ticks to drain it. **What has to be chosen: the schedule, the per-run limit, and its
+        `cron_job_locks` row** (per `.claude/rules/backend.md`'s cron procedure — a seed row, a named
+        start function, `withLock()`), plus whether the first drain is done by hand at a larger limit
+        instead.
+        **What removes this entry:** the job registered with a schedule, a limit and a lock, and the
+        remaining count observed falling to 0.
+
       - [ ] **`crm_quote_facts` AND `crm_request_facts` HAVE NO CAPTURE TIMESTAMP, WHICH NARROWS THE
         CATCH-UP JOB. NOT FIXED (filed 2026-09-30).** Only `crm_job_facts` and `crm_invoice_facts` carry
         a `captured_at`. The other two have none — their `created_at` is the **Jobber record's own**
@@ -766,6 +860,20 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         the `ON CONFLICT` branch too — a column that records only the FIRST capture is the wrong signal
         for staleness, which is the same convergence trap `waiting_for_financed_payment` needed its own
         guard-proof for. Then widen the selector's UNION and delete the limitation case.
+        ⚠ **RULED BY DANNY 2026-09-30 — GOING FORWARD ONLY, AND **NEVER** BACKFILLED FROM JOBBER'S
+        `created_at`. A SMALL COMMIT, AFTER 7d.** Existing rows keep **NULL**, which means "nobody
+        recorded when we last read this" and is true of them. ⚠ **The forbidden shortcut is the
+        tempting one:** those tables already carry a `created_at`, so backfilling from it looks free —
+        and it is the Jobber RECORD's own date, not a capture time, so it would assert that a quote
+        written in March was "captured" in March and make every old quote read as newer than a
+        June decision, forever. **That is not a smaller version of the fix; it is the wrong signal
+        wearing the right column name** — the same class as `crm_job_facts.job_type`, which is Jobber's
+        own enum sitting under a name that reads like the category field and returns `ONE_OFF` for all
+        6,277 rows.
+        ⚠ **AND A NULL IS SAFE HERE, unlike the financed flag.** `MAX()` ignores NULLs, so an unstamped
+        row simply does not contribute to "newest fact" — it cannot make a client look fresher than it
+        is. The client stays reachable through the `stage_derived_at IS NULL` branch until its next
+        real capture stamps it.
 
       - [ ] **✅ RULED 2026-09-30 (Danny) — SPLIT CAPTURE FROM DECISION. NOT YET BUILT; ITS OWN COMMIT
         IMMEDIATELY AFTER 7c-2.** *(This replaces the "RULING PENDING" entry, which is kept below as the
@@ -2990,6 +3098,33 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       ⚠ **UNTIL THE NAMED BUILD LANDS: any test exercising a path that calls an external
       service must fence it EXPLICITLY. A test that silently succeeds by hitting production is
       indistinguishable from one that passed.**
+      ⚠ **THE RESEND HALF IS CLOSED STRUCTURALLY BY 7d-0 (2026-09-30). THE ENTRY STAYS OPEN FOR
+      EVERYTHING ELSE.** `server/test/setup.js` now pins `RESEND_API_KEY` to an obvious dummy
+      before anything can load `.env`, refuses `Emails.prototype.send` by default, and refuses
+      any `globalThis.fetch` to a `resend.com` host. A suite that legitimately drives a send
+      opts in with `captureResend()`, which records and resolves without touching the network.
+      **This is deliberately NOT the forbidden change**: `setup.js` still loads `.env`, so
+      **every other credential still leaks** — the Jobber key included — and each still needs
+      its own explicit fence. Only the Resend consequence is closed.
+      ⚠ **AND 7d-0's INSERTS MOVED 14 PRE-EXISTING LINE CITATIONS IN THIS FILE AND `CLAUDE.md`,
+      WHICH ARE REPORTED AND DELIBERATELY NOT REPAIRED.** `citecheck --changed-files` flags 33
+      LIKELY ROTTED; 15 sit in the two files this commit touches. **One was verified at the old
+      revision and converted to a role citation** (`initTestDb` STEPS D/E, below). The other 14 are
+      the already-known `CLAUDE.md:436` / `CLAUDE.md:502` / `PRE_LAUNCH_CHECKLIST.md:2244` family,
+      and they are left alone **because adding this commit's delta is the move this repo has measured
+      going wrong**: the commit that shipped `--changed-files` flagged eleven of its own and **all
+      eleven had already been wrong beforehand.** They belong to the standing role-citation migration,
+      not to a feature commit. `docs/GROUND_TRUTH_2026-08-21.md`'s flagged citation must never be
+      renumbered at all — it is a dated snapshot that quotes what it cites.
+      ⚠ **AND THE MAGNITUDE THIS ENTRY PREDICTED IS NOW MEASURED, WITH THE METHOD: a full
+      `npm run test:server` attempted 122 logical sends, 109 of them to `admin1@roofmiles.com`,
+      from 36 suites** — counted by arming capture for every file, because a refusal is a throw
+      and `retryWithBackoff` retries it, so counting refusals over-counts a logical send several
+      times over. The entry named **five** suites carrying warnings; the real sending set is 36,
+      and fourteen of them failed loudly when the interlock arrived while **22 did not, because
+      their caller swallows a send failure.** That asymmetry is why this survived: the mail was
+      being sent by the suites nobody had reason to suspect. A per-file refusal line is printed
+      at exit now, so a silent block cannot pass for an absent one.
 - [ ] **The MVP comment above both `CLIENT_*` handlers was INVERTED, not merely stale.**
       It claimed the webhook payload *"may not include full nested quotes/jobs/invoices data"*
       when in fact it includes **no client object at all**. **A wrong comment defending a wrong
@@ -14110,9 +14245,12 @@ quadruples is evidence about the estimate, not about the wave:
       (gitignored). The local environment **cannot** reach Railway Postgres — login-dependent
       features are tested on the live deployment. → `CLAUDE.md`
 - [ ] **🔴 `initTestDb` STEPS D/E HAVE NO CONCURRENCY GUARD, AND THE FAILURE IS
-      UNRECOVERABLE.** `server/test/setup.js:57-60` runs `DROP SCHEMA IF EXISTS public
-      CASCADE`, which takes `pg_trgm` with it; `:66-70` then runs
-      `CREATE EXTENSION IF NOT EXISTS pg_trgm`. **Two runners racing through D/E leave the
+      UNRECOVERABLE.** `server/test/setup.js`'s `initTestDb()` **STEP D** runs
+      `DROP SCHEMA IF EXISTS public CASCADE`, which takes `pg_trgm` with it; **STEP E** then runs
+      `CREATE EXTENSION IF NOT EXISTS pg_trgm`.
+      *(Cited by role since 2026-09-30. It read `:57-60` and `:66-70`, which were CORRECT — verified
+      at the old revision — until 7d-0's interlock block moved both by ~184 lines. Verified before
+      shifting, then converted rather than renumbered, so the next insert cannot rot it again.)* **Two runners racing through D/E leave the
       `pg_extension` catalog row alive but bound to a dropped schema — after which
       `CREATE EXTENSION IF NOT EXISTS` sees the row and no-ops forever.** Recovery required
       dropping the whole scratch database.

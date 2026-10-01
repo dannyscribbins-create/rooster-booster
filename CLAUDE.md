@@ -424,7 +424,64 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2359 server tests across 394 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the capture/decision-split commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2359 · suites 394 · pass 2359 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2375 server tests across 395 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the 7d-0 Resend-interlock commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2375 · suites 395 · pass 2375 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE 7d-0 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2359 → 2375 is **+16**, one new file (`resendInterlock.test.js`); suites 394 → 395 is that
+  file's single top-level describe. React did not move — **no `src/` file was touched at all** — and was
+  re-measured. **All four predicted before the run and matched.** Counted with an anchored `^\s*it\(`
+  (16); the file's six loops were each checked for POSITION — two sit in helper bodies (`stripComments`,
+  `serverFiles`) and four inside `it()` bodies — so **none wraps a case**.
+  ⚠ **THE FOURTEEN SUITES THIS COMMIT EDITS CONTRIBUTE 0.** Each gains one `captureResend()` call and no
+  case. A count that moves by exactly one file's worth while fifteen files changed is the expected shape.
+  ⚠ **THE COMMIT'S SUBJECT: THE TEST SUITE WAS SENDING REAL EMAIL, AND THE NUMBER IS 109 A RUN.**
+  `.env.test` sets no Resend key, but `server/db.js` calls `dotenv.config()`, so the real `re_…` key
+  entered the process the moment any mailer was required. Measured by arming capture for every file:
+  **122 logical sends per server-suite run, 109 of them to `admin1@roofmiles.com`** —
+  almost all `errorLogger`'s first-occurrence alert. ⚠ **Counted through CAPTURE, not through refusals:
+  a refusal is a throw and `retryWithBackoff` retries it, so refusals over-count a logical send several
+  times over** (the raw firing count was 384 for 122 sends).
+  ⚠ **AND IT WAS ALREADY FILED, TWICE — THIS COMMIT DISCOVERED NOTHING.** `PRE_LAUNCH_CHECKLIST.md`'s
+  *"TEST-ENVIRONMENT LIVE-FIRE HAZARD"* named the mechanism AND the consequence, in those words, with a
+  second instance for the Jobber key. What is new is the measurement and a structural guard in place of
+  a per-suite mitigation. ⚠ **That entry forbids the root fix in a feature session, and this is NOT it:**
+  `setup.js` still loads `.env`, so every other credential still leaks. Only the Resend half is closed.
+  ⚠ **MY FIRST TWO READINGS WERE BOTH WRONG AND EACH CORRECTION MADE IT LARGER — WHICH IS THE ENTRY
+  WORTH KEEPING.** I read fourteen red suites as fourteen suites mailing real people; most already
+  replace the `resend` module in `require.cache` and assert on the recorded html, so their own subject
+  matter never went out. I then reported SEVEN sends — true of those fourteen FILES and not of the suite,
+  because **22 further senders never went red at all: their caller swallows a send failure.** The loud
+  failures were the minority, and the silent majority was the actual exposure. **Both corrections came
+  from measuring; neither came from re-reading.**
+  ⚠ **AND A FALSE POSITIVE IN MY OWN GUARD, FOUND BEFORE IT SHIPPED.** `express-rate-limit`'s CommonJS
+  interop invokes a property named `send` on a PLAIN OBJECT — 12 times in a 14-file run,
+  `this.constructor.name === 'Object'`. The first writing answered all 12 with a throw. Narrowed on the
+  RECEIVER by **class identity, never the name** — a name is exactly what collided — which closes no
+  hole, because a non-`Emails` receiver cannot be a Resend send. Guard-proof (d) inverts it and reds 6,
+  which is what proves that.
+  ⚠ **I OVERCLAIMED THAT FALSE POSITIVE'S COST AND RETRACTED IT IN THE SAME COMMIT.** My comment said the
+  12 became "unhandled rejections, twelve a run". Injecting the discriminator away and running four
+  non-opted-in suites that perform the read produced **0** such reports, so the 16 pre-fix failures were
+  the genuine post-test sends, not the interop read. **A recorded cost is a claim like any other number**,
+  and that one had no source until it was counted.
+  ⚠ **SEVEN GUARD-PROOFS, EVERY REVERT AN INVERSE PATCH IN A `finally` PROVEN BYTE-IDENTICAL BY sha256.**
+  (a) guard 2 never installed → **6**; (b) the key pin removed → **3**; (c) the discriminator firing on
+  everything → **2**; (d) the discriminator swallowing a REAL send → **6**; (e) the fetch backstop
+  removed → **exactly 1**; (f) capture never disarming → **3**; (g) the refusal ledger not recording →
+  **exactly 1**. ⚠ **NO INJECTION EVER LEAVES A DELIVERABLE PATH**: guard 1 and guard 3 are never both
+  removed, and neither is removed together with guard 2, so at least two of the three are always live.
+  ⚠ **(f)'s FIRST INVERSE PATCH WAS REFUSED BECAUSE THE INJECTION WAS A SUBSET OF ITS OWN ANCHOR** —
+  removing a line leaves the replacement already present, so the reverse anchor matched. The
+  saved-original-bytes floor restored it byte-identically. **Third time that fallback has fired in this
+  arc**, and the reason anchors are checked unique in BOTH directions.
+  ⚠ **A SILENT GUARD IS THE SHAPE THAT CAUSED THIS, SO THE REFUSAL IS MADE VISIBLE.** 22 of the 36
+  senders stay green under the interlock, so a per-file line is printed at exit naming the count and the
+  recipients. **Deliberately not an assertion on the count**: some suites legitimately provoke an alert
+  they have no interest in, and failing them would only teach people to disarm the interlock.
+  ⚠ **AND THE HEREDOC ESCAPE TRAP AGAIN, ON `\n` INSIDE A PYTHON STRING IN A SHELL HEREDOC** — it
+  arrived as a real newline, so the harness anchor matched 0 times. Repaired with an editor, which is the
+  rule this file states and the habit that keeps costing time.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CAPTURE/DECISION-SPLIT COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2359 / 394 / 1398 / 85**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE CAPTURE/DECISION-SPLIT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
   Server 2337 → 2359 is **+22**, one new file (`captureDecisionSplit.test.js`); suites 392 → 394 is
   that file's **two** top-level describes. React did not move — no `src/` file was touched — and was

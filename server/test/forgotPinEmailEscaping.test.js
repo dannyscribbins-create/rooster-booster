@@ -69,7 +69,15 @@ const { describe, it, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const { request: _httpRequest } = require('node:http');
 
-const { initTestDb } = require('./setup');
+const { initTestDb, captureResend } = require('./setup');
+
+// 7d-0 — THIS SUITE DRIVES A SEND ITS OWN STUB DOES NOT COVER, AND THAT IS WHY IT OPTS IN.
+// Measured: an errorLogger first-occurrence alert, a notificationEmail contractor notice, or an
+// unawaited signup verification mail — fired by production code this suite does not know it is
+// reaching, in one case completing AFTER the test ended. Before the interlock those went to
+// Resend with the real key. Recorded here instead; no network is touched in either state, and the
+// interlock's default-deny still applies to every suite that has not written this line.
+captureResend();
 const { createApp } = require('../app');
 const { startTestServer, stopTestServer } = require('./helpers');
 

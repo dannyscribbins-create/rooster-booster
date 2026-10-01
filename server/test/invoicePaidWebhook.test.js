@@ -2,7 +2,15 @@
 
 // setup.js MUST be required first — it sets JOBBER_CLIENT_SECRET and loads .env.test
 // before db.js (required transitively below) creates its pool.
-const { initTestDb } = require('./setup');
+const { initTestDb, captureResend } = require('./setup');
+
+// 7d-0 — THIS SUITE DRIVES A SEND ITS OWN STUB DOES NOT COVER, AND THAT IS WHY IT OPTS IN.
+// Measured: an errorLogger first-occurrence alert, a notificationEmail contractor notice, or an
+// unawaited signup verification mail — fired by production code this suite does not know it is
+// reaching, in one case completing AFTER the test ended. Before the interlock those went to
+// Resend with the real key. Recorded here instead; no network is touched in either state, and the
+// interlock's default-deny still applies to every suite that has not written this line.
+captureResend();
 const { describe, it, before, beforeEach, after } = require('node:test');
 const assert = require('node:assert/strict');
 
