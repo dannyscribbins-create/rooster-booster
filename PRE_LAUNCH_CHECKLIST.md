@@ -3072,6 +3072,26 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       un-skip → implement → green: a test that goes green on un-skip *before* any
       implementation was never testing what it claims.
       **A skip that outlives its reason is a deleted test with extra steps.**
+- [ ] **⚠ SCHEDULED (Danny, 2026-10-01): THE ROOT FIX IS ITS OWN SMALL COMMIT IMMEDIATELY AFTER N4
+      FINISHES — NOT INSIDE A FEATURE COMMIT.** The property: **tests never load the real `.env`, so
+      no real credential — Jobber or otherwise — is present during a test run.** Today `.env.test`
+      carries only `DATABASE_URL`, `NODE_ENV` and `ENCRYPTION_KEY`, and `server/db.js`'s
+      `dotenv.config()` pulls in `.env` behind it, so every credential in that file is live in the
+      test process.
+      ⚠ **THE MEASUREMENT THAT RAISED THE PRIORITY, AND IT IS CONFIRMED FROM THE RECEIVING END:
+      122 real sends per full `npm run test:server`, 109 of them to `admin1@roofmiles.com`.** Danny
+      confirms he has been receiving those error emails on every test run. Counted by arming capture
+      for every file and reading the payloads — not by counting refusals, because a refusal is a
+      throw and `retryWithBackoff` retries it.
+      ⚠ **7d-0 closed the RESEND half only, and deliberately did not attempt this.** It pins
+      `RESEND_API_KEY` to a dummy before `.env` can win. **Every other credential still leaks**, and
+      the entry's own second instance — Wave 0.4's Jobber key, where `wave04GateBypass.test.js` would
+      have called Accent's live Jobber account on every run had `axios.post` not been fenced — is
+      exactly the remaining exposure. **Per-suite mitigations are invisible to the next author, which
+      is the whole reason this is a named build.**
+      ⚠ **AND IT IS A NAMED BUILD BECAUSE SEVERAL SUITES DEPEND ON THE PRESENT BEHAVIOUR**, which is
+      what makes it unsafe inside a feature session: the fix has to enumerate what each suite is
+      actually reading from `.env` and supply a test-only value, rather than simply stopping the load.
 - [ ] **⚠ TEST-ENVIRONMENT LIVE-FIRE HAZARD — `RESEND_API_KEY` leaks into the test process.**
       `server/test/setup.js` loads `.env` alongside `.env.test`, so the **real** Resend key is
       present even though `.env.test` never sets it. **Any test exercising a path that calls

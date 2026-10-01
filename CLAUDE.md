@@ -327,9 +327,18 @@ an inference drawn from a **name**.
   internal codename"*. **Recorded as a discrepancy rather than resolved** — whichever is right, the
   infrastructure consequence below is the same.
 - **Still stamped with the old name, each verified against source rather than copied from a list:**
-  the **Railway project** · the **GitHub repo** (`git remote -v` → `dannyscribbins-create/rooster-booster`)
+  the **Railway SERVICE** · the **GitHub repo** (`git remote -v` → `dannyscribbins-create/rooster-booster`)
   · the **local working directory** (`C:\Users\stacy\rooster-booster`) · **`package.json`'s `name`**
   and **`package-lock.json`'s two `name` fields**.
+  ⚠ **CORRECTED 2026-10-01: THIS LINE SAID "the Railway PROJECT" AND THAT IS THE WRONG RESOURCE.**
+  `railway status --json` reports `name: RoofMiles` for the **project**, with
+  `services -> ['rooster-booster', 'Postgres']` and `environments -> ['production', 'staging']`. **So
+  the project is already renamed and the SERVICE is what still carries the old name** — which is also
+  why the production URL is `rooster-booster-production.up.railway.app` and why
+  `railway logs --service rooster-booster` is the form that works. Whether the project was renamed
+  after that list was written, or the list was wrong when written, is **NOT established and saying
+  which would be inventing a source.** The infrastructure consequence is unchanged: a session hunting
+  for a RoofMiles-named *service* will not find one.
 
 ⚠ **THE RENAME IS DELIBERATELY NOT DONE. IT IS NOT A CLEANUP ITEM SOMEONE SHOULD HELPFULLY CLOSE.**
 Renaming a Railway project or a Git remote touches deploy wiring on a **live** service for a
