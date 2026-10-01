@@ -1191,3 +1191,33 @@ referrer is owed, not a refactor.
 `evaluateReferral` would make the engine refuse those conversions — which is a decision to **not pay**
 on work the programme's own invoice rule accepts. That is a change to the payout promise and belongs to
 Danny, not to a commit tidying a comment.
+
+### ✅ RESOLVED — ONE START-DATE RULE (Danny, 2026-10-01). BUILT IN COMMIT C.
+
+**The ruling:** a referral earns a bonus only if **BOTH**
+
+1. the referred **CLIENT** was created **on or after** the programme start date, **AND**
+2. the qualifying **INVOICE** was issued **on or after** it.
+
+**A client created before the programme start never earns a bonus**, so **no ledger row can exist that
+the referrer cannot see.** `evaluateReferral` reads the client's creation date as well, through the
+**same start-date source** — one setting, two dates, one rule.
+
+⚠ **THIS CLOSES THE GAP THE SECTION ABOVE OPENED RATHER THAN ARGUING WITH IT.** The two gates stay —
+they still compare different dates — but they are now both *required* instead of one gating the engine
+and the other gating the display. The disagreement is what produced the defect; requiring both removes
+it in the direction that cannot surprise a referrer.
+
+⚠ **IT IS THE CONSERVATIVE DIRECTION, AND SAYING WHICH WAY IT CUTS MATTERS.** The rule can only
+*refuse* conversions that previously qualified — a pre-start client with a post-start invoice. It can
+never create one. So the risk it carries is "a bonus somebody expected is not paid", not "a bonus is
+paid twice", and the previous section flagged the obvious-fix version of exactly this as **Danny's call
+rather than a commit's**. This is that call, made.
+
+⚠ **AND THE DISPLAY SIDE NEEDS NO CHANGE, WHICH IS THE POINT.** `pipeline_cache.pre_start_date` already
+suppresses `bonusEarned`, `users.paid_count` and notifications for a pre-start client. Under the old
+behaviour the engine could write a row the card hid; under this rule the engine refuses the same
+population the card hides, so the two agree **by construction** rather than by coincidence.
+
+**Its own guard-proof:** a client created **before** the start date with an invoice issued **after** it
+must produce **no credit** — and crediting it must go **red**.

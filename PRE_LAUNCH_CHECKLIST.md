@@ -14654,6 +14654,32 @@ source and, where stated, against a read-only production `SELECT` whose text is 
       Commit A would be the shape this repo keeps recording — a true number attached to the wrong cause.
       ⚠ **THE CHEAP TRIGGER, so nobody waits on chance:** re-saving an invoice in Jobber for a referred
       client refires `INVOICE_PAID`.
+      ✅ **GATE MET, CONFIRMED 2026-10-01 — AND I HAD REPORTED THE OPPOSITE, FROM A TRUNCATED READ.**
+      Organic invoice-paid webhooks DID run on the Commit A code: **48 `door=invoice-paid` log lines
+      across 6 distinct clients** on deployment `18eafa80`, fetched with
+      `railway logs <deployment-id> --lines 5000`.
+      ⚠ **THE PROOF THAT THEY RAN THE NEW SELECTIONS IS THE QUERY COST ITSELF:**
+      `door=invoice-paid … q=GetClientRelated requested=3732`, against **3428** measured on the same
+      query before Commit A. The widened selection is visible in the price.
+      ⚠ **AND THE FACTS LANDED, ACROSS ALL FOUR ENTITIES, ALL AFTER THE DEPLOY.** For those six clients:
+      `ALL_CLIENTS` 18 · `ALL_INVOICES` 18 · `ALL_JOBS` 126 · `ALL_QUOTES` 22, every row with
+      `captured_at >= 13:30Z` (earliest 14:14:08Z). The labels include **`Job Type` on `ALL_INVOICES`** —
+      `categorySource` ruling 1's FIRST choice, which was structurally unavailable on that door before —
+      and **`Referred by` on `ALL_CLIENTS`**, which is what Commit C reads.
+      ⚠ **MY EARLIER "no invoice-paid webhook arrived" WAS A TRUNCATED READ REPORTED AS A FINDING, AND
+      THAT IS THE ENTRY WORTH KEEPING.** `railway logs` with no `--lines`/`--since` returns a short
+      recent BUFFER — 35 lines — and exits; it does not tail. I read zero occurrences in it and said so
+      twice. **This is CLAUDE.md's "never `tail` a check" class arriving through log pagination**: the
+      window happened to contain the reassuring absence and not the evidence.
+      ⚠ **AND A SECOND READ THAT LOOKED LIKE EVIDENCE AND WAS NOT: `jobber_webhook_events` CANNOT SEE
+      THIS DOOR.** `topic ILIKE '%INVOICE%'` returns **0 rows across 5,379 events since 2026-09-18** —
+      because `claimWebhookDelivery` is called from exactly **two** sites, the request and stage
+      handlers, and the invoice-paid door is not one of them. **A zero from a table that structurally
+      cannot hold the row is not an observation.** Checked only because the figure looked too clean.
+      ⚠ **FILED, NOT FIXED: the invoice-paid door claims no delivery row, so it has no duplicate
+      suppression and no durable record that it ran.** Its idempotence rests on `referral_conversions`'
+      UNIQUE constraint instead. Whether it should claim one is a ruling, not a tidy-up — and it is the
+      reason this gate had to be answered from logs rather than from the database.
 
 - [ ] ⚠ **RULED 2026-10-01 (Danny, ruling 4) — THE BACKUP DECISION IS DANNY'S, NOT CLAUDE'S.** Before
       any push that changes the database **SCHEMA** (DDL), **ask Danny to click Run Backup Now and wait
