@@ -433,8 +433,51 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2445 server tests across 408 suites, and 1398 React tests across 85 files** (measured 2026-10-01 by the Commit B referral-source commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2445 · suites 408 · pass 2445 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE COMMIT B COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2445 server tests across 408 suites, and 1410 React tests across 86 files** (measured 2026-10-01 by the CRMSettings crash-fix commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2445 · suites 408 · pass 2445 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CRASH-FIX COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  React 1398 → 1410 is **+12**, one new file (`src/components/admin/CRMSettings.test.jsx`), and 85 → 86
+  is that file. **Server did not move — no `server/` file was touched at all** — and was re-measured.
+  **All four predicted before the run and matched.** ⚠ **NO PHANTOM, ASKED BEFORE THE RUN:** the new
+  file lives in `src/components/admin`, which **IS** one of `adminBranding.test.jsx`'s four walked
+  roots — but that walker skips `.test.` files, so a new TEST file there adds nothing. Counted with an
+  anchored `^\s*it\(` (12); the file's loops were each checked for POSITION — one in the module-scope
+  fixture builder, four inside `it()` bodies — so **none wraps a case**.
+  ⚠ **THE COMMIT FIXES A PRODUCTION CRASH THAT COMMIT B SHIPPED, AND THE ENTRY WORTH KEEPING IS WHY
+  NOTHING CAUGHT IT.** Commit B's rewrite of the Referrer Field Mapping card used `crmDisplayName` in
+  three places inside `renderFieldMappingCard()`; it was declared inside
+  `renderCampaignFieldMappingCard()` — a DIFFERENT function — so the card threw
+  `ReferenceError: crmDisplayName is not defined`. That card renders whenever
+  `isConnected && !tokenError`, so **the error boundary blanked the ENTIRE CRM Settings page on every
+  visit, surviving refresh.**
+  ⚠ **`npm run lint` CANNOT CATCH THIS CLASS, BY DESIGN — A CLEAN LINT SHIPPED A `ReferenceError`.**
+  The ESLint config is react-hooks rules only and this file says never add a recommended preset, so
+  `no-undef` is not in the gate. Confirmed by running `no-undef` alone out-of-tree: it names the three
+  references exactly. **Whether to add that single rule is a ruling, not a tidy-up.**
+  ⚠ **AND THE GAP WAS NAMED IN THE COMMIT THAT FELL INTO IT.** Commit B's own report said *"no React
+  test mounts `CRMSettings`"* — offered as the reason the React count would not move, and
+  simultaneously the reason the crash could ship. **A noticed absence is not a covered one.** This is
+  the *"any file a sweep touches needs at least one render test, however trivial"* rule with the sweep
+  being an edit.
+  ⚠ **THE MOUNT TEST ASSERTS THE PAGE RENDERED ITS OWN CONTENT, NOT THAT `render()` RETURNED.** A
+  component that throws during render leaves an EMPTY container rather than raising out of `render()`,
+  so *"it did not throw"* is satisfied by the crash itself. It waits for real text, asserts the three
+  cards AFTER the crashing one exist, and asserts no `ReferenceError` reached the console.
+  ⚠ **ONE GUARD-PROOF, AND IT IS THE PRE-FIX STATE RATHER THAN A SPELLING OF IT.** Removing the
+  component-scope declaration — so the identifier is once again local to the other card — reds
+  **12 of 12** and the test output contains the production string `crmDisplayName is not defined`.
+  Reverted byte-identical by sha256.
+  ⚠ **AND THE FIX IS ONE DECLARATION SHARED BY BOTH CARDS, NOT A SECOND COPY.** Pasting the expression
+  into Card 3 would have stopped the crash and left two definitions of "what this CRM is called" that
+  can drift. ⚠ **A `label`/`id` pair was added too, and it is load-bearing**: without the association
+  `getByLabelText` cannot reach the control, so the test could only query a bare `select` — which would
+  silently start matching a different one the day a second is added.
+  ⚠ **MEASURED WHILE FIXING IT: 19 ADMIN COMPONENTS, ~13,750 LINES, ARE MOUNTED BY NO TEST** —
+  `AdminCampaigns` alone is 4,327. Filed on `PRE_LAUNCH_CHECKLIST.md` with the priority argued by
+  RENDER SURFACE rather than line count: `AdminSetPasswordScreen` and `AdminNoAccessScreen` are reached
+  by people who have no other route in.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE COMMIT B COMMIT ITSELF, BECAUSE IT SHIPS
+  TESTS.* It read **2445 / 408 / 1398 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE COMMIT B COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2418 → 2445 is **+27**, one new file (`referralSourceField.test.js`); suites 402 → 408 is that
   file's **six** top-level describes. React did not move and was re-measured — **and that is the reading
   worth checking, because this commit DOES touch `src/`**: `CRMSettings.jsx` is EDITED, and

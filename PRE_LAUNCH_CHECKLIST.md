@@ -1320,6 +1320,55 @@ mode proves no harm was done; it proves nothing about whether the logic is right
       self-service repeat payout.** Harmless today only because the key is `sk_test_`.
       **Decide deliberately whether `threshold` is the intended production setting before launch.**
 
+- [ ] **🔴 A FULL-PAGE FRONTEND CRASH IS LOGGED AT SEVERITY `INFO`, SO NOTHING ALERTS ON IT.**
+      Found 2026-10-01: Commit B shipped a `ReferenceError` that made the error boundary blank the
+      whole CRM Settings page on every visit, and the row it wrote was **`INFO`**.
+      **The mechanism, traced:** `POST /api/log-client-error` hands `logError` a synthetic request
+      whose `path` is `route || component || 'frontend-unknown'`, and the SPA reported its route as
+      **`/`**. `classifySeverity` matches `/cashout`, `/payout`, `/stripe`, `/webhook`, `/auth`,
+      `/token` → CRITICAL and `/login`, `/pin`, `/reset`, `/admin` → WARNING, so **`/` matches
+      nothing and falls to `INFO`.**
+      ⚠ **THIS IS THE RECORDED `/webhook` DEFECT WITH THE SIGN FLIPPED, AND THE FIX PRINCIPLE IS
+      ALREADY WRITTEN IN THAT FILE.** `errorLogger.js`'s own comment records that
+      `route.includes('/webhook')` never matched, so *"every Jobber webhook failure was filed INFO —
+      a money-adjacent ingestion path failed ~550 times over four months at the same severity as a
+      cosmetic warning"*, and that it was **fixed by ROUTING rather than by widening the needle
+      list**. The same reasoning applies here and rules out the obvious patch.
+      ⚠ **DO NOT ADD `/` TO THE NEEDLE LIST.** It matches every route ever, which would make
+      everything CRITICAL — the mirror of the current failure, and strictly worse.
+      **What a fix has to recognise instead: an error-boundary catch is not classified by its route
+      at all.** It means *the whole page is gone for this user*, which is a severity in its own right
+      regardless of which page. Two candidate shapes, both deliberately left for a ruling: have the
+      boundary report its own kind (a `source`/`kind` the classifier reads), or have the SPA report
+      the real surface path instead of `/`. ⚠ **The second is weaker on its own** — it would make an
+      admin crash WARNING via the `/admin` needle and leave a referrer-surface crash at INFO.
+      ⚠ **AND THE SAME ALERT NAMED THE WRONG TENANT** — filed with the phantom-id literals under
+      *Contractor-ID reconciliation*, because it is that fallback rather than a second defect.
+
+- [ ] **19 ADMIN COMPONENTS, ~13,750 LINES, ARE MOUNTED BY NO TEST — AND ONE OF THEM JUST SHIPPED A
+      PRODUCTION CRASH.** Measured 2026-10-01 after the CRM Settings `ReferenceError`, by checking
+      which `src/components/admin/*.jsx` no `.test.jsx` imports:
+      `AdminCampaigns` (4,327) · `AdminCampaignDetail` (1,157) · `ScheduleBuilderDrawer` (990) ·
+      `AdminContactDetailDrawer` (885) · `AdminContactsTab` (768) · `AdminEngagement` (627) ·
+      `BankingSettings` (583) · `AdminInboxSidebar` (509) · `AdminReferralReview` (502) ·
+      `ReferralProgramSettings` (413) · `AdminCashOuts` (381) · `AdminFlaggedAssignmentsQueue` (355) ·
+      `AdminFlaggedReferrals` (236) · `AdminSetPasswordScreen` (231) · `AdminSettingsExperience` (199) ·
+      `AdminSettingsMyProfile` (190) · `AdminActivityLog` (158) · `TagCloudFilter` (128) ·
+      `AdminNoAccessScreen` (101).
+      ⚠ **`npm run lint` CANNOT CATCH THIS CLASS, BY DESIGN, AND THAT IS NOT A MISCONFIGURATION.**
+      The ESLint config is react-hooks rules only and `CLAUDE.md` says **never add a recommended
+      preset** — so `no-undef` is not in the gate, and a clean lint shipped a `ReferenceError`.
+      Confirmed by running `no-undef` alone against the file out-of-tree: it reports the three
+      offending references exactly. **Whether to add `no-undef` narrowly is a ruling, not a
+      tidy-up** — the standing rule forbids the preset, and this is a single rule from it.
+      ⚠ **THE ONLY THING THAT CATCHES AN OUT-OF-SCOPE IDENTIFIER IN A RENDER PATH IS RENDERING IT**,
+      which is CLAUDE.md's *"any file a sweep touches needs at least one render test, however
+      trivial"* — with the sweep being an edit. `CRMSettings.jsx` now has one; these nineteen do not.
+      ⚠ **PRIORITISE BY RENDER SURFACE, NOT BY LINE COUNT.** `AdminSetPasswordScreen` (231 lines) and
+      `AdminNoAccessScreen` (101) are reached by people who cannot get in by any other route, so a
+      crash there has no fallback path at all; `AdminCampaigns` is large but an admin can navigate
+      away from it.
+
 - [ ] **`DELETE /api/account/me`'s deletion-email branding lookup (`server/routes/account.js`) — hardcoded ghost `contractor_id = 'accent-roofing'`.**
       Only `'accent-roofing-dev'` exists, so this returns zero rows and the account-deletion
       confirmation email is **always unbranded**; `session.contractorId` is in scope nine lines
@@ -11449,6 +11498,20 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       understates it.
 - [ ] **Server `contractor_id` defaults / phantom-id literals:** `db.js` (column defaults and
       seed rows), `crm/jobber.js:106`, `middleware/errorLogger.js:141`.
+      ⚠ **A LIVE INSTANCE, OBSERVED IN A REAL ALERT EMAIL 2026-10-01 16:58:43 UTC — the
+      `errorLogger` one, and it is the WORST-PLACED of the set.** The alert for the CRM Settings crash
+      read **"Contractor: accent-roofing"** for a session belonging to **`accent-roofing-dev`**. The
+      cause is that file's last-resort fallback, cited by role because the number above has already
+      moved: `const contractor_id = contractorId || req?.session?.contractorId || 'accent-roofing'`.
+      ⚠ **WHY THIS ONE MATTERS MORE THAN A DATA QUERY READING THE PHANTOM:** `POST
+      /api/log-client-error` builds a SYNTHETIC `req` — `{ path, method: 'CLIENT' }` — with no session
+      and passes no `contractorId`, so **every frontend error ever logged has been filed under the
+      phantom id.** It is the one path where the fallback is not an edge case but the only outcome.
+      ⚠ **AND IT MISDIRECTS THE READER OF AN ALERT, WHICH IS THE POINT OF AN ALERT.** Anyone
+      triaging is told the wrong tenant, on a row whose `contractor_id` is also part of the dedup
+      key — so frontend errors from *every* future contractor will share one lineage under a tenant
+      that does not exist. **Fix by ROUTING the real contractor in, not by changing the literal to
+      `accent-roofing-dev`**, which would be a hardcoded right answer for exactly one tenant.
       ⚠ **`routes/stripe.js` IS DONE — CLOSED BY WAVE 1.1-e, 2026-08-29.** Both of its literals
       are gone: the module-level constant is **deleted** (not left unused) and the Stripe
       customer metadata stamp resolves from the session. This line used to cite them by line

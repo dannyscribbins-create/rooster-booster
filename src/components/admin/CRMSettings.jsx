@@ -1044,6 +1044,25 @@ export default function CRMSettings() {
   //
   // ⚠ ONLY CLIENT FIELDS ARE OFFERED. The referrer is named on the client; a job- or invoice-entity
   // configuration could never match a client record, and the server refuses one.
+  // ⚠ COMPONENT SCOPE, AND IT IS A FIX FOR A PRODUCTION CRASH RATHER THAN TIDINESS.
+  // This was declared inside `renderCampaignFieldMappingCard` (Card 4b). Commit B's rewrite of Card 3
+  // used it in THREE places where it was not in scope, so `renderFieldMappingCard()` threw
+  // `ReferenceError: crmDisplayName is not defined` — and because that card renders whenever
+  // `isConnected && !tokenError`, the error boundary blanked the ENTIRE CRM Settings page on every
+  // visit, surviving refresh. Logged 2026-10-01 16:58:43 UTC.
+  //
+  // ⚠ ONE DECLARATION, SHARED BY BOTH CARDS, NOT A SECOND COPY. Copying the expression into Card 3
+  // would have fixed the crash and left two definitions of "what this CRM is called" that can drift —
+  // which is the defect class this repo keeps paying for. Both cards read this one.
+  //
+  // ⚠ AND `npm run lint` CANNOT CATCH THIS, BY DESIGN. The ESLint config is react-hooks rules only
+  // (CLAUDE.md: never add a recommended preset), so `no-undef` is not in the gate — a clean lint
+  // shipped a ReferenceError. What catches it is the MOUNT test added alongside this fix:
+  // `src/components/admin/CRMSettings.test.jsx`.
+  const crmDisplayName = status?.crmType
+    ? (CRM_LABEL[status.crmType] || status.crmType)
+    : null;
+
   function renderFieldMappingCard() {
     const clientFields = (cfmFields || []).filter(f => f.entity === REFERRAL_SOURCE_ENTITY);
     const picked = referralSourceField;
@@ -1068,10 +1087,19 @@ export default function CRMSettings() {
         )}
 
         <div style={{ maxWidth: 420, marginBottom: 14 }}>
-          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: AD.textPrimary, marginBottom: 6 }}>
+          {/* ⚠ `htmlFor`/`id` ARE LOAD-BEARING, NOT DECORATION. Without the association a screen
+              reader announces an unlabelled combobox, and `getByLabelText` cannot find the control —
+              so the mount test that exists to stop this card crashing again could only reach it by
+              querying a bare tag, which would silently start matching a different select the day one
+              is added. */}
+          <label
+            htmlFor="referrer-field-select"
+            style={{ display: 'block', fontSize: 13, fontWeight: 600, color: AD.textPrimary, marginBottom: 6 }}
+          >
             Referrer Field
           </label>
           <select
+            id="referrer-field-select"
             value={pickedId}
             onChange={(e) => setReferralSourceFieldId(e.target.value)}
             disabled={clientFields.length === 0}
@@ -1222,9 +1250,11 @@ export default function CRMSettings() {
     const mappedCount    = Object.values(cfmSelections).filter(v => v).length;
     const isCollapsible  = cfmFields.length > 0;
     const showBody       = !isCollapsible || cfmOpen;
-    const crmDisplayName = status?.crmType
-      ? (CRM_LABEL[status.crmType] || status.crmType)
-      : null;
+    // ⚠ `crmDisplayName` IS DECLARED ONCE AT COMPONENT SCOPE NOW — see the block above
+    // `renderFieldMappingCard`. It was declared HERE, local to this card, and Commit B then used it in
+    // Card 3, where it was not in scope: `ReferenceError: crmDisplayName is not defined` on every
+    // render of the whole page. Do not re-declare it here; a shadow would make the two cards able to
+    // disagree about the CRM's name, which is the lesser version of the same defect.
 
     return (
       <Card>
