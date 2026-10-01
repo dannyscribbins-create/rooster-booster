@@ -1,5 +1,7 @@
 'use strict';
 
+const { isCertifiedFullyPaged } = require('./captureCompleteness');
+
 // ── FACT CAPTURE — the writers for the stored Jobber facts the attribution replay reads ──
 //
 // ⚠ ARRIVED HERE BY VERBATIM RELOCATION (3d Phase 1a, Commit 1). Both functions were
@@ -464,7 +466,33 @@ async function captureClientFacts(db, { contractorId, client }) {
     + await writeCustomFieldFacts(db, contractorId, 'ALL_JOBS', jobNodes)
     + await writeCustomFieldFacts(db, contractorId, 'ALL_INVOICES', invoiceNodes);
 
-  return { requests, quotes, jobs, invoices, links, customFields };
+  // ── THE FULL-CAPTURE MARKER (catch-up schedule, Danny 2026-10-01) ───────────
+  // ⚠ STAMPED ONLY WHEN THE FETCHER CERTIFIED EXHAUSTION, which is why this reads a Symbol rather
+  // than a column or an argument. The catch-up job may decide ONLY from complete history, and this
+  // is the one fact that distinguishes complete from partial. `repImportScope.js` writes fact rows
+  // through the individual writers above and never arrives here at all, so it can never stamp.
+  //
+  // ⚠ IT IS IN THE SAME TRANSACTION AS THE FACTS BY CONSTRUCTION — every caller passes a `tx` — and
+  // that is required, not incidental: a marker that committed while its facts rolled back would
+  // certify data that is not there, which is the exact inversion of what it is for.
+  //
+  // ⚠ UPDATE-ONLY, AND IT DOES NOT CREATE AN IDENTITY ROW. A brand-new client is captured BEFORE its
+  // `jobber_clients` row exists (the webhook's identity upsert runs after both capture and decision),
+  // so this affects 0 rows on a first sighting and the client is simply not eligible for the catch-up
+  // until its next full capture. That is the conservative direction and a case pins it: creating a
+  // row here would give `referredCaptureBackfill` the identity-writing side effect it deliberately
+  // does not have.
+  let fullCaptureStamped = 0;
+  if (isCertifiedFullyPaged(client) && client.id) {
+    const stamp = await db.query(
+      `UPDATE jobber_clients SET last_full_capture_at = NOW()
+        WHERE contractor_id = $1 AND jobber_client_id = $2`,
+      [contractorId, client.id]
+    );
+    fullCaptureStamped = stamp.rowCount;
+  }
+
+  return { requests, quotes, jobs, invoices, links, customFields, fullCaptureStamped };
 }
 
 module.exports = {

@@ -37,6 +37,7 @@ const {
   runRedecideStaleClients, selectStaleClients, redecideOne, formatSummary, DEFAULT_LIMIT,
 } = require('../jobs/redecideStaleClients');
 const { isDerivableJobberClientId } = require('../utils/derivableClient');
+const { certifyFullyPaged } = require('../utils/captureCompleteness');
 // ⚠ THE REAL DOOR, not a reimplementation of it. See the export's own note in the webhook
 // router: a test that rebuilt the split could not discover that production stopped doing it.
 const upsertAndTagClient = require('../routes/webhooks/jobber')._upsertAndTagClient;
@@ -56,9 +57,15 @@ let realAxiosPost;
 const seedTenant = (id) =>
   pool.query(`INSERT INTO contractors (id, name, status) VALUES ($1, $1, 'active')`, [id]);
 
-const addClient = (id, { tenant = TENANT, stage = null, derivedAt = null } = {}) => pool.query(
-  `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, pipeline_stage, stage_derived_at)
-   VALUES ($1, $2, 'Split', $3, $4)`, [id, tenant, stage, derivedAt]);
+// ⚠ `fullCaptureAt` ADDED BY THE CATCH-UP-SCHEDULE COMMIT, AND IT DEFAULTS TO NULL ON PURPOSE. A
+// fixture that says nothing about completeness is NOT eligible, which is the new rule's whole point:
+// a client is "fully captured" only once a certified capture has actually run.
+const addClient = (id, {
+  tenant = TENANT, stage = null, derivedAt = null, fullCaptureAt = null,
+} = {}) => pool.query(
+  `INSERT INTO jobber_clients (jobber_client_id, contractor_id, first_name, pipeline_stage,
+     stage_derived_at, last_full_capture_at)
+   VALUES ($1, $2, 'Split', $3, $4, $5)`, [id, tenant, stage, derivedAt, fullCaptureAt]);
 
 const addCacheRow = (id, { tenant = TENANT, status = 'lead' } = {}) => pool.query(
   `INSERT INTO pipeline_cache (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status)
@@ -147,13 +154,21 @@ describe('the split — capture and decision are separate transactions', () => {
     await addClient(CLIENT);
     await addCacheRow(CLIENT, { status: 'sold' });
 
-    const relatedData = {
+    // ⚠ CERTIFIED, BECAUSE THIS FIXTURE STANDS IN FOR A REAL FULL FETCH AND MUST MAKE THE SAME CLAIM.
+    // The catch-up-schedule commit made `captureClientFacts` stamp `last_full_capture_at` only for a
+    // client object the FETCHER certified as paged to exhaustion. A hand-built object carries no
+    // certification, so without this line the capture would save facts and stamp nothing — and the
+    // final assertion below (that the catch-up job now finds this client) would fail. **That is the
+    // mechanism failing closed, which is the direction it was designed to fail in**, and it is why the
+    // production helper is used here rather than a literal property: a string key a fixture could set
+    // for itself would prove nothing.
+    const relatedData = certifyFullyPaged({
       id: CLIENT, isCompany: false, isLead: false,
       quotes: { nodes: [] }, requests: { nodes: [] },
       jobs: { nodes: [{ id: JOB, jobStatus: 'active', client: { id: CLIENT }, createdAt: new Date().toISOString(), customFields: [] }] },
       invoices: { nodes: [] },
       tags: { nodes: [] }, customFields: [],
-    };
+    });
     const fullClient = { id: CLIENT, firstName: 'Split', lastName: 'Case', emails: [], phones: [], isArchived: false };
 
     await pool.query(`CREATE OR REPLACE FUNCTION split_test_boom() RETURNS trigger AS $BODY$
@@ -182,6 +197,14 @@ describe('the split — capture and decision are separate transactions', () => {
     assert.equal(after.pipeline_stage, null, 'no stage was decided');
     assert.equal(after.stage_derived_at, null,
       'and stage_derived_at must NOT be stamped, or the catch-up job would never find this client');
+    // ⚠ AND THE CAPTURE DID STAMP COMPLETENESS, which is what makes this client eligible at all.
+    // Two separate markers with opposite states in one row is the whole shape of the ruling:
+    // history COMPLETE, decision ABSENT.
+    const { rows: mk } = await pool.query(
+      `SELECT last_full_capture_at FROM jobber_clients
+        WHERE contractor_id = $1 AND jobber_client_id = $2`, [TENANT, CLIENT]);
+    assert.ok(mk[0].last_full_capture_at instanceof Date,
+      'the certified capture must stamp last_full_capture_at in the SAME transaction as the facts');
     const cache = await cacheOf(CLIENT);
     assert.equal(cache.pipeline_status, 'sold', 'the referrer-visible status is untouched');
 
@@ -268,9 +291,25 @@ describe('the split — capture and decision are separate transactions', () => {
   });
 });
 
-describe('the catch-up job — facts newer than the decision', () => {
-  it('selects a client whose facts are newer than its decision', async () => {
-    await addClient(CLIENT, { stage: 'lead', derivedAt: '2026-01-01T00:00:00Z' });
+// ⚠ THIS DESCRIBE WAS REWRITTEN BY THE CATCH-UP-SCHEDULE COMMIT, AND THE OLD ASSERTIONS ARE QUOTED
+// RATHER THAN DELETED, BECAUSE A RULING CHANGED THE SELECTOR — NOT A BUG.
+// It used to be named *"facts newer than the decision"* and selected on `MAX(captured_at)` across the
+// two fact tables that carry one. Measured against production, that selector would have moved 364
+// clients on its first run, **354 of them BACKWARDS and 353 off 'paid'** — because `repImportScope.js`
+// captures only the rep WINDOW, per entity, so a client's stored facts are routinely a subset of its
+// history. Sampled against Jobber live, 21 of those split 14 DATA GAP / 2 BOTH WRONG / 5 REAL
+// CORRECTION. Danny's ruling (2026-10-01): decide ONLY from COMPLETE history, and a ratchet is
+// REJECTED because it would also block the 5 genuine corrections.
+// ⚠ TWO CASES ARE THEREFORE SUPERSEDED BY DESIGN AND SAY SO BELOW, rather than being quietly dropped:
+// the selector no longer reads fact timestamps at all, so "the newest fact is the GREATEST across the
+// tables that HAVE a captured_at" is about a mechanism that no longer exists, and the quote-only
+// LIMITATION it documented is CLOSED for the selector — a full capture pages quotes too, so it stamps
+// the marker whichever connection changed.
+describe('the catch-up job — only from COMPLETE history', () => {
+  it('selects a client whose FULL CAPTURE is newer than its decision', async () => {
+    await addClient(CLIENT, {
+      stage: 'lead', derivedAt: '2026-01-01T00:00:00Z', fullCaptureAt: '2026-06-01T00:00:00Z',
+    });
     await seedPaidFacts(CLIENT);
 
     const { candidates, remaining } = await selectStaleClients(pool, { contractorId: TENANT });
@@ -280,11 +319,11 @@ describe('the catch-up job — facts newer than the decision', () => {
     assert.equal(remaining, 0);
   });
 
-  it('selects a client that was NEVER decided — a NULL decision is work, not "done"', async () => {
-    // ⚠ THE COLUMN IS DELIBERATELY NOT BACKFILLED, so NULL means "never decided, or decided before the
-    // column existed". Treating it as done is how a client whose decision FAILED would be missed
-    // permanently, which is the error this job exists to prevent.
-    await addClient(CLIENT, { stage: null, derivedAt: null });
+  it('selects a FULLY CAPTURED client that was NEVER decided — a NULL decision is work, not "done"', async () => {
+    // ⚠ `stage_derived_at` IS DELIBERATELY NOT BACKFILLED, so NULL means "never decided, or decided
+    // before the column existed". Treating it as done is how a client whose decision FAILED would be
+    // missed permanently. ⚠ But it is only work once the history is COMPLETE — hence the marker.
+    await addClient(CLIENT, { stage: null, derivedAt: null, fullCaptureAt: '2026-06-01T00:00:00Z' });
     await seedPaidFacts(CLIENT);
 
     const { candidates } = await selectStaleClients(pool, { contractorId: TENANT });
@@ -293,24 +332,45 @@ describe('the catch-up job — facts newer than the decision', () => {
     assert.equal(candidates[0].stageDerivedAt, null);
   });
 
-  it('PAIRED NEGATIVE: a client decided AFTER its newest fact is left alone', async () => {
-    // Without this, a selector that returned every client would pass both cases above.
+  it('PAIRED NEGATIVE: a client decided AFTER its full capture is left alone', async () => {
+    // Without this, a selector that returned every fully captured client would pass both cases above.
     await seedPaidFacts(CLIENT, { capturedAt: '2026-01-01T00:00:00Z' });
-    await addClient(CLIENT, { stage: 'paid', derivedAt: '2026-06-01T00:00:00Z' });
+    await addClient(CLIENT, {
+      stage: 'paid', derivedAt: '2026-06-01T00:00:00Z', fullCaptureAt: '2026-01-01T00:00:00Z',
+    });
 
     const { candidates } = await selectStaleClients(pool, { contractorId: TENANT });
 
-    assert.deepEqual(candidates, [], 'a current decision is not stale');
+    assert.deepEqual(candidates, [], 'a decision newer than the capture is not stale');
   });
 
-  it('a client with NO facts at all is not selected — there is nothing to decide from', async () => {
-    await addClient(CLIENT, { stage: null, derivedAt: null });
-    const { candidates } = await selectStaleClients(pool, { contractorId: TENANT });
+  it('⚠ THE RULING: a client with FACTS but NO full capture is NOT selected', async () => {
+    // ⚠ THIS IS THE CASE THE WHOLE COMMIT EXISTS FOR, and under the OLD selector it was SELECTED.
+    // Facts present, never decided — the old rule called that work. The facts came from a partial
+    // writer, so deciding from them is what produced 353 backwards moves off 'paid'.
+    await addClient(CLIENT, { stage: 'paid', derivedAt: null, fullCaptureAt: null });
+    await seedPaidFacts(CLIENT);
+
+    const { candidates, skippedPartial } = await selectStaleClients(pool, { contractorId: TENANT });
+
+    assert.deepEqual(candidates, [], 'partial history must never be decided from');
+    assert.equal(skippedPartial, 1, 'and it must be COUNTED, not silently dropped');
+  });
+
+  it('a client with NO facts at all is not selected, and is counted as skipped', async () => {
+    // Factless clients derive 'lead' (classifyPipelineStatus returns it when jobs and quotes are both
+    // empty). 12,410 of this tenant's 19,598 clients are in that state, so an unguarded drain would
+    // push every one of them to 'lead'. They have no marker, so the same predicate excludes them.
+    await addClient(CLIENT, { stage: 'paid', derivedAt: null, fullCaptureAt: null });
+    const { candidates, skippedPartial } = await selectStaleClients(pool, { contractorId: TENANT });
     assert.deepEqual(candidates, []);
+    assert.equal(skippedPartial, 1);
   });
 
-  it('a non-derivable client id is excluded by the SHARED predicate', async () => {
-    await addClient(SYNTHETIC, { stage: null, derivedAt: null });
+  it('a non-derivable client id is excluded by the SHARED predicate, even when fully captured', async () => {
+    // ⚠ FULLY CAPTURED ON PURPOSE, so the only thing that can exclude it is the derivable predicate.
+    // With `fullCaptureAt: null` this case would pass for the wrong reason.
+    await addClient(SYNTHETIC, { stage: null, derivedAt: null, fullCaptureAt: '2026-06-01T00:00:00Z' });
     await pool.query(
       `INSERT INTO crm_job_facts (contractor_id, jobber_job_id, jobber_client_id, job_status, captured_at)
        VALUES ($1, $2, $3, 'active', NOW())`, [TENANT, JOB, SYNTHETIC]);
@@ -320,14 +380,13 @@ describe('the catch-up job — facts newer than the decision', () => {
     assert.deepEqual(candidates, [], 'the app_user / synthetic exclusion has one home and it is imported');
   });
 
-  it('CURRENT LIMITATION: a quote-only change is NOT detected, because quote facts have no captured_at', async () => {
-    // ⚠ LABELLED AS THE STATE OF THINGS RATHER THAN FENCED, so closing it means updating a
-    // clearly-named case. Only crm_job_facts and crm_invoice_facts carry a `captured_at`;
-    // crm_quote_facts and crm_request_facts have NONE, and their `created_at` is the Jobber record's
-    // own date — comparing that against our decision clock would call every old quote "newer than the
-    // decision" forever. So absent is better than wrong.
-    // ⚠ THE BRANCH THE RULING DEPENDS ON IS UNAFFECTED: `stage_derived_at IS NULL` catches every
-    // client whose decision failed, whatever the fact tables carry. This limits only the refinement.
+  it('SUPERSEDED: the quote/request captured_at gap no longer limits the SELECTOR', async () => {
+    // ⚠ THE OLD CASE READ: *"CURRENT LIMITATION: a quote-only change is NOT detected, because quote
+    // facts have no captured_at"*, and it asserted the selector returned nothing for such a client.
+    // That limitation was real for a selector built on `MAX(captured_at)`. The marker removes it: a
+    // full capture pages quotes and requests too, so it stamps `last_full_capture_at` whichever
+    // connection changed. ⚠ THE COLUMNS ARE STILL ABSENT — asserted below so the schema fact stays
+    // recorded — but the selector no longer depends on them.
     const cols = await pool.query(
       `SELECT table_name FROM information_schema.columns
         WHERE table_schema = 'public' AND column_name = 'captured_at'
@@ -335,22 +394,26 @@ describe('the catch-up job — facts newer than the decision', () => {
         ORDER BY table_name`
     );
     assert.deepEqual(cols.rows.map(r => r.table_name), ['crm_invoice_facts', 'crm_job_facts'],
-      'when a quote/request fact gains captured_at, widen the selector and delete this case');
+      'quote and request facts still carry no captured_at');
 
-    // A client decided AFTER its job/invoice facts, whose quote arrived later, is NOT selected today.
+    // A quote-only change on a FULLY CAPTURED client IS now selected, which the old rule could not do.
     await pool.query(
       `INSERT INTO crm_quote_facts (contractor_id, jobber_client_id, jobber_quote_id, quote_status, created_at)
        VALUES ($1, $2, 'Z2lkOi8vSm9iYmVyL1F1b3RlLzY1MDAwMQ==', 'approved', NOW())`, [TENANT, CLIENT]);
-    await addClient(CLIENT, { stage: 'inspection', derivedAt: '2026-06-01T00:00:00Z' });
+    await addClient(CLIENT, {
+      stage: 'inspection', derivedAt: '2026-06-01T00:00:00Z', fullCaptureAt: '2026-07-01T00:00:00Z',
+    });
 
     const { candidates } = await selectStaleClients(pool, { contractorId: TENANT });
-    assert.deepEqual(candidates, [], 'a quote-only change is invisible to the selector today');
+    assert.equal(candidates.length, 1, 'the capture marker, not a fact timestamp, decides staleness');
   });
 
-  it('the newest fact is the GREATEST across the tables that HAVE a captured_at', async () => {
-    // A client whose only NEW fact is an invoice must still be selected — and the invoice is precisely
-    // the fact that moves a stage to 'paid'.
-    await addClient(CLIENT, { stage: 'sold', derivedAt: '2026-03-01T00:00:00Z' });
+  it('SUPERSEDED: the selector reads the MARKER, never a fact timestamp', async () => {
+    // ⚠ THE OLD CASE READ: *"the newest fact is the GREATEST across the tables that HAVE a
+    // captured_at"*, and asserted that a client with a NEWER INVOICE FACT than its decision was
+    // selected. That is now explicitly NOT the rule — a newer fact proves nothing about completeness.
+    // This is the inverse of the old assertion on the same fixture, which is why it is worth keeping.
+    await addClient(CLIENT, { stage: 'sold', derivedAt: '2026-03-01T00:00:00Z', fullCaptureAt: null });
     await pool.query(
       `INSERT INTO crm_job_facts (contractor_id, jobber_job_id, jobber_client_id, job_status, captured_at)
        VALUES ($1, $2, $3, 'active', '2026-01-01T00:00:00Z')`, [TENANT, JOB, CLIENT]);
@@ -360,12 +423,15 @@ describe('the catch-up job — facts newer than the decision', () => {
        VALUES ($1, $2, $3, 'paid', 1000, 0, NOW(), '2026-06-01T00:00:00Z')`, [TENANT, INVOICE, CLIENT]);
 
     const { candidates } = await selectStaleClients(pool, { contractorId: TENANT });
-    assert.equal(candidates.length, 1, 'the newer INVOICE fact must make this client stale');
+    assert.deepEqual(candidates, [],
+      'a fact newer than the decision is NOT sufficient — only a newer FULL CAPTURE is');
   });
 
   it('is scoped to one contractor', async () => {
     await seedTenant(OTHER);
-    await addClient(CLIENT, { tenant: OTHER, stage: 'lead', derivedAt: null });
+    await addClient(CLIENT, {
+      tenant: OTHER, stage: 'lead', derivedAt: null, fullCaptureAt: '2026-06-01T00:00:00Z',
+    });
     await seedPaidFacts(CLIENT, { tenant: OTHER });
 
     const { candidates } = await selectStaleClients(pool, { contractorId: TENANT });
@@ -373,7 +439,7 @@ describe('the catch-up job — facts newer than the decision', () => {
   });
 
   it('RE-DECIDES from saved facts and stamps the decision', async () => {
-    await addClient(CLIENT, { stage: 'lead', derivedAt: null });
+    await addClient(CLIENT, { stage: 'lead', derivedAt: null, fullCaptureAt: '2026-06-01T00:00:00Z' });
     await seedPaidFacts(CLIENT);
 
     const out = await redecideOne(pool, { contractorId: TENANT, jobberClientId: CLIENT });
@@ -388,7 +454,7 @@ describe('the catch-up job — facts newer than the decision', () => {
   it('and it makes NO Jobber call — the axios stub would throw if it did', async () => {
     // The stub in beforeEach throws on any axios.post. This case is the behavioural half of the
     // source fence below: the property is "saved facts only", and this is what would break.
-    await addClient(CLIENT, { stage: 'lead', derivedAt: null });
+    await addClient(CLIENT, { stage: 'lead', derivedAt: null, fullCaptureAt: '2026-06-01T00:00:00Z' });
     await seedPaidFacts(CLIENT);
 
     const summary = await runRedecideStaleClients(pool, {
@@ -417,7 +483,7 @@ describe('the catch-up job — facts newer than the decision', () => {
 
   it('PAIRED NEGATIVE: a client with NO pipeline_cache row affects 0 rows there', async () => {
     // Without this, a job that INSERTED a pipeline_cache row would pass the case above.
-    await addClient(CLIENT, { stage: 'lead', derivedAt: null });
+    await addClient(CLIENT, { stage: 'lead', derivedAt: null, fullCaptureAt: '2026-06-01T00:00:00Z' });
     await seedPaidFacts(CLIENT);
 
     const out = await redecideOne(pool, { contractorId: TENANT, jobberClientId: CLIENT });
@@ -427,7 +493,7 @@ describe('the catch-up job — facts newer than the decision', () => {
   });
 
   it('is idempotent — a second run finds nothing left to do', async () => {
-    await addClient(CLIENT, { stage: 'lead', derivedAt: null });
+    await addClient(CLIENT, { stage: 'lead', derivedAt: null, fullCaptureAt: '2026-06-01T00:00:00Z' });
     await seedPaidFacts(CLIENT);
 
     const first = await runRedecideStaleClients(pool, {
@@ -443,11 +509,11 @@ describe('the catch-up job — facts newer than the decision', () => {
   });
 
   it('one client failing never stops the run, and the failure is named', async () => {
-    await addClient(CLIENT, { stage: 'lead', derivedAt: null });
+    await addClient(CLIENT, { stage: 'lead', derivedAt: null, fullCaptureAt: '2026-06-01T00:00:00Z' });
     await seedPaidFacts(CLIENT);
     // A client row whose id is real but which has facts under a DIFFERENT job id still decides fine;
     // to force a failure, drop the client row so the UPDATE has nothing and decideFromFacts still runs.
-    await addClient(CLIENT_B, { stage: 'lead', derivedAt: null });
+    await addClient(CLIENT_B, { stage: 'lead', derivedAt: null, fullCaptureAt: '2026-06-01T00:00:00Z' });
     await pool.query(
       `INSERT INTO crm_job_facts (contractor_id, jobber_job_id, jobber_client_id, job_status, captured_at)
        VALUES ($1, 'Z2lkOi8vSm9iYmVyL0pvYi83NTAwMDI=', $2, 'active', NOW())`, [TENANT, CLIENT_B]);
@@ -463,7 +529,7 @@ describe('the catch-up job — facts newer than the decision', () => {
 
   it('the limit BOUNDS the run and the summary says how many are left', async () => {
     for (const id of [CLIENT, CLIENT_B]) {
-      await addClient(id, { stage: 'lead', derivedAt: null });
+      await addClient(id, { stage: 'lead', derivedAt: null, fullCaptureAt: '2026-06-01T00:00:00Z' });
       await pool.query(
         `INSERT INTO crm_job_facts (contractor_id, jobber_job_id, jobber_client_id, job_status, captured_at)
          VALUES ($1, $2, $3, 'active', NOW())`, [TENANT, `job-for-${id}`, id]);

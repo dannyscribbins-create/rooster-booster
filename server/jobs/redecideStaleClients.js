@@ -19,11 +19,27 @@
 // surfaces back out of step, which is the single thing the N4 arc exists to have eliminated. It is
 // also why the money-adjacent UPDATE was extracted rather than copied here.
 //
-// ⚠ "FACTS NEWER THAN THE DECISION" INCLUDES "NEVER DECIDED". `stage_derived_at IS NULL` means either
-// never decided or decided before that column existed, and both are work. The column is deliberately
-// NOT backfilled — see `server/db.js` — because a backfill from `last_synced_at` would have made a
-// client whose decision FAILED look decided and be missed permanently. Doing extra idempotent work is
-// recoverable; missing a client is not.
+// ⚠ IT DECIDES ONLY FROM COMPLETE HISTORY — DANNY'S RULING, 2026-10-01 — AND THE PREVIEW THAT FORCED
+// IT IS THE REASON TO READ THIS BLOCK. The first writing selected on "any fact is newer than the
+// decision". Measured against production, that would have moved 364 clients on its first run, of which
+// **354 went BACKWARDS and 353 came off 'paid'**. Sampled against Jobber live, 21 of those split
+// **14 DATA GAP / 2 BOTH WRONG / 5 REAL CORRECTION** — so the majority were clients whose stored
+// 'paid' was RIGHT and whose stored facts were short, because `repImportScope.js` captured only the
+// rep WINDOW, per entity.
+//
+// ⚠ A RATCHET WAS PROPOSED AND REJECTED, and the reason is worth keeping. Refusing any downward write
+// would also block the 5 genuine corrections, and it contradicts the ruling that reps always see the
+// TRUE stage. The defect is not the direction of the move; it is deciding from data that is missing.
+// So the fix is upstream of the decision: select only clients whose history is known to be complete.
+//
+// ⚠ COMPLETE MEANS `jobber_clients.last_full_capture_at`, STAMPED BY THE FETCHER'S CERTIFICATION —
+// see `server/utils/captureCompleteness.js`. Never backfilled, so eligibility is **0 on the day this
+// ships** and grows only as real full captures run (~58 clients a day through the live doors). A job
+// that does nothing for its first many runs is correct here, not broken.
+//
+// ⚠ AND "NEVER DECIDED" IS STILL WORK, BUT ONLY FOR A FULLY CAPTURED CLIENT. `stage_derived_at IS NULL`
+// means never decided or decided before that column existed; paired with a non-null marker it is a
+// client we have complete history for and no decision from it.
 //
 // ⚠ BOUNDED BY A LIMIT, AND ORDERED OLDEST-FACTS-FIRST. The first runs are large for exactly the
 // reason above, so the job takes a cap and reports how many remain rather than holding a connection
@@ -71,43 +87,43 @@ const DEFAULT_LIMIT = 200;
 async function selectStaleClients(db, { contractorId, limit = DEFAULT_LIMIT } = {}) {
   if (!contractorId) throw new Error('selectStaleClients: contractorId is required');
   const { rows } = await db.query(
-    `WITH newest AS (
-       SELECT jobber_client_id, MAX(captured_at) AS newest_fact
-         FROM (
-           -- ONLY THESE TWO TABLES HAVE A capture timestamp. crm_quote_facts and crm_request_facts
-           -- have none, and their created_at column is the Jobber record's own date — reading it here
-           -- would compare a client's quote date against our decision clock and call every old quote
-           -- newer than the decision, forever. Absent is better than wrong; see the header.
-           -- (No backticks in this comment: it sits inside a template literal, where one would close
-           -- the string. That is the defect CLAUDE.md records, and it cost this file one debug pass.)
-           SELECT jobber_client_id, captured_at FROM crm_job_facts     WHERE contractor_id = $1
-           UNION ALL
-           SELECT jobber_client_id, captured_at FROM crm_invoice_facts WHERE contractor_id = $1
-         ) f
-        GROUP BY jobber_client_id
-     )
-     SELECT jc.jobber_client_id, n.newest_fact, jc.stage_derived_at,
+    `SELECT jc.jobber_client_id, jc.last_full_capture_at, jc.stage_derived_at,
             COUNT(*) OVER () AS total
        FROM jobber_clients jc
-       JOIN newest n ON n.jobber_client_id = jc.jobber_client_id
       WHERE jc.contractor_id = $1
         AND ${derivableClientIdSql('jc.jobber_client_id')}
-        AND (jc.stage_derived_at IS NULL OR n.newest_fact > jc.stage_derived_at)
-      ORDER BY jc.stage_derived_at ASC NULLS FIRST, n.newest_fact ASC
+        AND jc.last_full_capture_at IS NOT NULL
+        AND (jc.stage_derived_at IS NULL OR jc.last_full_capture_at > jc.stage_derived_at)
+      ORDER BY jc.stage_derived_at ASC NULLS FIRST, jc.last_full_capture_at ASC
       LIMIT $2`,
     [contractorId, limit]
   );
   const total = rows.length > 0 ? Number(rows[0].total) : 0;
+
+  // ⚠ COUNTED, NOT MERELY EXCLUDED. A client left out because nothing ever fully captured it is the
+  // normal case today and must stay visible: 16,329 of this tenant's 19,598 clients have no job or
+  // invoice fact at all, and a job that silently ignores five sixths of the book while reporting
+  // success is the health-reporting failure CLAUDE.md records. One extra aggregate per run.
+  const { rows: skipRows } = await db.query(
+    `SELECT COUNT(*) AS n
+       FROM jobber_clients jc
+      WHERE jc.contractor_id = $1
+        AND ${derivableClientIdSql('jc.jobber_client_id')}
+        AND jc.last_full_capture_at IS NULL`,
+    [contractorId]
+  );
+
   return {
     candidates: rows.map((r) => ({
       jobberClientId: r.jobber_client_id,
-      newestFact: r.newest_fact,
+      lastFullCaptureAt: r.last_full_capture_at,
       stageDerivedAt: r.stage_derived_at,
     })),
     // ⚠ REPORTED RATHER THAN INFERRED FROM THE LIMIT. `total` is the full matching population via a
     // window function, so the summary can say how many were left rather than leaving the operator to
     // guess whether the cap was reached.
     remaining: Math.max(0, total - rows.length),
+    skippedPartial: Number(skipRows[0].n),
   };
 }
 
@@ -179,14 +195,16 @@ async function runRedecideStaleClients(pool, {
   if (!contractorId) throw new Error('runRedecideStaleClients: contractorId is required');
 
   const startedAt = Date.now();
-  const { candidates, remaining } = await selectStaleClients(pool, { contractorId, limit });
-  onLine(`[redecideStaleClients] ${contractorId}: ${candidates.length} stale client(s), ${remaining} beyond the limit`);
+  const { candidates, remaining, skippedPartial } = await selectStaleClients(pool, { contractorId, limit });
+  onLine(`[redecideStaleClients] ${contractorId}: ${candidates.length} eligible, `
+    + `${remaining} beyond the limit, ${skippedPartial} skipped (never fully captured)`);
 
   const summary = {
     contractorId,
     limit,
     considered: candidates.length,
     remaining,
+    skippedPartial,
     redecided: 0,
     stageChanged: 0,
     referredUpdated: 0,
@@ -224,8 +242,12 @@ function formatSummary(s) {
     '── re-decide stale clients (saved facts only) ──────────────────',
     `contractor          ${s.contractorId}`,
     `limit               ${s.limit}`,
-    `stale considered    ${s.considered}`,
+    `eligible            ${s.considered}`,
     `beyond the limit    ${s.remaining}`,
+    // ⚠ ON ITS OWN LINE BECAUSE IT IS THE NUMBER THAT EXPLAINS A QUIET RUN. An operator seeing
+    // "eligible 0" needs to know whether that means "nothing to do" or "nothing is eligible yet",
+    // and those are different states with different actions.
+    `skipped: no full capture  ${s.skippedPartial}`,
     `re-decided          ${s.redecided}`,
     `stage CHANGED       ${s.stageChanged}`,
     `referrer status set ${s.referredUpdated}`,

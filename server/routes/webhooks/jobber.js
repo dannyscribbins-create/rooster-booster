@@ -38,6 +38,7 @@ const { attributeFromRequest } = require('../../utils/requestAttribution');
 // this file do not. Removing the import would break that other consumer, so the rule is
 // enforced by the fence in server/test/captureThenDecide.test.js rather than by absence.
 const { captureClientFacts } = require('../../utils/factCapture');
+const { certifyFullyPaged } = require('../../utils/captureCompleteness');
 const { decideFromFacts } = require('../../utils/attributionDecide');
 const { runAttributionEngine } = require('../../utils/attributionEngine');
 const { withClientLock } = require('../../utils/clientLock');
@@ -404,13 +405,17 @@ async function fetchClientRelatedData(clientId, token, meta = {}) {
 
   assertInvoiceJobsComplete(invoiceNodes, label);
 
-  return {
+  // ⚠ CERTIFIED HERE FOR THE SAME REASON fetchFullClient IS: reaching this line means all four
+  // `pageClientConnection` calls resolved, and that helper throws rather than returning a short set.
+  // Both fetchers meet the SAME standard — the same four connections, drained the same way — so
+  // "fully captured" means one thing across every live door.
+  return certifyFullyPaged({
     ...client,
     jobs: { nodes: attachInvoicesToJobs(jobNodes, invoiceNodes) },
     quotes: { nodes: quoteNodes },
     requests: { nodes: requestNodes },
     invoices: { nodes: invoiceNodes },
-  };
+  });
 }
 
 // ── TEST SEAMS ─────────────────────────────────────────────────────────────────

@@ -2989,6 +2989,30 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_jc_stage_derived
     ON jobber_clients (contractor_id, stage_derived_at)`);
 
+  // ── THE FULL-CAPTURE MARKER (catch-up schedule, Danny 2026-10-01) ───────────
+  // ⚠ NEVER BACKFILLED, AND UNLIKE stage_derived_at THAT IS NOT MERELY CAUTION — A BACKFILL HERE
+  // WOULD RE-CREATE THE DEFECT THE RULING EXISTS TO CLOSE. The column means "every one of this
+  // client's connections was paged to exhaustion at this moment". Nothing already stored can support
+  // that claim: measured on `accent-roofing-dev`, 2,938 stored-'paid' clients have facts and 212 of
+  // them have invoice facts with NO job facts, because `repImportScope.js` captured only the rep
+  // WINDOW, per entity. Stamping those from `last_synced_at` or `captured_at` would declare partial
+  // data complete and hand the catch-up exactly the input that produced 354 backwards moves in the
+  // preview — 353 of them off 'paid'.
+  // ⚠ SO ELIGIBILITY IS 0 ON THE DAY THIS SHIPS, BY DESIGN, and grows only as real full captures run
+  // (measured: ~58 distinct clients a day through the live doors). A job that does nothing on its
+  // first hundred runs is the correct behaviour here, not a symptom.
+  await pool.query(`ALTER TABLE jobber_clients
+    ADD COLUMN IF NOT EXISTS last_full_capture_at TIMESTAMPTZ`);
+  // The selector is (marker IS NOT NULL AND (decision IS NULL OR marker > decision)) per contractor.
+  // Both columns in one index so the scan is not over the whole book on every 30-minute run.
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_jc_full_capture
+    ON jobber_clients (contractor_id, last_full_capture_at, stage_derived_at)`);
+
+  // Ninth cron lock. Seeded here rather than beside the other eight so the earlier INSERTs keep
+  // their line numbers — the same citation reasoning as the eighth.
+  await pool.query(`INSERT INTO cron_job_locks (job_name) VALUES ('redecide_stale_clients')
+                    ON CONFLICT DO NOTHING`);
+
   await backfillAssignedAt(pool);
   await applyAssignedAtNotNull(pool);
 

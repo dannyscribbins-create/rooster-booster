@@ -14286,6 +14286,59 @@ quadruples is evidence about the estimate, not about the wave:
 
 ---
 
+## Wrong stored `'paid'` stages — NO ACTION on `accent-roofing-dev` (Danny's ruling, 2026-10-01)
+
+- [x] **RULED: NO ACTION ON THIS TENANT.** `accent-roofing-dev` is **borrowed test data**, and Accent
+      launches on a **fresh contractor id**. Repairing stored stages here would be work on data that
+      is about to be replaced, and **it does not affect build accuracy** — every derivation under test
+      reads facts, not the stored stage.
+      ⚠ **MEASURED, SO THE DECISION HAS A SOURCE.** About **195 of 2,938 assessable clients (~6.6%)**
+      show `'paid'` where Jobber says not fully paid. Sampled 21 of the 354 backwards moves against
+      Jobber live: **14 DATA GAP · 2 BOTH WRONG · 5 REAL CORRECTION**. The whole `paid→sold` group
+      (156) is confirmed-wrong shape — 5/5 sampled, with live agreeing with our derivation.
+      ⚠ **AND THE 10,664 STORED-`'paid'` CLIENTS WITH NO FACTS AT ALL ARE NOT ASSESSED, AND ARE NOT
+      EXTRAPOLATED TO.** The assessable set *is* the rep-window/recently-touched population, so it is
+      biased; a tenant-wide percentage taken from it would be a number with no source.
+      ⚠ **BLAST RADIUS, ENUMERATED RATHER THAN ASSUMED: the rep app's displayed stage and sort ONLY.**
+      `server/routes/rep.js` (client list, client detail, Today's Focus) and `server/utils/repBook.js`
+      (`STAGE_RANK_SQL`). **NOT** `deriveJobberTags`, **NOT** `admin/campaigns.js`, **NOT**
+      `dynamicAudiences` — verified none of the three reads the column. Rep conversions count
+      `client_sales`. The referrer-visible value is a **different column**,
+      `pipeline_cache.pipeline_status`. So no money, tags, campaigns or referrer surface is affected.
+- [ ] **LAUNCH CHECK (this is the action, and it is on the FRESH contractor).** After the fresh
+      contractor's import, **sample stored `'paid'` clients against Jobber live** exactly as this
+      investigation did — drive the production `classifyPipelineStatus` over a real `fetchFullClient`
+      object and compare it to the stored stage. **Rebuild or re-capture only if that check fails.**
+      The method: a read-only script outside the repo, Jobber reads only, three-way comparison of
+      stored vs derived vs live (⚠ **three-way, not two-way** — a binary test that assumes the stored
+      stage is `'paid'` misclassified the one `sold→lead` case in this investigation).
+
+## Security hardening — before launch
+
+- [ ] **🔴 `tokens.access_token` (Jobber OAuth) IS STORED IN PLAINTEXT. Encrypt CRM tokens at rest.**
+      Found while writing the step-2 audit script: `getContractorAccessToken` (`server/crm/jobber.js`)
+      does a bare `SELECT access_token FROM tokens WHERE contractor_id = $1` and returns the value with
+      **no decryption** — my first attempt called `decrypt()` and failed outright, which is how this
+      surfaced. `refresh_token` sits in the same table in the same state.
+      ⚠ **`server/utils/encryption.js` ALREADY EXISTS** (`encrypt`/`decrypt`, AES-GCM in
+      `iv:authTag:ciphertext` form) and is used elsewhere, so this is wiring an existing control to a
+      table that never got it — not building one. The migration has to encrypt in place and every
+      reader must go through `getContractorAccessToken`, which is already the sanctioned path.
+
+## Process — recorded so it is not repeated
+
+- [x] **A CREDENTIAL WAS BRIEFLY WRITTEN TO A FILE, AND THE CORRECTION IS RECORDED RATHER THAN THE
+      LAPSE BEING LEFT UNSAID.** While wiring the production-read script, a merged
+      `railway variables --json` blob (containing `DATABASE_PUBLIC_URL`) was redirected to a file in
+      the session scratchpad. **The read-only ruling says credentials are NEVER written to any file.**
+      Caught within seconds, the file deleted, and the value then **piped directly into the script on
+      stdin** — which is the form every subsequent run used.
+      ⚠ **NO ROTATION NEEDED, and the reasoning is stated so it is checkable rather than asserted:** a
+      local OS temp file, outside the repo, deleted within seconds, never committed, never synced to
+      any remote. ⚠ **The general lesson is the one worth keeping: a shell redirect is a file.** The
+      rule reads as being about reports and logs, and `>` does not feel like writing a file — which is
+      exactly why it happened.
+
 ## Discretionary — OPEN, not closed
 
 - [ ] **Login footer wordmark redundancy.** The contractor name appears three times on the

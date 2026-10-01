@@ -433,7 +433,66 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2375 server tests across 395 suites, and 1398 React tests across 85 files** (measured 2026-09-30 by the 7d-0 Resend-interlock commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2375 · suites 395 · pass 2375 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2399 server tests across 400 suites, and 1398 React tests across 85 files** (measured 2026-10-01 by the catch-up-schedule commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2399 · suites 400 · pass 2399 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CATCH-UP-SCHEDULE COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2375 → 2399 is **+24 = 23 + 1**: twenty-three in one new file (`fullCaptureMarker.test.js`) and
+  **one APPENDED** to `captureDecisionSplit.test.js` (22 → 23). Suites 395 → 400 is the new file's
+  **five** top-level describes only — the appended case landed in a describe that already existed.
+  React did not move — **no `src/` file was touched at all** — and was re-measured. **All four predicted
+  before the run and matched.** Counted with an anchored `^\s*it\(` (23); the file's six loops were each
+  checked for POSITION — one `.map` in the comment-stripping helper, one `for` in `beforeEach`, one in
+  the directory walk, three inside `it()` bodies — so **none wraps a case**.
+  ⚠ **THE COMMIT'S SUBJECT: THE WRITER CANNOT KNOW WHETHER A FETCH WAS EXHAUSTIVE, SO THE FETCHER
+  CERTIFIES IT.** Danny's ruling — the catch-up decides ONLY from COMPLETE history — after a preview
+  measured the first selector moving **364 clients, 354 BACKWARDS, 353 off `'paid'`**. Sampled 21
+  against Jobber live: **14 DATA GAP · 2 BOTH WRONG · 5 REAL CORRECTION**. Cause: `repImportScope`
+  captures only the rep WINDOW per ENTITY, so 212 stored-`'paid'` clients have invoice facts with **no**
+  job facts and 194 have invoices none of which are paid.
+  ⚠ **A RATCHET WAS PROPOSED AND REJECTED, AND THE REASON IS THE ENTRY.** Refusing downward writes
+  would also block the 5 genuine corrections and contradicts the ruling that reps always see the true
+  stage. **The defect was never the DIRECTION of the move; it was deciding from data that is missing** —
+  so the guard belongs upstream of the decision, not on its output.
+  ⚠ **THE CERTIFICATION IS HONEST FOR A STRUCTURAL REASON, NOT BY CONVENTION.**
+  `pageClientConnection` **throws** rather than returning a short set, so reaching either fetcher's
+  `return` IS proof that all four connections drained. Certifying anywhere earlier would vouch for a set
+  that had not finished paging — the one failure the mechanism cannot detect for itself.
+  ⚠ **AND IT IS A SYMBOL, WHICH IS LOAD-BEARING.** `JSON.parse` cannot produce it, so a client object
+  reconstructed from a webhook body — an untrusted, partial shape — can never forge completeness. It is
+  **non-enumerable**, so a spread DROPS it and the stamp is skipped, which **fails CLOSED**. A string key
+  like `fullyPaged: true` would be settable by any fixture that wanted a green test.
+  ⚠ **NEVER BACKFILLED, AND UNLIKE `stage_derived_at` THAT IS NOT MERELY CAUTION — A BACKFILL WOULD
+  RE-CREATE THE DEFECT.** Nothing already stored supports "every connection was paged to exhaustion at
+  this moment", so stamping from `last_synced_at` or `captured_at` would declare partial data complete.
+  **Eligibility is therefore 0 on the day it ships, by design**, and grows at ~58 clients a day.
+  ⚠ **FIVE GUARD-PROOFS, EVERY REVERT BYTE-IDENTICAL BY sha256 ACROSS THREE WATCHED FILES.** (i) the
+  stamp ungated → **2**; (ii) a cut-short page returning instead of throwing → **exactly 1**; (iii) the
+  OLD rule restored, admitting a PARTIALLY captured client → **5**; (iv) completeness dropped entirely,
+  admitting a FACTLESS client too → **7**; (v) `axios` added to the job → **2**, both no-Jobber fences.
+  ⚠ **(iii) AND (iv) ARE DELIBERATELY DIFFERENT INJECTIONS RATHER THAN ONE REPORTED TWICE.** Under the
+  new rule a partially-captured and a factless client are excluded by the SAME predicate, so dropping it
+  would prove one thing and be reported as two. (iii) restores the old rule — admitting the partial while
+  still excluding the factless; (iv) removes completeness altogether. Hence 5 against 7, (iv) strictly
+  wider, which is what shows they are two measurements.
+  ⚠ **AND A BEHAVIOURAL CASE IN THE SPLIT SUITE HAD TO CERTIFY ITS OWN FIXTURE — THE MECHANISM FAILING
+  CLOSED, OBSERVED.** It hand-builds `relatedData`, so the capture saved facts and stamped nothing, and
+  its assertion that the catch-up then finds the client failed. The fixture calls the PRODUCTION
+  certifier now — a literal property would prove nothing — and additionally asserts the stamp landed.
+  ⚠ **TWO EXISTING CASES ARE MARKED SUPERSEDED RATHER THAN DELETED, WITH THE OLD ASSERTIONS QUOTED.**
+  The selector no longer reads fact timestamps, so *"the newest fact is the GREATEST across the tables
+  that HAVE a captured_at"* describes a mechanism that no longer exists — its fixture now asserts the
+  **INVERSE**. And the quote/request `captured_at` LIMITATION is **CLOSED for the selector**: a full
+  capture pages quotes and requests too, so it stamps whichever connection changed. **Neither was a bug;
+  a ruling changed the mechanism.**
+  ⚠ **THE 6c RESET-COVERAGE FENCE CAUGHT THE NEW SUITE AND ITS PRESCRIBED FIX WOULD HAVE BEEN WRONG.**
+  It said to add `cron_job_locks` to the per-test reset. That table is seeded by `initDB` and shared by
+  every suite; clearing it would break `withLock` everywhere. The read moved into `before()`, which the
+  fence deliberately excludes because a table seeded as the suite's BASELINE belongs there.
+  **`KNOWN_GAPS` was NOT widened** — but *"follow the fence's message"* was the wrong move here, and
+  knowing which fences prescribe a fix that does not fit is worth the line.
+  ⚠ **AND THE BACKGROUND WRAPPER REPORTED exit 0 WHILE THE LOG'S OWN `EXIT=` LINE READ 1 — THE FIFTH
+  RECORDED INSTANCE.** On that run React never ran at all, because the gate chains with `&&`.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE 7d-0 COMMIT ITSELF, BECAUSE IT SHIPS
+  TESTS.* It read **2375 / 395 / 1398 / 85**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE 7d-0 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
   Server 2359 → 2375 is **+16**, one new file (`resendInterlock.test.js`); suites 394 → 395 is that
   file's single top-level describe. React did not move — **no `src/` file was touched at all** — and was

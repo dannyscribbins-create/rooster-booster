@@ -43,6 +43,7 @@
 const axios = require('axios');
 const { retryWithBackoff } = require('./retryWithBackoff');
 const { jobberShouldRetry } = require('./retryHelpers');
+const { certifyFullyPaged } = require('./captureCompleteness');
 
 const JOBBER_GRAPHQL_URL = 'https://api.getjobber.com/api/graphql';
 const JOBBER_API_VERSION = '2026-05-12';
@@ -500,7 +501,12 @@ async function fetchFullClient(clientId, token, costMeta = {}) {
 
   assertInvoiceJobsComplete(invoiceNodes, label);
 
-  return {
+  // ⚠ CERTIFIED HERE AND NOWHERE EARLIER, BECAUSE THIS LINE IS THE PROOF. Every
+  // `pageClientConnection` above has resolved, and that helper THROWS rather than returning a short
+  // set — so control only reaches this point when all four connections were drained. A page that
+  // failed, or that reported hasNextPage with no cursor, or that exceeded MAX_PAGES, raises instead,
+  // and nothing is certified. That is what makes the mark honest rather than decorative.
+  return certifyFullyPaged({
     ...client,
     quotes: { nodes: quoteNodes },
     jobs: { nodes: attachInvoicesToJobs(jobNodes, invoiceNodes) },
@@ -509,7 +515,7 @@ async function fetchFullClient(clientId, token, costMeta = {}) {
     // client.requests?.nodes. A bare array here would read as absent and capture nothing — the
     // same undefined-vs-empty distinction that made this whole commit necessary.
     requests: { nodes: requestNodes },
-  };
+  });
 }
 
 /**
