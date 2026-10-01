@@ -1740,6 +1740,28 @@ preview — in that order, and **the order is load-bearing**: §6 records that t
       830 pre-existing, so **six were added by this commit and all six were converted to role
       form before it landed** — the bullet above is what they became. **Do NOT raise the
       baseline.** The remaining 48 are pre-existing and belong to the documentation pass.
+      ⚠ **RE-MEASURED 2026-10-01 BY THE 7d RULINGS PASS: 844 against the same baseline of 782
+      (+62), and the drift is now 14 wider than the figure above.** Measured the only way that
+      separates mine from inherited — `git stash push -- PRE_LAUNCH_CHECKLIST.md`, re-run, pop:
+      **844 before that pass's edits, 847 after, so exactly three were added and all three were
+      converted to role form before the commit landed** (back to 844, verified). The baseline was
+      **not** raised. ⚠ **The lesson is not "be careful": I wrote the three while explicitly
+      intending role form, and only the measurement caught it.** Run `--role-only` after editing a
+      tracked `.md`, and stash-measure before attributing a breach to yourself or to history.
+      ⚠ **AND A SEPARATE, WORSE FINDING IN THE SAME RUN — `MARKER ERRORS — 1`, PRE-EXISTING.**
+      <!-- citecheck:record -->
+      Quoted verbatim, because the two line numbers ARE the finding and are what someone needs in
+      order to fix it — the sanctioned record exemption, not a live citation:
+      *"`PRE_LAUNCH_CHECKLIST.md:9214` second `citecheck:record` with no close (first at `:9193`) —
+      markers do not nest."*
+      <!-- /citecheck:record -->
+      The tool's own header says **an unclosed open marker excludes every
+      citation below it, silently, and is the one way this mechanism can under-report and look
+      healthy.** So the 844 is a LOWER BOUND on the canonical document specifically.
+      ⚠ **IT IS NOT TOTALLY BLIND — MEASURED RATHER THAN ASSUMED:** the three citations this pass
+      added sit far below `:9214` and **were counted** (844 → 847), so the exclusion is not a
+      blanket one past that line. **Fixing the nested marker is its own small job**, and until it
+      is done a falling count on this file is not evidence of repair.
 
 **Money path — the Stripe architecture phase**
 
@@ -3469,6 +3491,100 @@ supplied by the referred person if not.
       Either the remaining workflow gap belongs here as its own item, or "pre-launch blocker" is
       the wrong label for something already shipped. **Decide which before Wave 0.4 closes** —
       an unrecorded blocker is the failure mode R14 exists to prevent.
+
+### ⚠ NAMED BUILD — THE "CALLED-IN REFERRAL" NOTICE (Phase 4, attribution from links)
+
+**Ruled 2026-10-01 (Danny). FILE IT; build in Phase 4, when the link machinery lands.** Scoped from a
+read-only trace of the whole scenario — every claim below is from source, not from reasoning about it.
+
+**THE SCENARIO.** Maria signs up in the app through Tom's peer link, so an "In App" placeholder exists
+under Tom. She then **phones** the contractor. The office creates her Jobber client and does **not**
+fill the referral-source field. **Today she is lost, silently, in three separate ways.**
+
+**WHAT THE TRACE ESTABLISHED — the three answers, each verified:**
+
+1. **Her progress NEVER reaches Tom's pipeline. Her card freezes on "In App" permanently.**
+   `syncSingleClient`'s second statement is `const referredBy = getReferredByValue(client); if
+   (!referredBy) return;` (`server/crm/pipelineSync.js`), so her real Jobber client never gets a
+   `pipeline_cache` row — and that table is documented in `server/db.js` as *referred clients only*.
+   The placeholder cannot be derived either: `deriveReferredStatus` **throws** on an `app_user_*` id
+   (`server/utils/referredStatus.js`, via `isDerivableJobberClientId`), which is Danny ruling 9 and is
+   correct — deriving would return `'lead'` and destroy the one true thing known about the row.
+   Tom's view is a single query, `WHERE contractor_id = $1 AND LOWER(referred_by) = LOWER($2)`
+   (`server/crm/jobber.js`'s `fetchPipelineForReferrer`), and `'app_user'` is left unmapped so it
+   renders as "In App" forever.
+   ⚠ **AND A SECOND ROW CAN EXIST THAT TOM CANNOT SEE.** If her job completes, the job-update webhook
+   writes a **bare** `pipeline_cache` row for her real id carrying only `job_completed_at`, with
+   `referred_by` NULL. The catch-up job then faithfully derives and writes her true status into it —
+   a row holding the right answer that Tom's query can never match, because `LOWER(referred_by) =
+   LOWER($2)` never matches NULL.
+2. **No bonus is possible, and it fails with no reason recorded anywhere.** The gate is in the
+   webhook, not the rules engine: `if (referredBy && invoiceWithJobs) {` in the invoice-paid handler
+   (`server/routes/webhooks/jobber.js`). With the field empty the whole block is skipped,
+   `evaluateReferral` is never called, and **not even the "not qualified" log line runs.**
+   ⚠ **THE IN-APP RELATIONSHIP IS MONEY-BLIND BY CONSTRUCTION.** `users.invited_by_user_id` is set at
+   signup and is read only by rep-book and admin display queries — never by any payout path. The
+   signup route says so itself: *"the bonus flow reads attribution at conversion time … NOTHING IS
+   BUILT FOR IT HERE."*
+3. **Filling the field later recovers the STAGE but never the BONUS.** The `ON CONFLICT` branch uses
+   `$5`, not `EXCLUDED.pipeline_status`, so an existing row never moves backwards, and the status is
+   derived from saved facts — she jumps to her true stage. **But nothing re-plays a past
+   invoice-paid event**: `evaluateReferral` and `writeReferralConversion` have exactly one caller
+   each, both inside that handler. Her card reads "Complete ✓" with **no figure and no balance
+   change**, and only a human re-saving the invoice in Jobber would pay Tom.
+   ⚠ **TWO START-DATE GATES EXIST AND THEY ARE NOT THE SAME DATE.** `invoice_before_start_date`
+   compares the **invoice's** `issuedDate` to `referral_start_date` (`server/referralRules.js`);
+   `pipeline_cache.pre_start_date` compares the **client's** `createdAt` to the same setting. **The
+   latter is never read by `evaluateReferral`** — so a pre-start client with a post-start invoice
+   qualifies in the engine while the card suppresses the bonus. Moot for Maria (her record is new),
+   recorded because a comment in `pipelineSync.js` asserts the opposite.
+   ⚠ **AND YES, TWO CARDS CAN SURVIVE.** The placeholder's only cleanup is
+   `DELETE FROM pipeline_cache WHERE contractor_id = $1 AND LOWER(client_name) = LOWER($2) AND
+   jobber_client_id LIKE 'app_user_%'` (`server/crm/pipelineSync.js`). **Name only — no email, no
+   phone, exact equality after `LOWER()`, no interior-whitespace collapsing.** App "Bob" vs Jobber
+   "Robert" deletes 0 rows and Tom sees two cards, both carrying his name. A trailing space on
+   Jobber's `firstName` does it too: `clientName` is built by joining then `.trim()`, which cannot
+   collapse an interior double space — the exact defect `.claude/rules/backend.md` records as having
+   once been **prescribed** by its own wording, with 22% of `jobber_clients` name rows stored
+   untrimmed. **It also runs below the `if (!referredBy) return`, so in this scenario it never
+   executes at all.** The placeholder's *creation* guard is the same name-only shape and is not even
+   restricted to `app_user_%` rows, so a duplicate can be created as well as survive.
+
+**THE BUILD.** When a client is **created** in Jobber with no referral-source value, compare its
+**email and phone** — both already in hand on the webhook doors, from the full capture — against
+unmatched "In App" referred users. On an **exact email or phone match**, raise a *"likely missed
+referral"* notice **in the admin panel AND to the contractor's designated inbox**: *"<name> was just
+added to Jobber; they joined through <referrer>'s link on <date> — confirm?"* A **one-click confirm in
+RoofMiles** links the client to the referrer and optionally reminds the office to fill the field.
+**Name-only matches are weaker suggestions**, never auto-links.
+
+- [ ] ⚠ **CONFIRMATION IS REQUIRED AND THAT IS THE RULING, NOT A SAFETY MARGIN.** Only a filled
+      referral-source field **or an explicit admin confirmation** makes a client a referral. An
+      automatic link would make RoofMiles decide a money question from a contact coincidence.
+- [ ] ⚠ **NO WRITE TO JOBBER, EVER — the confirm links the client INSIDE RoofMiles.** A36.5.a is a
+      product principle: RoofMiles reads the CRM and is additive, never invasive. The *"just write the
+      referral onto the Jobber client so the office sees it"* version of this feature is **ruled out**,
+      not deferred. The sanctioned channels are the contractor's notification email and the admin
+      dashboard — which is exactly what this build uses.
+- [ ] ⚠ **IT OBEYS THE CONTACT MATCHING STANDARD, AND SAYING SO IS THE POINT.** Email or phone is the
+      PRIMARY key; name is the CONFIRMATION signal. **Every site in this scenario today is plain
+      `LOWER()` name equality — the Standard's "LOW — never link" tier — without the one named
+      exception's safeguards** (`findReferrerCandidates`, threshold 0.6, admin review). Phones
+      normalise with `REGEXP_REPLACE(phone, '[^0-9]', '', 'g')`; names with
+      `BTRIM(REGEXP_REPLACE(LOWER(first || ' ' || last), '[[:space:]]+', ' ', 'g'))` — **`[[:space:]]`,
+      never `\s`**, which on the `pg` path matches the literal letter `s`.
+- [ ] ⚠ **RELATED, NOT THE SAME — do not merge with either neighbour.** The **UNMATCHED-REFERRER
+      RECOVERY FLOW** above is a referral that **names** a referrer who cannot be matched; this is a
+      client with **no referral value at all** whose referrer is already known from a link. The
+      **Missing Referrals** workflow is the *contractor* resolving by hand. Three different gaps.
+- [ ] ⚠ **GATED ON THE LINK MACHINERY, LIKE THE `qr_link` DISCARD LEAK — not on a phase number.** The
+      notice needs an "In App" population created by links. `provisional_source = 'qr_link'` is read
+      by the engine and **written by nothing** today, so build this when the first link is minted.
+- [ ] ⚠ **THE PLACEHOLDER DUPLICATE IS A SEPARATE, SMALLER FIX AND IT IS NOT BLOCKED ON PHASE 4.**
+      The name-only `DELETE` and its name-only creation guard produce two cards, today, for any
+      "Bob"/"Robert" or interior-whitespace pair. Worth scoping on its own — **but note the one-click
+      confirm above would give the link a real identity to match on**, so doing them in the wrong
+      order means building the weaker fix twice.
 
 ### ⚠ NAMED BUILD — ONE-REFERRER-ONE-CONTRACTOR IS RULED BUT UNENFORCED
 
@@ -14355,6 +14471,95 @@ handler's live-object block, and the re-pointed single-writer fence) and the tre
       None reaches the financed gate, so the TRUE-or-NULL change has **no live effect today**; the
       three that clear the paid gate all carry NULL flags, so it is their second line of defence. And
       `crm_custom_field_facts` is empty for all 20, so `no_job_type_found` would be a third.
+
+### 7d — THREE THINGS THE RULINGS PASS FOUND IN THE CODE (read-only, 2026-10-01)
+
+All three were found while answering the rulings, not by running anything. Each is verified against
+source and, where stated, against a read-only production `SELECT` whose text is quoted below.
+
+- [ ] **🔴 THE REFERRAL-SOURCE FIELD SETTING HAS STORAGE AND AN EDITOR AND NO DELIVERY. NOTHING READS
+      IT.** This is CLAUDE.md's *"Classifying whether a value is wired up has five states"* category
+      (d) — delivery — and it is invisible to a check built from the schema and the admin panel,
+      because both halves look finished.
+      · **Storage** — `contractor_crm_settings.referrer_field_name TEXT DEFAULT 'Referred by'`, in
+        that table's `CREATE` in `server/db.js`.
+      · **Editor** — `src/components/admin/CRMSettings.jsx`'s *Referrer Field Mapping* card reads it
+        and `PUT`s it; the handler is `PUT /api/admin/crm/settings` in `server/routes/admin/index.js`.
+      · **Returned** — `getCRMAdapter`'s config carries `referrerFieldName` (`server/crm/index.js`).
+      · **Delivery — ABSENT.** Both extraction sites match a HARDCODED literal:
+        `getReferredByValue` (`server/crm/pipelineSync.js`) and the invoice-paid handler's read
+        (`server/routes/webhooks/jobber.js`) each test
+        `f.label.toLowerCase() === 'referred by'`. Measured: the ONLY consumer of
+        `referrerFieldName` anywhere in `server/` or `src/` is the admin screen reading it back into
+        its own text box. No CRM adapter reads it — `server/crm/jobber.js` contains the identifier
+        zero times.
+      ⚠ **SO A CONTRACTOR WHO TYPES ANYTHING ELSE HAS A SETTING THAT IS ACCEPTED, ECHOED BACK, AND
+      INERT** — their referrals are read from a field named literally "Referred by" or not at all.
+      Silent, and it is money. The card's own copy says *"RoofMiles reads this field to credit the
+      right referrer"*, which is the claim the code does not implement.
+      ⚠ **NO LIVE DAMAGE ON THIS TENANT, AND THAT IS LUCK RATHER THAN DESIGN.** Exactly one row
+      exists and it holds the default:
+      `SELECT contractor_id, referrer_field_name FROM contractor_crm_settings ORDER BY contractor_id`
+      → `accent-roofing-dev / "Referred by"`. It happens to equal the hardcoded literal.
+      ⚠ **AND THE MIGRATION TARGET IS UNAMBIGUOUS, CHECKED RATHER THAN ASSUMED.**
+      `SELECT contractor_id, jobber_field_id, label, field_type, entity, archived, transferable FROM
+      contractor_jobber_fields WHERE entity = 'ALL_CLIENTS' ORDER BY contractor_id, label` returns
+      **9** rows for `accent-roofing-dev`, of which exactly one is a live field labelled
+      `Referred by` — `.../CustomFieldConfigurationText/3655374`, `field_type=text`,
+      `archived=false`. ⚠ **A SECOND ROW IS LABELLED `Referred by Chuck Rigdon`** (text, archived),
+      so **an exact normalised equality is required and a prefix, substring or `ILIKE '%…%'` match
+      returns two** — the substring trap CLAUDE.md records, sitting in live production data. There
+      are also **two** rows labelled `Source` (one archived text, one live dropdown), which the
+      legacy `job_source` mapping already resolves by `resolveMappedField`'s deterministic
+      `(archived IS NOT TRUE) DESC` tie-break.
+      ⚠ **THE OTHER CONTRACTOR ROW CANNOT BE MIGRATED AND MUST NOT BLOCK ONE.** `accent-roofing`
+      holds **17** discovered fields with `entity` **NULL** (pre-7c-1 discovery, never re-run) and
+      therefore **no `ALL_CLIENTS` rows at all**, so a dropdown built from discovery is empty for it
+      and the legacy label path must survive. It has no `contractor_crm_settings` row, so there is
+      nothing to migrate. *(It is also the id CLAUDE.md records as the phantom — production SQL uses
+      `accent-roofing-dev`.)*
+
+- [ ] **🔴 THE INVOICE-PAID DOOR CAPTURES **ZERO** CUSTOM-FIELD FACTS, AND THAT BLOCKS 7d's CATEGORY
+      AT THE ONE DOOR THAT DECIDES MONEY.** `writeCustomFieldFacts` skips any field with no
+      configuration id — `const configurationId = field?.customFieldConfiguration?.id;
+      if (!configurationId) continue;` (`server/utils/factCapture.js`, inside
+      `writeCustomFieldFacts`) — and the webhook door's capture is fed `relatedData`, built from
+      `RELATED_BASE_QUERY` (`server/routes/webhooks/jobber.js`). **That file selects
+      `customFieldConfiguration` zero times**, measured with `grep -c`: `webhooks/jobber.js` **0**,
+      `jobs/repImportScope.js` **0**, `jobs/recaptureClients.js` **0**,
+      `utils/jobberClientFetch.js` **3**.
+      ⚠ **SO THE CAPTURE REPORTS SUCCESS HAVING WRITTEN NOTHING** — the exact shape this repo has
+      now paid for four times (the font columns, `client { id }` on quotes, `from_archived_jobs`,
+      `waitingForFinancedPayment`): a writer reading a field no query selects.
+      ⚠ **AND THE reads-vs-selects FENCE STRUCTURALLY CANNOT SEE IT.** `customFieldConfiguration.id`
+      sits at depth 2 inside `customFields`, and that fence's derivation extracts top-level and
+      single-nested fields only — a limit its own suite fences explicitly. **The fence is not
+      broken; this is outside its stated reach**, which is why the reach was written down.
+      ⚠ **IT EXPLAINS A FIGURE ALREADY IN THIS DOCUMENT.** The bullet above records
+      `crm_custom_field_facts` as empty for all 20 referred clients and files it as a *third* line of
+      defence. It is not a coincidence: the money door cannot write those rows at all.
+      `SELECT contractor_id, entity, COUNT(*) AS n FROM crm_custom_field_facts GROUP BY
+      contractor_id, entity ORDER BY contractor_id, entity` → `ALL_INVOICES 17 · ALL_JOBS 92 ·
+      ALL_QUOTES 111`, and **no `ALL_CLIENTS` row of any kind**, which is consistent: the only
+      selections carrying the id are in `jobberClientFetch.js`, i.e. the paths that use
+      `fetchFullClient`.
+      ⚠ **DO NOT FIX ONLY THE WEBHOOK.** Three client-level `customFields` selections exist and
+      **none** carries the configuration id — `CLIENT_SCALARS` in `jobberClientFetch.js` (which also
+      selects only the `CustomFieldText` member, so a dropdown client field is invisible to it), and
+      the client-level selection inside `RELATED_BASE_QUERY`. Sweep from the writer outward.
+
+- [ ] **`pipeline_cache.status_derived_at` IS WRITTEN AND READ BY NOTHING, WHICH IS PRECISELY THE GAP
+      RULING 2's CATCH-UP EXTENSION CLOSES.** The catch-up selector keys on
+      `jobber_clients.last_full_capture_at` against `jobber_clients.stage_derived_at`
+      (`server/jobs/redecideStaleClients.js`, `selectStaleClients`) — the **displayed** stage's
+      marker. So a client whose displayed stage is already current while its **referrer-visible**
+      `status_derived_at` is stale or NULL is **not selected**, and the referrer's view never
+      catches up. Searched `status_derived_at`: the only non-test readers are the two write
+      statements themselves plus one comment.
+      ⚠ **THE MARKER IS ACCUMULATING AS PREDICTED, so this stops being theoretical shortly.**
+      `SELECT contractor_id, COUNT(*) AS clients, COUNT(last_full_capture_at) AS stamped FROM
+      jobber_clients GROUP BY contractor_id ORDER BY contractor_id` → `accent-roofing-dev` **19598
+      clients, 10 stamped** (0 at the deploy), `accent-roofing` 8 clients, 0 stamped.
 
 ## Security hardening — before launch
 
