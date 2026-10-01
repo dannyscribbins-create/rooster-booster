@@ -1396,6 +1396,24 @@ mode proves no harm was done; it proves nothing about whether the logic is right
       missing a field the component now reads. **A fixture built from what the component EXPECTS cannot
       discover that production sends something else.**
 
+- [ ] ✅ **RULED 2026-10-01 (Danny) — ARCHIVED FIELDS ARE SHOWN BUT **DISABLED** IN THE REFERRER FIELD
+      DROPDOWN AND IN ANY OTHER FIELD-MAPPING DROPDOWN, SO AN ARCHIVED FIELD CANNOT BE NEWLY SELECTED.
+      AN ALREADY-SELECTED ARCHIVED FIELD STILL SHOWS, WITH ITS WARNING.** Scheduled in the cleanup
+      commit right after N4.
+      ⚠ **SHOWN, NOT HIDDEN, AND THAT IS THE LOAD-BEARING HALF.** Removing archived rows from the list
+      would make a contractor who already points at one see "nothing chosen" and invite them to
+      re-pick a setting that was never broken — the same reasoning the dropdown already uses for a
+      field discovery has lost. **Six of Accent's nine `ALL_CLIENTS` fields are archived**, so this is
+      most of the list.
+      ⚠ **AND THE ALREADY-SELECTED CASE MUST STAY SELECTABLE IN THE DOM SENSE** — a `<select>` whose
+      current value is a `disabled` option renders as blank in some browsers, so the currently-stored
+      field needs to remain enabled even when archived, or the screen will lie about what is
+      configured. **That is the one case where "disable every archived option" is wrong**, and it is
+      exactly the kind of detail that turns into a second defect if the rule is applied literally.
+      ⚠ **THE WARNING STAYS EITHER WAY.** `referralSourceField.archived` already drives it, and
+      `CRMSettings.test.jsx` already covers the archived-pick case — so the test to add is the
+      *negative*: an archived field that is NOT selected cannot be chosen.
+
 - [ ] ✅ **RULED 2026-10-01 (Danny, ruling 2) — ENABLE THE SINGLE ESLint RULE `no-undef`, NOT A PRESET.
       SCHEDULED IN THE CLEANUP COMMIT RIGHT AFTER N4.** A clean lint shipped a `ReferenceError` that
       blanked an entire admin page, and `no-undef` names the three offending references exactly —
@@ -14572,6 +14590,52 @@ quadruples is evidence about the estimate, not about the wave:
       The method: a read-only script outside the repo, Jobber reads only, three-way comparison of
       stored vs derived vs live (⚠ **three-way, not two-way** — a binary test that assumes the stored
       stage is `'paid'` misclassified the one `sold→lead` case in this investigation).
+
+## 🔴 C1 — THE ONE START-DATE RULE CANNOT BE DRIVEN FROM FACTS YET (raised 2026-10-01, build stopped)
+
+- [ ] **🔴 THE CLIENT'S JOBBER CREATION DATE IS STORED IN EXACTLY ONE PLACE, AND IT IS THE ROW THE
+      FACT PATH HAS TO CREATE.** Measured 2026-10-01, by grep across `server/`:
+      · `pipeline_cache.jobber_created_at` — **the only store**, written only by `syncSingleClient`'s
+        upsert.
+      · `jobber_clients.created_at` is **`TIMESTAMPTZ DEFAULT NOW()`** — *our* row's insert time, not
+        Jobber's. ⚠ **It is the obvious candidate and it is the wrong column**; reading it would gate
+        the programme on when RoofMiles first saw the client.
+      · `crm_job_facts` / `crm_invoice_facts` / `crm_quote_facts` / `crm_request_facts` each carry a
+        `created_at`, and in every case it is **that RECORD's** date — a job's, an invoice's, a
+        quote's, a request's. **None is the client's.**
+      ⚠ **SO TWO OF DANNY'S RULINGS COLLIDE, AND THE COLLISION IS SILENT IN THE DANGEROUS
+      DIRECTION.** Ruling 1 (referred-by from facts) says the credit CREATES the `pipeline_cache` row
+      in the same pass when a full capture shows a referrer and no row exists, *"so a first paid
+      invoice is credited immediately rather than waiting for the sync"*. The ONE START-DATE RULE says
+      a bonus requires the CLIENT's creation date to be on or after the programme start. **On the
+      create path there is no stored client creation date**, and the catch-up job — which decides from
+      facts and holds no live client — can never obtain one.
+      ⚠ **THE LIKELY OUTCOME OF IMPROVISING IS THE FAILURE CLASS THIS REPO HAS ALREADY PAID FOR
+      TWICE.** With the date NULL and NULL correctly treated as *not eligible* (the financed-flag
+      precedent: unknown is not permission), **the create path would never credit anyone — and ruling
+      1's headline, the immediate credit, would silently never fire.** That is 7c's blocker again: a
+      gate that reads as working and is structurally dark.
+      ⚠ **AND THE DATE IS IN HAND AT CAPTURE TIME, WHICH IS WHAT MAKES THIS CHEAP TO FIX.**
+      `CLIENT_FIELDS` selects the client's `createdAt` (it always did, and Commit A widened the rest of
+      that selection), so every full capture already receives it and simply discards it.
+      **OPTIONS, with a recommendation rather than a menu:**
+      · **(a) RECOMMENDED — persist it.** One nullable column (`jobber_clients.jobber_created_at`),
+        written by `captureClientFacts` from the client object it already holds, backfilled from
+        `pipeline_cache.jobber_created_at` where a row exists. **It is the only option that makes
+        ruling 1 and the start-date rule both true at once**, and the backfill has an honest source:
+        the same value, the same meaning, already stored. ⚠ **It is DDL, so the backup ask applies to
+        C1's push.**
+      · **(b) Capture it as a client "fact".** No DDL, but `crm_custom_field_facts` exists for CUSTOM
+        FIELDS; filing a scalar there would make that table mean two things.
+      · **(c) Gate only the paths that have the date.** ⚠ **Does not actually resolve it** — the
+        catch-up would still never credit a client whose row it had just created, so the asymmetry
+        reappears one step later.
+      · **(d) Treat NULL as eligible.** ⚠ **Advised against:** it contradicts the ruling's own logic
+        and makes unknown into permission, which is the exact defect the financed flag's nullability
+        exists to prevent.
+      ⚠ **WHAT WAS NOT BUILT, SAID PLAINLY: C1 IS NOT STARTED BEYOND THIS FINDING.** The start-date
+      rule is part of C1 by Danny's instruction and cannot be deferred inside it — a credit path
+      without it pays on pre-start clients, which is the thing the rule exists to stop.
 
 ## 7d — TWO RULINGS NEEDED BEFORE THE CREDIT CAN SHIP (raised 2026-10-01, build stopped)
 
