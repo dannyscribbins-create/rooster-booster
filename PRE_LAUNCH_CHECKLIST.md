@@ -14580,6 +14580,31 @@ source and, where stated, against a read-only production `SELECT` whose text is 
       **none** carries the configuration id — `CLIENT_SCALARS` in `jobberClientFetch.js` (which also
       selects only the `CustomFieldText` member, so a dropdown client field is invisible to it), and
       the client-level selection inside `RELATED_BASE_QUERY`. Sweep from the writer outward.
+      ✅ **CLOSED BY COMMIT A (`a5a8809`, 2026-10-01).** Every client-, job-, quote- and
+      invoice-level selection on every capture door now shares ONE imported constant carrying
+      `customFieldConfiguration { id }` and both value members; `ALL_CLIENTS` is captured as a fourth
+      stage; and a depth-2 fence reads the RESOLVED query text per entity, which is the reach the
+      reads-vs-selects fence states it does not have. Seven guard-proofs, one of which measured a
+      needle of mine at width 0.
+
+- [ ] ⚠ **RULED 2026-10-01 (Danny): `repImportScope.js` STAYS EXCLUDED FROM CUSTOM-FIELD CAPTURE, AND
+      THIS IS A DECISION RATHER THAN A GAP SOMEONE SHOULD HELPFULLY CLOSE.** It is filed here, beside
+      the capture-doors entry above, precisely because the next reader will see four doors widened and
+      one not, and read the fifth as an oversight.
+      **The reason, in the order it decides the question:** it captures only the rep **WINDOW** per
+      entity, so its fact set is **incomplete by construction** — this is the same property CLAUDE.md
+      records as the cause of 212 stored-`'paid'` clients holding invoice facts with no job facts. It
+      **never decides** a status. And it **can never stamp the full-capture marker**: the marker is
+      written inside `captureClientFacts`, which that job does not call at all — it drives the
+      individual fact writers directly.
+      ⚠ **SO FACTS WRITTEN FROM IT WOULD BE PARTIAL DATA THAT NOTHING MARKS AS PARTIAL**, and
+      `categorySource` reads per client across stages with no way to tell a missing invoice copy from
+      an absent one. The catch-up's own ruling — decide ONLY from complete history — exists to stop
+      exactly that, and it gates on a marker this job cannot write.
+      ⚠ **IT IS NOT MERELY "NOT WIDENED": IT SELECTS NO `customFields` ANYWHERE AND CALLS
+      `writeCustomFieldFacts` NEVER**, measured 2026-10-01. So enabling it would mean ADDING both a
+      selection and a writer call to a bulk historical import — a scope decision, not a one-line
+      parity fix, which is why it needed a ruling instead of a sweep.
 
 - [ ] **`pipeline_cache.status_derived_at` IS WRITTEN AND READ BY NOTHING, WHICH IS PRECISELY THE GAP
       RULING 2's CATCH-UP EXTENSION CLOSES.** The catch-up selector keys on
