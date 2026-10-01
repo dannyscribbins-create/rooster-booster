@@ -14614,6 +14614,58 @@ source and, where stated, against a read-only production `SELECT` whose text is 
       `status_derived_at` is stale or NULL is **not selected**, and the referrer's view never
       catches up. Searched `status_derived_at`: the only non-test readers are the two write
       statements themselves plus one comment.
+      ✅ **RULED 2026-10-01 (Danny, ruling 2) — FOLD THE FIX INTO COMMIT C: any path that writes the
+      displayed stage FROM A FACT DERIVATION also stamps `stage_derived_at`.** The live gap is
+      `requestAttribution`'s `writeStage`, which writes `pipeline_stage` and **never** stamps the
+      marker — measured by grep: the column appears in `redecideStaleClients.js` and
+      `webhooks/jobber.js` only. **The consequence is that a client whose stage that path wrote looks
+      NEVER DECIDED to the catch-up, permanently, until something else derives it.**
+      ⚠ **AND `client-create` / `client-update` CAPTURING WITHOUT DERIVING IS ACCEPTED AS IS**, not
+      folded in: those doors stamp `last_full_capture_at` and leave `stage_derived_at` alone, so the
+      catch-up makes the FIRST derivation within one run. That is the mechanism working, not a gap.
+
+- [x] ✅ **RULED 2026-10-01 (Danny, ruling 1): THE CATCH-UP ELIGIBILITY CLIMB AFTER COMMIT A IS
+      ACCEPTED.** Commit A newly lets the webhook doors stamp the full-capture marker, and the first
+      run after the deploy therefore cleared a one-time backlog. **Measured on two consecutive runs,
+      quoted rather than summarised:**
+      `eligible 32, decided 32, changed 0, failed 0, skipped-partial 19565, beyond limit 0 (923ms)`
+      at 13:40Z, then
+      `eligible 7, decided 7, changed 0, failed 0, skipped-partial 19560, beyond limit 0 (182ms)`
+      at 14:10Z.
+      ⚠ **`changed 0` ON BOTH RUNS IS THE LOAD-BEARING NUMBER** — no stage moved at all, so no stage
+      moved BACKWARDS, which is the one thing a referrer must never see. Self-clearing, bounded by
+      `DEFAULT_LIMIT` 200, and the work it does is the FIRST derivation for clients whose door
+      captured without deciding rather than a re-decision of a decided client.
+
+- [ ] 🔴 **RULED 2026-10-01 (Danny, ruling 3) — A LAUNCH-GATE ON COMMIT C's PUSH, NOT ON ITS BUILD:
+      BEFORE PUSHING COMMIT C, CONFIRM FROM THE LOGS THAT AT LEAST ONE **ORGANIC** INVOICE-PAID
+      WEBHOOK HAS RUN ON THE COMMIT A CODE AND WROTE CUSTOM-FIELD FACTS** — `ALL_INVOICES` plus the
+      linked job/quote. **If none has arrived by then, STOP and tell Danny so he can trigger one.**
+      ⚠ **WHY IT IS A GATE AND NOT A FORMALITY: COMMIT C DECIDES MONEY FROM THOSE FACTS, AND THAT
+      DOOR'S CAPTURE IS CURRENTLY PROVEN ONLY BY INFERENCE.** Measured over the ~45 minutes after the
+      Commit A deploy: **zero** invoice-paid webhooks. Doors that DID run — `client-create`,
+      `client-update`, `job-create`, `quote-update`, `request-attribution` — exercise the *identical*
+      path (same `RELATED_BASE_QUERY`, same `captureClientFacts`), which is strong evidence and is
+      **not** an observation of the invoice-paid door.
+      ⚠ **AND THE SINCE-DEPLOY FACT COUNTS SHOW EXACTLY THE HOLE:** `ALL_CLIENTS` 9 · `ALL_JOBS` 21 ·
+      `ALL_QUOTES` 4 · **`ALL_INVOICES` 0**. ⚠ **Do NOT read the total `ALL_INVOICES` 17 → 56 as
+      evidence**: that growth landed at 13:20Z, **before** the 13:30Z deploy, from `repImportScope`'s
+      sweep through `fetchFullClient`, which already selected the configuration id. Crediting it to
+      Commit A would be the shape this repo keeps recording — a true number attached to the wrong cause.
+      ⚠ **THE CHEAP TRIGGER, so nobody waits on chance:** re-saving an invoice in Jobber for a referred
+      client refires `INVOICE_PAID`.
+
+- [ ] ⚠ **RULED 2026-10-01 (Danny, ruling 4) — THE BACKUP DECISION IS DANNY'S, NOT CLAUDE'S.** Before
+      any push that changes the database **SCHEMA** (DDL), **ask Danny to click Run Backup Now and wait
+      for his confirmation.** The sharpened rule is resident in `CLAUDE.md` under *Deployment* — it
+      binds at the moment of a push, before any document is open, which is the one moment a checklist
+      cannot reach — and it is indexed here because this is the canonical list.
+      ⚠ **IT WAS RULED BECAUSE I TOOK THE JUDGEMENT MYSELF.** Pushing Commit A I verified the range
+      held no DDL, concluded no backup was needed, pushed, and **raised it afterwards**. The
+      verification was correct; the decision was not mine. **No action needed for `c17f8cc`** (Danny's
+      ruling), and rows-only pushes still do not require one — but they are stated in the report rather
+      than decided quietly.
+
       ⚠ **THE MARKER IS ACCUMULATING AS PREDICTED, so this stops being theoretical shortly.**
       `SELECT contractor_id, COUNT(*) AS clients, COUNT(last_full_capture_at) AS stamped FROM
       jobber_clients GROUP BY contractor_id ORDER BY contractor_id` → `accent-roofing-dev` **19598

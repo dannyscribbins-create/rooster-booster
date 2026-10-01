@@ -141,6 +141,18 @@ const CRM_INSTRUCTIONS = {
 // ── Campaign field mapping constants ─────────────────────────────────────────
 
 const CFM_VALID_KEYS = ['work_category', 'job_source', 'material_type', 'assigned_rep'];
+
+// ⚠ THE REFERRAL-SOURCE FIELD IS NOT ONE OF THE FOUR ABOVE, DELIBERATELY. Those are the campaign
+// mappings, stored in `contractor_settings.contractor_field_mappings` and managed by Card 4b — whose
+// PATCH rejects any key outside that list AND rebuilds the whole blob, so a fifth key there would be
+// refused on write and then wiped by an unrelated save. The referral-source field lives on
+// `contractor_crm_settings` beside its own fallback and is managed by Card 3.
+//
+// ⚠ AND IT MUST BE A CLIENT FIELD. The referrer is named on the client; the server refuses any other
+// entity, and this constant is what keeps the picker from offering one. It mirrors
+// `REFERRAL_SOURCE_ENTITY` in `server/utils/referralSourceField.js` — stated at both sites, because a
+// value shared by a screen and a validator is exactly the pair that drifts silently.
+const REFERRAL_SOURCE_ENTITY = 'ALL_CLIENTS';
 const CFM_KEY_LABELS = {
   work_category: 'Work category',
   job_source:    'Job source',
@@ -239,6 +251,10 @@ export default function CRMSettings() {
 
   // Campaign field mapping
   const [cfmFields, setCfmFields]           = useState([]);
+  // Commit B — the picked referral-source field, and the id the Save button will send. The server
+  // returns the resolved descriptor (including `archived` / `missing`); this holds only the selection.
+  const [referralSourceField, setReferralSourceField]     = useState(null);
+  const [referralSourceFieldId, setReferralSourceFieldId] = useState('');
   const [cfmSelections, setCfmSelections]   = useState({});
   const [cfmLoading, setCfmLoading]         = useState(true);
   const [cfmDiscovering, setCfmDiscovering] = useState(false);
@@ -289,6 +305,10 @@ export default function CRMSettings() {
       const d = await r.json();
       setStatus(d);
       setFieldName(d.referrerFieldName || 'Referred by');
+      // Commit B. `referralSourceField` is the RESOLVED descriptor; the select holds only its id, so an
+      // unpicked contractor shows the named fallback rather than an empty control with no explanation.
+      setReferralSourceField(d.referralSourceField || null);
+      setReferralSourceFieldId(d.referralSourceField?.fieldId || '');
       setSyncInterval(d.syncIntervalMins || 30);
       setLastSyncedAt(d.lastSyncedAt || null);
       setReferralStartDate(d.referralStartDate || null);
@@ -463,11 +483,20 @@ export default function CRMSettings() {
   async function handleSaveFieldName() {
     setFieldSaving(true);
     try {
+      // ⚠ `referrerFieldName` IS STILL SENT, UNCHANGED. It is the legacy fallback for a contractor who
+      // picks nothing, not a duplicate of the picked field — dropping it here would silently clear the
+      // only thing that makes the unpicked path behave as it did.
       await fetch(`${BACKEND_URL}/api/admin/crm/settings`, {
         method: 'PUT',
         headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ referrerFieldName: fieldName }),
+        body: JSON.stringify({
+          referrerFieldName: fieldName,
+          referralSourceFieldId: referralSourceFieldId || null,
+        }),
       });
+      // Re-read so the archived / missing warnings reflect what the server resolved, rather than what
+      // the browser guessed from the option it just picked.
+      await loadStatus();
       setFieldSaved(true);
       if (fieldSavedTimer.current) clearTimeout(fieldSavedTimer.current);
       fieldSavedTimer.current = setTimeout(() => setFieldSaved(false), 2000);
@@ -1006,22 +1035,87 @@ export default function CRMSettings() {
   }
 
   // ── Card 3 ── Referrer field mapping ────────────────────────────────────────
+  //
+  // ⚠ A DROPDOWN OF DISCOVERED CLIENT FIELDS, NOT A FREE-TEXT BOX. The box stored a LABEL that nothing
+  // read: both extraction sites matched a hardcoded 'referred by', so a contractor who typed anything
+  // else had a setting that was accepted, echoed back, and inert — on the field that decides who gets
+  // paid. The copy here claimed the opposite ("reads this field to credit the right referrer"), which
+  // is why it is rewritten rather than trimmed.
+  //
+  // ⚠ ONLY CLIENT FIELDS ARE OFFERED. The referrer is named on the client; a job- or invoice-entity
+  // configuration could never match a client record, and the server refuses one.
   function renderFieldMappingCard() {
+    const clientFields = (cfmFields || []).filter(f => f.entity === REFERRAL_SOURCE_ENTITY);
+    const picked = referralSourceField;
+    const pickedId = picked?.fieldId || '';
+    // ⚠ A PICKED FIELD THAT DISCOVERY NO LONGER LISTS MUST STILL SHOW AS SELECTED. Dropping it from the
+    // list would render the card as "nothing chosen" and invite an admin to re-pick a setting that was
+    // never broken — the same reasoning `cfmSelectionsFromMappings` records for the legacy label form.
+    const pickedIsListed = clientFields.some(f => f.jobber_field_id === pickedId);
+
     return (
       <Card>
         <SectionHeading>Referrer Field Mapping</SectionHeading>
         <p style={{ margin: '0 0 20px', fontSize: 14, color: AD.textSecondary, lineHeight: 1.65 }}>
-          This is the field in your CRM where your team records who referred the customer.
-          The name must match exactly — Rooster Booster reads this field to credit the right referrer.
+          Which field in {crmDisplayName} does your team use to record who referred a customer?
+          Pick it from your own client fields — RoofMiles reads that field to credit the right referrer.
         </p>
-        <div style={{ maxWidth: 360, marginBottom: 18 }}>
-          <SettingsInput
-            label="Referrer Field Name"
-            value={fieldName}
-            onChange={setFieldName}
-            placeholder="e.g. Referred by"
-          />
+
+        {clientFields.length === 0 && (
+          <p style={{ margin: '0 0 16px', fontSize: 13, color: AD.textSecondary }}>
+            No client fields discovered yet. Run <strong>Discover Fields</strong> first, then choose one here.
+          </p>
+        )}
+
+        <div style={{ maxWidth: 420, marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: AD.textPrimary, marginBottom: 6 }}>
+            Referrer Field
+          </label>
+          <select
+            value={pickedId}
+            onChange={(e) => setReferralSourceFieldId(e.target.value)}
+            disabled={clientFields.length === 0}
+            style={{
+              width: '100%', padding: '10px 12px', fontSize: 14, borderRadius: 8,
+              border: `1px solid ${AD.border}`,
+              background: clientFields.length === 0 ? AD.bgCardTint : AD.bgCard,
+              color: AD.textPrimary,
+            }}
+          >
+            <option value="">
+              {/* ⚠ THE FALLBACK IS NAMED, NOT HIDDEN. Choosing nothing is legitimate and keeps the
+                  legacy behaviour — the stored name, matched exactly. An admin should be able to see
+                  which field that is without reading the code. */}
+              Use the saved name — “{fieldName || 'Referred by'}” (exact match)
+            </option>
+            {clientFields.map(f => (
+              <option key={f.jobber_field_id} value={f.jobber_field_id}>
+                {f.display_label || f.label}
+              </option>
+            ))}
+            {pickedId && !pickedIsListed && (
+              <option value={pickedId}>
+                {picked?.displayLabel || picked?.label || 'Previously chosen field'}
+              </option>
+            )}
+          </select>
         </div>
+
+        {picked?.missing && (
+          <p data-referral-field-warning="missing" style={{ margin: '0 0 14px', fontSize: 13, color: AD.amberText }}>
+            ⚠ The field you chose is no longer in your {crmDisplayName} fields. RoofMiles is still
+            reading it by ID, so referrals keep working — but run <strong>Discover Fields</strong> to
+            confirm it still exists, or choose another.
+          </p>
+        )}
+        {picked?.archived && (
+          <p data-referral-field-warning="archived" style={{ margin: '0 0 14px', fontSize: 13, color: AD.amberText }}>
+            ⚠ The field you chose is <strong>archived</strong> in {crmDisplayName}. Existing values are
+            still read, but your team cannot fill it on new clients — choose a live field if that is not
+            what you intend.
+          </p>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <PrimaryBtn onClick={handleSaveFieldName} loading={fieldSaving}>Save</PrimaryBtn>
           {fieldSaved && <span style={{ fontSize: 13, color: AD.greenText }}>Saved ✓</span>}

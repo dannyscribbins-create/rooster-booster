@@ -1139,3 +1139,55 @@ observable — `facts newer than decision` is a query anyone can run.
 ⚠ **AND THE ALERT IS THE OTHER HALF, FOR THE REASON THE `$3` DEFECT DEMONSTRATED**: that failure ran
 for three hours at severity INFO with `alert: false`, and nothing surfaced it. A correct behaviour
 nobody can see is how a 10-minute expiry survived on a 30-minute tick.
+
+---
+
+## TWO START-DATE GATES, AND THEY COMPARE DIFFERENT DATES (recorded 2026-10-01, Danny ruling 3)
+
+**Recorded because a source comment asserted the opposite, and asserted it in the reassuring
+direction.** `server/crm/pipelineSync.js` said *"Pre-start-date clients never trigger bonus logic
+(checked upstream by hard gate)"*. That is **false of the money engine**, and a reader who believed it
+would conclude the engine is protected by a gate it does not consult.
+
+**No behaviour changed in Commit B.** The comment was corrected and the gap recorded. This section is
+the record; the behaviour question is open.
+
+### What is actually there
+
+Both gates read the same setting — `contractor_crm_settings.referral_start_date` — and compare it to
+**different dates**:
+
+| gate | date compared | where | what it does |
+|---|---|---|---|
+| `invoice_before_start_date` | the **INVOICE's** `issuedDate` | `evaluateReferral`, `server/referralRules.js` | refuses the conversion. **The only start-date gate the engine applies.** |
+| `pipeline_cache.pre_start_date` | the **CLIENT's** `createdAt` | computed in `syncSingleClient`, stored on the row | suppresses `bonusEarned` on the referrer's card, suppresses `users.paid_count`, suppresses notifications, and writes a `flagged_referrals` row during initial sync. **Gates DISPLAY, not the engine.** |
+
+⚠ **`evaluateReferral` DOES NOT READ `pre_start_date`.** Measured: searching
+`pre_start_date|isPreStart|preStart` across `server/` returns **zero hits** in `server/referralRules.js`.
+
+### The reachable consequence, stated plainly
+
+**A pre-start-date CLIENT with a post-start-date INVOICE qualifies in the engine and gets a
+`referral_conversions` row, while the card shows `bonusEarned = false` and the balance excludes it.**
+That is a ledger row the referrer cannot see — money recorded as owed on a surface that says nothing is.
+
+⚠ **IT IS NOT KNOWN WHETHER ANY SUCH ROW EXISTS TODAY, AND SAYING OTHERWISE WOULD BE INVENTING A
+SOURCE.** It needs a read of `referral_conversions` joined to `pipeline_cache.pre_start_date`. Filed
+rather than asserted.
+
+### Why neither gate is simply "the right one"
+
+- **The invoice date is the right question for the engine.** The programme pays on work invoiced after
+  it started; a client who existed before it started can still generate qualifying work.
+- **The client date is the right question for the card.** A client who predates the programme was never
+  a referral, and showing them a bonus would be the product claiming credit for pre-existing work.
+
+**So the two gates are not a duplication to be collapsed.** They answer different questions and both
+are defensible. ⚠ **What is NOT defensible is the engine and the card disagreeing silently** — one
+writing a ledger row the other hides. Whichever way that is resolved, it is a ruling about what a
+referrer is owed, not a refactor.
+
+⚠ **AND THE OBVIOUS FIX IS THE WRONG ONE TO REACH FOR FIRST.** Adding `pre_start_date` to
+`evaluateReferral` would make the engine refuse those conversions — which is a decision to **not pay**
+on work the programme's own invoice rule accepts. That is a change to the payout promise and belongs to
+Danny, not to a commit tidying a comment.

@@ -3013,6 +3013,77 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`INSERT INTO cron_job_locks (job_name) VALUES ('redecide_stale_clients')
                     ON CONFLICT DO NOTHING`);
 
+  // ── COMMIT B — THE REFERRAL-SOURCE FIELD IS PICKED, NOT TYPED ────────────────────────────────
+  //
+  // ⚠ `referrer_field_name` IS NOT REPLACED AND MUST NOT BE. It stays as the LEGACY FALLBACK for a
+  // contractor who has picked nothing: the resolver matches its value by exact normalised label, and it
+  // defaults to 'Referred by', so anyone who never changed it sees no change. Overwriting it with the
+  // picked field's label would destroy the one thing that makes the unmapped path behave as it did.
+  //
+  // ⚠ THREE COLUMNS RATHER THAN A FIFTH KEY IN `contractor_field_mappings`, AND THE REASON IS MEASURED
+  // FROM THE HANDLER: `PATCH /api/admin/jobber/field-mappings` rejects any key outside its four with a
+  // 400 **and** rebuilds the whole JSONB from those four, so a `referral_source` key there would be
+  // refused on write and then WIPED by an unrelated save from the campaign card. The setting also
+  // already lives in this table beside its own fallback, so one row answers the whole question.
+  // `parseMappingEntry` / `resolveMappedField` / `describeField` are still the resolution path.
+  await pool.query(`ALTER TABLE contractor_crm_settings
+    ADD COLUMN IF NOT EXISTS referrer_field_id TEXT`);
+  await pool.query(`ALTER TABLE contractor_crm_settings
+    ADD COLUMN IF NOT EXISTS referrer_field_entity TEXT`);
+  // Display only, and never matched on — the same role `label` plays in a field mapping.
+  await pool.query(`ALTER TABLE contractor_crm_settings
+    ADD COLUMN IF NOT EXISTS referrer_field_label TEXT`);
+
+  // ── THE MIGRATION, AND IT REFUSES RATHER THAN GUESSES ───────────────────────────────────────
+  //
+  // ⚠ IT RESOLVES EACH CONTRACTOR'S OWN TYPED LABEL AGAINST ITS OWN DISCOVERED CLIENT FIELDS, AND ONLY
+  // WHEN THERE IS EXACTLY ONE LIVE EXACT MATCH. Accent's typed value is the default 'Referred by', and
+  // its `ALL_CLIENTS` set holds exactly one live field with that exact label —
+  // `…CustomFieldConfigurationText/3655374` — so the migration is unambiguous AND
+  // behaviour-preserving. ⚠ A second row is labelled `Referred by Chuck Rigdon` (archived), so the
+  // match is `=` on the normalised label and NEVER a prefix: `LIKE 'referred by%'` would find two.
+  //
+  // ⚠ ZERO OR MANY MATCHES LEAVES THE CONTRACTOR ON THE LEGACY PATH, DELIBERATELY. Picking one of
+  // several same-named configurations during a migration would bake in exactly the coin-flip this
+  // change exists to end — the identical reasoning `fieldMapping.js` records for refusing to convert
+  // legacy `work_category` labels automatically. An unmigrated contractor keeps the behaviour it had.
+  //
+  // ⚠ AND IT NEVER OVERWRITES A PICK. `WHERE referrer_field_id IS NULL` makes it a permanent no-op once
+  // an admin has chosen, so it cannot undo a deliberate change on a later boot.
+  //
+  // ⚠ THE WHOLE STATEMENT IS ONE UPDATE WITH A CORRELATED SUBQUERY, so a contractor with no settings
+  // row, no discovered fields, or an un-run discovery is simply not matched — no branch, nothing to
+  // get wrong per-tenant.
+  const referralFieldMigration = await pool.query(
+    `UPDATE contractor_crm_settings s
+        SET referrer_field_id     = m.jobber_field_id,
+            referrer_field_entity = m.entity,
+            referrer_field_label  = m.label
+       FROM (
+         SELECT f.contractor_id, f.jobber_field_id, f.entity, f.label
+           FROM contractor_jobber_fields f
+          WHERE f.entity = 'ALL_CLIENTS'
+            AND f.archived IS NOT TRUE
+       ) m
+      WHERE s.contractor_id = m.contractor_id
+        AND s.referrer_field_id IS NULL
+        AND BTRIM(REGEXP_REPLACE(LOWER(m.label), '[[:space:]]+', ' ', 'g'))
+          = BTRIM(REGEXP_REPLACE(LOWER(COALESCE(s.referrer_field_name, 'Referred by')), '[[:space:]]+', ' ', 'g'))
+        AND (
+          SELECT COUNT(*) FROM contractor_jobber_fields f2
+           WHERE f2.contractor_id = s.contractor_id
+             AND f2.entity = 'ALL_CLIENTS'
+             AND f2.archived IS NOT TRUE
+             AND BTRIM(REGEXP_REPLACE(LOWER(f2.label), '[[:space:]]+', ' ', 'g'))
+               = BTRIM(REGEXP_REPLACE(LOWER(COALESCE(s.referrer_field_name, 'Referred by')), '[[:space:]]+', ' ', 'g'))
+        ) = 1
+     RETURNING s.contractor_id, s.referrer_field_id`
+  );
+  if (referralFieldMigration.rowCount > 0) {
+    // diagnostic log — intentional
+    console.log(`[referral-source] migrated ${referralFieldMigration.rowCount} contractor(s) to a picked client field`);
+  }
+
   await backfillAssignedAt(pool);
   await applyAssignedAtNotNull(pool);
 

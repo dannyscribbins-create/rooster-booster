@@ -433,8 +433,75 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2418 server tests across 402 suites, and 1398 React tests across 85 files** (measured 2026-10-01 by the Commit A capture-selection commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2418 · suites 402 · pass 2418 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE COMMIT A COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2445 server tests across 408 suites, and 1398 React tests across 85 files** (measured 2026-10-01 by the Commit B referral-source commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2445 · suites 408 · pass 2445 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE COMMIT B COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2418 → 2445 is **+27**, one new file (`referralSourceField.test.js`); suites 402 → 408 is that
+  file's **six** top-level describes. React did not move and was re-measured — **and that is the reading
+  worth checking, because this commit DOES touch `src/`**: `CRMSettings.jsx` is EDITED, and
+  `adminBranding.test.jsx` emits one case per swept FILE, not per edit. No React test mounts
+  `CRMSettings` at all (searched). **All four predicted before the run and matched.** Counted with an
+  anchored `^\s*it\(` (27); every loop checked for POSITION — two in the fixture helpers, one in
+  `beforeEach`, one inside an `it()` body — so **none wraps a case**.
+  ⚠ **THE COMMIT'S SUBJECT: A SETTING WITH STORAGE, AN EDITOR, AND NO DELIVERY.**
+  `contractor_crm_settings.referrer_field_name` was stored, edited, PATCHed and returned in the adapter
+  config — and read by NOTHING. Both extraction sites matched a hardcoded
+  `f.label.toLowerCase() === 'referred by'`. Measured: the only consumer of `referrerFieldName` anywhere
+  in `server/` or `src/` was the admin screen reading it back into its own box. **So a contractor who
+  typed anything else had a setting that was accepted, echoed back and inert, on the field that decides
+  who gets paid.** Five-states category (d), invisible to a check built from the schema and the admin
+  panel because both halves look finished. ⚠ **No live damage, and that was luck: one row existed and it
+  held the default, which happens to equal the literal.**
+  ⚠ **THE FIELD IS PICKED BY CONFIGURATION ID, AND THE LABEL COLLIDES ON THIS TENANT TOO.** Accent has
+  NINE `ALL_CLIENTS` configurations including BOTH `Referred by` (live) and `Referred by Chuck Rigdon`
+  (archived), plus TWO rows labelled `Source`. **A prefix, substring or `ILIKE` match returns two and one
+  of them is dead**, so the fallback is an EXACT normalised match (trim + collapse + case-fold) and the
+  primary is the stored id. The migration moved Accent to `…CustomFieldConfigurationText/3655374`,
+  verified live in the `ALL_CLIENTS` facts Commit A started capturing.
+  ⚠ **THE RESOLUTION IS BY ID; THE DISCOVERED ROW IS ONLY FOR DISPLAY.** A picked field that discovery
+  no longer lists is marked `missing` and **still resolves**, because a lagging discovery table must not
+  stop a contractor earning. Injection (9) makes it refuse and reds that case.
+  ⚠ **AND THE READER THROWS WHEN THE CALLER'S QUERY CANNOT ANSWER THE QUESTION.** If a field is mapped
+  by id and no custom field on the record carries `customFieldConfiguration`, returning null would read
+  as "not referred" and stop a payout silently — the class Commit A closed. It is LOUD instead. An empty
+  array is a different thing and stays a legitimate null.
+  ⚠ **THE BULK QUERIES HAD TO BE WIDENED TOO, WHICH THE SPEC DID NOT NAME.** `getReferredByValue` is fed
+  by `pipelineSync`'s two BULK list queries, which selected `... on CustomFieldText { label valueText }`
+  — no configuration id — so a mapped contractor would have hit that throw on every client. They take a
+  **value-only** selection (the two shapes this product reads) rather than the full capture one, because
+  cost scales with a 25-client page and they write no facts.
+  ⚠ **STORED ON `contractor_crm_settings`, NOT AS A FIFTH KEY IN `contractor_field_mappings`, AND THE
+  REASON IS MEASURED FROM THE HANDLER.** `PATCH /api/admin/jobber/field-mappings` **400s on any key
+  outside its four** AND rebuilds the whole JSONB from those four — so a `referral_source` key there
+  would be refused on write and then WIPED by an unrelated save from the campaign card.
+  `parseMappingEntry` / `resolveMappedField` / `describeField` are still the resolution path.
+  ⚠ **TWO GUARD-PROOFS FIRST REDDENED ONLY A SOURCE FENCE, AND THAT WAS THE ENTRY WORTH KEEPING.**
+  The migration's behavioural cases drove a **RETYPED** copy of the SQL, so injecting `db.js` could not
+  change them: production could have been broken with all eight green. **That is this file's own `$3`
+  lesson, reproduced by the session quoting it.** The suite now EXTRACTS the statement from `db.js` and
+  executes it; (6) and (7) then red **2** each, one behavioural.
+  ⚠ **AND THE EXTRACTION ITSELF MATCHED THE WRONG STATEMENT FIRST.**
+  `UPDATE contractor_crm_settings s` appears **twice** in `db.js` — the other is `rep_window_start` — so
+  the first match sliced 340 characters of an unrelated migration. **A length floor written from the
+  SUBJECT's plausible size caught it**; a floor built from the needle's own shape would not have.
+  ⚠ **NINE GUARD-PROOFS, EVERY REVERT AN INVERSE PATCH IN A `finally` PROVEN BYTE-IDENTICAL BY sha256
+  ACROSS FOUR WATCHED FILES.** (1) the resolver matches by LABEL despite holding an id → **1**;
+  (2) the fallback becomes a PREFIX match, admitting the archived Chuck Rigdon field → **1**; (3) an
+  unmapped contractor read by the hardcoded literal instead of its stored name → **1**; (4) `pipelineSync`
+  spells its own match again so the two doors can disagree → **1**; (5) the loud throw removed → **1**;
+  (6) the migration stops requiring EXACTLY ONE match → **2**; (7) the migration overwrites a deliberate
+  pick → **2**; (8) the bulk selection loses the configuration id → **1**; (9) a `missing` field stops
+  resolving → **1**.
+  ⚠ **A FALSY `contractorId` FALLS BACK TO THE DEFAULT LABEL, NOT TO null, AND A TEST IS WHY.**
+  `syncSingleClient` tolerates a falsy contractor — `attributionWiring.test.js` case (c) drives it — and
+  a null descriptor would return null for every client, making that whole path a silent no-op. The
+  default label is what the hardcoded literal did, so this is the OLD behaviour spelled out.
+  ⚠ **AND MY OWN FENCE READ A COMMENT AS THE DEFECT.** The "never a prefix match" assertion ran over RAW
+  `db.js`, whose comment NAMES `LIKE 'referred by%'` as the form it rejects. Comments are stripped now —
+  this is the one shape where rewording is not the fix, because the comment has to be able to say what it
+  removed.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE COMMIT A COMMIT ITSELF, BECAUSE IT SHIPS
+  TESTS.* It read **2418 / 402 / 1398 / 85**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE COMMIT A COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2399 → 2418 is **+19**, one new file (`customFieldSelectionParity.test.js`); suites 400 → 402
   is that file's **two** top-level describes. React did not move — **no `src/` file was touched at
   all** — and was re-measured. **All four predicted before the run and matched.** Counted with an
@@ -4872,6 +4939,18 @@ missing the standard trailers** — which is how you can spot the others, if the
 - Never use `SELECT *` in production queries (exception: backup.js — documented).
 - Never run destructive SQL without explicit instruction and confirmed backup.
 - Always click Run Backup Now before any migration or DB-touching push.
+  ⚠ **SHARPENED BY DANNY 2026-10-01, AND IT MOVES A JUDGEMENT OFF CLAUDE: BEFORE ANY PUSH THAT
+  CHANGES THE DATABASE **SCHEMA** (DDL), ASK DANNY TO CLICK RUN BACKUP NOW AND **WAIT FOR HIS
+  CONFIRMATION**.** Only he can click it, so "I checked and it looked safe" is not a substitute —
+  **a judgement that a push is safe without a backup is his to make, not Claude's.**
+  ⚠ **THE OCCASION, RECORDED BECAUSE IT WAS MY MISS RATHER THAN A HYPOTHETICAL.** Pushing Commit A
+  I verified mechanically that the range contained no DDL (`db.js` untouched, no `ALTER`/`CREATE`),
+  concluded no backup was needed, and pushed — **then mentioned it afterwards.** The verification was
+  right and the decision was not mine to take. Danny ruled no action was needed for that push
+  (`c17f8cc`) and ruled the asking mandatory from here.
+  ⚠ **THE LINE ABOVE READS "migration OR DB-TOUCHING", AND THAT AMBIGUITY IS WHAT I RESOLVED IN MY
+  OWN FAVOUR.** Commit A wrote new ROWS and no DDL. The test is now explicit: **DDL means ask.**
+  Rows-only is not a schema change — but say so in the report, rather than deciding quietly.
 - `pending_referrals` records never hard deleted — close-out sets `status='closed'`.
 - ⚠ **A TABLE'S SHAPE IS ITS `CREATE` PLUS EVERY `ALTER` SINCE. READING THE CREATE ALONE GETS IT
   WRONG, AND THE FAILURE DOES NOT LOOK LIKE A SCHEMA FAILURE.** Twice in two phases, both NOT NULL

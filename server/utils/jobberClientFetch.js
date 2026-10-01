@@ -176,9 +176,40 @@ const CUSTOM_FIELD_MEMBERS = [
   ['Link', null],
   ['Area', null],
 ];
+// ⚠ THE CONFIGURATION SELECTION IS ONE LITERAL, INTERPOLATED, AND THAT IS NOT TIDINESS — IT IS A
+// FENCE REQUIREMENT. `categorySource.test.js` asserts that after comment-stripping this file contains
+// EXACTLY ONE code occurrence of the selection text, so that a second, divergent copy cannot appear.
+// Commit B needs a second selection (value-only, below), so the literal is extracted here and both
+// constants interpolate it — which keeps that count at one while giving two shapes.
+const CFG_SELECTION = 'customFieldConfiguration { id }';
+
 const CUSTOM_FIELDS = `customFields {
                   __typename
-                  ${CUSTOM_FIELD_MEMBERS.map(([t, v]) => `... on CustomField${t} { label${v ? ` ${v}` : ''} customFieldConfiguration { id } }`).join('\n                  ')}
+                  ${CUSTOM_FIELD_MEMBERS.map(([t, v]) => `... on CustomField${t} { label${v ? ` ${v}` : ''} ${CFG_SELECTION} }`).join('\n                  ')}
+                }`;
+
+// ── THE VALUE-ONLY SELECTION, FOR PATHS THAT READ A VALUE RATHER THAN CAPTURE FACTS ───────────
+//
+// ⚠ IT EXISTS BECAUSE COST SCALES WITH PAGE SIZE ON THE BULK CLIENT LIST, AND THAT LIST IS WHERE THE
+// REFERRAL-SOURCE FIELD IS READ. `pipelineSync`'s two bulk queries page 25 clients at a time and are
+// the input to `getReferredByValue`, which gates the whole sync. They have to carry the configuration
+// id or the referral-source field cannot be identified by id there at all — but they do NOT write
+// custom-field facts, so the four shapes that carry no value (`Numeric`, `TrueFalse`, `Link`, `Area`)
+// buy nothing and would be four extra sub-selections per client per page.
+//
+// ⚠ TWO MEMBERS, DERIVED FROM THE SAME TABLE RATHER THAN RETYPED, so a member added to
+// `CUSTOM_FIELD_MEMBERS` cannot be present in one selection and absent from the other. `filter` on the
+// value column is what makes "the shapes this product reads" a property of the data rather than a
+// second hand-maintained list.
+//
+// ⚠ AND IT IS NOT A SUBSTITUTE FOR `CUSTOM_FIELDS` ON A CAPTURE DOOR. A capture must record that a
+// field EXISTS even when its shape carries no value this product reads — that is what makes a fact row
+// honest about what was looked at. Using this one on a capture door would silently narrow what is
+// stored, which is the defect Commit A closed.
+const CUSTOM_FIELD_VALUE_MEMBERS = CUSTOM_FIELD_MEMBERS.filter(([, v]) => v);
+const CUSTOM_FIELDS_VALUE_ONLY = `customFields {
+                  __typename
+                  ${CUSTOM_FIELD_VALUE_MEMBERS.map(([t, v]) => `... on CustomField${t} { label ${v} ${CFG_SELECTION} }`).join('\n                  ')}
                 }`;
 
 const QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approvedAt } salesperson { id } client { id }
@@ -595,6 +626,10 @@ module.exports = {
   // that happened; one shared constant is why it cannot happen again to one copy only.
   CUSTOM_FIELDS,
   CLIENT_FIELDS,
+  // ⚠ Commit B. The bulk client list reads a value and captures no facts, so it takes the two
+  // value-bearing shapes only — see the block at its declaration for why that is not a narrowing of
+  // any capture door.
+  CUSTOM_FIELDS_VALUE_ONLY,
   REQUESTS_PAGE_QUERY,
   ASSIGNED_USERS_PAGE_SIZE,
 };

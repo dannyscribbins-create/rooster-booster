@@ -21,7 +21,12 @@ const { runAttributionEngine } = require('../utils/attributionEngine');
 const { captureClientFacts } = require('../utils/factCapture');
 const { makeRequestReader } = require('../utils/requestFacts');
 const { withClientLock } = require('../utils/clientLock');
-const { fetchFullClient } = require('../utils/jobberClientFetch');
+const { fetchFullClient, CUSTOM_FIELDS_VALUE_ONLY } = require('../utils/jobberClientFetch');
+// ⚠ SAFE AS A TOP-LEVEL REQUIRE, unlike `referredStatus`/`attributionDecide` above: this module
+// requires only `fieldMapping`, which requires nothing from here, so there is no cycle.
+const {
+  resolveReferralSourceField, readReferredByValue, DEFAULT_REFERRER_FIELD_LABEL,
+} = require('../utils/referralSourceField');
 
 // test seam — inert in production, never called outside server/test/
 let _runAttributionEngine = runAttributionEngine;
@@ -148,14 +153,23 @@ function classifyPipelineStatus(client) {
 }
 
 // ── REFERRED BY FIELD EXTRACTOR ───────────────────────────────────────────────
-// Input: a single Jobber client object
-// Output: string value of "Referred by" custom field, or null
-function getReferredByValue(client) {
-  const fields = client.customFields || [];
-  const field  = fields.find(f => f.label && f.label.toLowerCase() === 'referred by');
-  if (!field) return null;
-  const value = field.valueText?.trim();
-  return value || null;
+// Inputs: a single Jobber client object, and a `resolveReferralSourceField` result.
+// Output: string value of the contractor's referral-source custom field, or null.
+//
+// ⚠ THE HARDCODED LITERAL IS GONE. This read was `f.label.toLowerCase() === 'referred by'`, which
+// ignored `contractor_crm_settings.referrer_field_name` entirely — the setting was stored, edited and
+// returned, and read by nothing. A contractor who typed any other name had a setting that was accepted,
+// echoed back and inert, on the field that decides who gets paid.
+//
+// ⚠ IT TAKES THE RESOLVED FIELD RATHER THAN RESOLVING PER CLIENT. `runFullSync` and
+// `runIncrementalSync` iterate thousands of clients; resolving inside this function would be one
+// settings query each. The resolver is called once per contractor and threaded down.
+//
+// ⚠ AND IT IS THE SAME FUNCTION THE INVOICE-PAID DOOR USES. Both extraction sites call
+// `readReferredByValue`, so the two cannot drift apart — which they could when each spelled its own
+// `.find()`. A test asserts they agree on one fixture.
+function getReferredByValue(client, referralSourceField) {
+  return readReferredByValue(client?.customFields, referralSourceField);
 }
 
 /**
@@ -216,7 +230,24 @@ async function attributeReferredClient({ contractorId, jobberClientId, referralA
 // Upserts a referred client into pipeline_cache.
 // Pre-start-date clients: written to pipeline_cache with pre_start_date=true
 // and inserted into flagged_referrals if initial_sync is still running.
-// Pre-start-date clients never trigger bonus logic (checked upstream by hard gate).
+// ⚠ CORRECTED 2026-10-01 (Danny, ruling 3). THIS LINE READ "Pre-start-date clients never trigger
+// bonus logic (checked upstream by hard gate)" AND THAT IS FALSE OF THE MONEY ENGINE.
+// `evaluateReferral` (`server/referralRules.js`) does NOT read `pre_start_date` at all — searched
+// `pre_start_date|isPreStart|preStart` across `server/`: zero hits in that file. There are TWO
+// start-date gates and they compare DIFFERENT DATES against the same `referral_start_date` setting:
+//   · `invoice_before_start_date` — the INVOICE's `issuedDate`, in `evaluateReferral`. This is the one
+//     that can refuse a conversion, and it is the only start-date gate the engine applies.
+//   · `pipeline_cache.pre_start_date` — the CLIENT's `createdAt`, computed here. It suppresses
+//     `bonusEarned` on the referrer's card, suppresses `users.paid_count`, suppresses notifications,
+//     and writes a `flagged_referrals` row during initial sync. It gates DISPLAY, not the engine.
+// ⚠ SO THE REACHABLE CONSEQUENCE, STATED RATHER THAN IMPLIED: a pre-start-date CLIENT with a
+// post-start-date INVOICE qualifies in `evaluateReferral` and gets a `referral_conversions` row, while
+// the card shows `bonusEarned = false` and the balance excludes it. **A ledger row the referrer cannot
+// see.** Not changed here — this commit corrects the comment and records the gap; the behaviour
+// question is filed in `RoofMiles_Decisions_Record_Canvass_Attribution.md`.
+// ⚠ AND THE OLD WORDING IS QUOTED ABOVE RATHER THAN DELETED, because a reader who already believed it
+// needs to see which claim was withdrawn. This is the inverted-record shape CLAUDE.md records: the
+// sentence was not merely stale, it told the next reader the engine was protected when it is not.
 // ⚠ `captureClient` IS THE SIXTH PARAMETER AND IT IS NOT OPTIONAL IN SPIRIT (7b). It is the
 // CONNECTION-shape client captureClientFacts requires — quotes/jobs/invoices/requests each with
 // `.nodes`, and `client { id }` on the quote and job nodes. A caller that already holds one (both
@@ -225,8 +256,25 @@ async function attributeReferredClient({ contractorId, jobberClientId, referralA
 // whose own query cannot produce one — omits it and one is fetched, for referred clients only.
 // ⚠ DO NOT PASS THE SYNC'S OWN NODE HERE TO "SAVE A FETCH". It is the wrong shape and capturing
 // it corrupts crm_job_facts; the block at the attribution call below says exactly how.
-async function syncSingleClient(contractorId, client, referralStartDate, allClients = [], token = null, { captureClient = null } = {}) {
-  const referredBy = getReferredByValue(client);
+async function syncSingleClient(contractorId, client, referralStartDate, allClients = [], token = null, { captureClient = null, referralSourceField = null } = {}) {
+  // ⚠ RESOLVED HERE ONLY WHEN THE CALLER DID NOT, AND BOTH PATHS ARE DELIBERATE. The webhook doors
+  // sync ONE client, so a settings read per call is the right cost; the bulk syncs iterate thousands
+  // and resolve ONCE, passing it in. Defaulting to a self-resolve keeps every existing call site
+  // working unchanged rather than making this a breaking signature.
+  // ⚠ AND IT IS GUARDED ON contractorId because `syncSingleClient` tolerates a falsy one —
+  // `attributionWiring.test.js` case (c) drives it deliberately.
+  // ⚠ A FALSY contractorId FALLS BACK TO THE PLATFORM DEFAULT LABEL, NOT TO null, AND THAT PRESERVES
+  // EXISTING BEHAVIOUR EXACTLY. `syncSingleClient` tolerates a falsy contractorId —
+  // `attributionWiring.test.js` case (c) drives it deliberately, and `pipeline_cache.contractor_id` has
+  // no FK so the upsert proceeds. Handing `readReferredByValue` a null descriptor would return null for
+  // every client and make that whole path a silent no-op: the sync would stop writing the referral
+  // record it exists to write. The default label is what the hardcoded literal did, so this is the old
+  // behaviour spelled out rather than a new branch.
+  const sourceField = referralSourceField
+    || (contractorId
+      ? await resolveReferralSourceField(pool, contractorId)
+      : { fieldId: null, entity: null, label: DEFAULT_REFERRER_FIELD_LABEL, legacy: true });
+  const referredBy = getReferredByValue(client, sourceField);
   if (!referredBy) return; // not a referred client — do nothing
 
   const clientName  = `${client.firstName || ''} ${client.lastName || ''}`.trim();
@@ -872,7 +920,7 @@ async function runFullSync(contractorId) {
       clients(first: 25${afterArg}, filter: { createdAt: { after: "${startDateISO}" } }) {
         nodes {
           id firstName lastName createdAt
-          customFields { ... on CustomFieldText { label valueText } }
+          ${CUSTOM_FIELDS_VALUE_ONLY}
           quotes(first: 10) { nodes { id quoteStatus lastTransitioned { approvedAt } salesperson { id } } }
           jobs(first: 10) {
             nodes {
@@ -919,11 +967,13 @@ async function runFullSync(contractorId) {
   console.log(`[pipelineSync] Full sync fetched ${allClients.length} clients from Jobber`);
 
   // Process every client
+  // Resolved ONCE for the whole run, not per client — see the note in syncSingleClient.
+  const referralSourceField = await resolveReferralSourceField(pool, contractorId);
   let referredCount = 0;
   for (const client of allClients) {
-    const referredBy = getReferredByValue(client);
+    const referredBy = getReferredByValue(client, referralSourceField);
     if (referredBy) referredCount++;
-    await syncSingleClient(contractorId, client, referralStartDate, allClients, token);
+    await syncSingleClient(contractorId, client, referralStartDate, allClients, token, { referralSourceField });
   }
 
   // Mark initial sync complete
@@ -1021,7 +1071,7 @@ async function runIncrementalSync(contractorId) {
           clients(first: 25${afterArg}, filter: { updatedAt: { after: "${afterISO}", before: "${beforeISO}" } }) {
             nodes {
               id firstName lastName createdAt
-              customFields { ... on CustomFieldText { label valueText } }
+              ${CUSTOM_FIELDS_VALUE_ONLY}
               quotes(first: 10) { nodes { id quoteStatus lastTransitioned { approvedAt } salesperson { id } } }
               jobs(first: 10) {
                 nodes {
@@ -1079,8 +1129,10 @@ async function runIncrementalSync(contractorId) {
         }
       }
 
+      // Resolved ONCE per chunk rather than per client — see the note in syncSingleClient.
+      const referralSourceField = await resolveReferralSourceField(pool, contractorId);
       for (const client of allClients) {
-        await syncSingleClient(contractorId, client, referralStartDate, allClients, token);
+        await syncSingleClient(contractorId, client, referralStartDate, allClients, token, { referralSourceField });
       }
 
       await pool.query(

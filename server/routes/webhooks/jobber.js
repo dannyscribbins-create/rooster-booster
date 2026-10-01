@@ -17,6 +17,12 @@ const { pool } = require('../../db');
 const { syncSingleClient, classifyPipelineStatus } = require('../../crm/pipelineSync');
 const { writeReferralConversion } = require('../../utils/referralConversion');
 const { writeReferredStatus } = require('../../utils/referredStatus');
+// ⚠ ONE RESOLVER FOR BOTH EXTRACTION SITES (Commit B). `crm/pipelineSync.js` requires the same two
+// symbols; a second `.find()` spelled here is how the two doors drift apart on which field names the
+// referrer, which is a money question.
+const {
+  resolveReferralSourceField, readReferredByValue,
+} = require('../../utils/referralSourceField');
 const { isDerivableJobberClientId } = require('../../utils/derivableClient');
 const { refreshClientSales } = require('../../utils/clientSales');
 const { logError } = require('../../middleware/errorLogger');
@@ -1341,11 +1347,20 @@ router.post('/jobber/invoice-paid', async (req, res) => {
       const clientEmail = fullClient.emails?.[0]?.address || null;
       const clientPhone = fullClient.phones?.[0]?.number || null;
 
-      // Extract "Referred by" custom field from the full client record
-      const referredByField = (fullClient.customFields || []).find(
-        f => f.label && f.label.toLowerCase() === 'referred by'
-      );
-      const referredBy = referredByField?.valueText?.trim() || null;
+      // ── THE REFERRAL-SOURCE FIELD, THROUGH THE ONE SHARED RESOLVER (Commit B) ─────────────
+      //
+      // ⚠ THE HARDCODED LITERAL IS GONE. This read was
+      // `f.label && f.label.toLowerCase() === 'referred by'`, which ignored
+      // `contractor_crm_settings.referrer_field_name` entirely — so the setting was stored, edited,
+      // returned in the adapter config, and read by nothing. A contractor who typed any other name had
+      // a setting that was accepted, echoed back and inert, on the money path.
+      //
+      // ⚠ AND IT IS THE SAME FUNCTION `pipelineSync.getReferredByValue` CALLS. Two sites each spelling
+      // their own `.find()` is how they drift; a test drives both against one fixture and asserts they
+      // agree. Matching is by CONFIGURATION ID when a field is picked, because Accent has NINE client
+      // configurations and one of them is `Referred by Chuck Rigdon` — a prefix match finds two.
+      const referralSourceField = await resolveReferralSourceField(pool, contractorId);
+      const referredBy = readReferredByValue(fullClient.customFields, referralSourceField);
 
       // ── EXPERIENCE FLOW (gated by feature flag) ────────────────────────────────
       if (experienceFlowEnabled) {

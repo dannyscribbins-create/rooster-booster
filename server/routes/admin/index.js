@@ -32,6 +32,9 @@ const { resendShouldRetry, jobberShouldRetry } = require('../../utils/retryHelpe
 const { discoverJobberFields } = require('../../crm/jobber');
 // ⚠ ONE RESOLVER for "which field did the contractor choose?" — by entity + CRM id (7c-1).
 const { describeField } = require('../../utils/fieldMapping');
+const {
+  resolveReferralSourceField, REFERRAL_SOURCE_ENTITY,
+} = require('../../utils/referralSourceField');
 const { isEmailSuppressed } = require('../../utils/emailSuppression');
 const { normalizeTagGroupVisibility } = require('../../utils/tagGroupVisibility');
 const { generateSlug, buildInviteUrl } = require('../../utils/inviteTokens');
@@ -1334,6 +1337,25 @@ router.get('/api/admin/crm/status', requirePermission('integrations'), async (re
       crmAccountName: s.crm_account_name,
       connectionMethod: s.connection_method,
       referrerFieldName: s.referrer_field_name || 'Referred by',
+      // ⚠ THE PICKED FIELD, PLUS ITS HEALTH, SO THE SCREEN CAN WARN (Commit B). `referrerFieldName`
+      // above is kept and still returned: it is the LEGACY FALLBACK for a contractor who has picked
+      // nothing, not a second copy of this. `missing` means the chosen configuration is no longer in
+      // `contractor_jobber_fields` (discovery has not re-run, or the field was deleted in Jobber) —
+      // a warning, never a refusal, because matching uses the stored id against the record itself.
+      referralSourceField: await (async () => {
+        try {
+          const r = await resolveReferralSourceField(pool, contractorId);
+          return {
+            fieldId: r.fieldId, entity: r.entity, label: r.label,
+            displayLabel: r.displayLabel, archived: r.archived,
+            missing: r.missing, legacy: r.legacy,
+          };
+        } catch {
+          // A settings-read failure must not take the whole screen down; the card falls back to
+          // "nothing picked", which is what the resolver itself degrades to.
+          return null;
+        }
+      })(),
       stageMap: s.stage_map || { lead: 'Quote Sent', inspection: 'Assessment Scheduled', sold: 'Job Approved', paid: 'Invoice Paid' },
       connectedAt: s.connected_at,
       referralStartDate: s.referral_start_date || null,
@@ -1441,12 +1463,67 @@ router.put('/api/admin/crm/settings', requirePermission('integrations.manage'), 
   const adminSession = await verifyAdminSession(req, res);
   if (!adminSession) return;
   const { contractorId } = adminSession;
-  const { referrerFieldName, stageMap, syncIntervalMins, tag_group_visibility, attribution_source } = req.body;
+  const {
+    referrerFieldName, stageMap, syncIntervalMins, tag_group_visibility, attribution_source,
+    referralSourceFieldId,
+  } = req.body;
   const VALID_ATTRIBUTION_SOURCES = ['assessment_assigned_users', 'request_salesperson'];
   if (attribution_source !== undefined && !VALID_ATTRIBUTION_SOURCES.includes(attribution_source)) {
     return res.status(400).json({ error: 'invalid_attribution_source' });
   }
+
+  // ── THE PICKED REFERRAL-SOURCE FIELD (Commit B) ──────────────────────────────────────────────
+  //
+  // ⚠ THE id IS VERIFIED AGAINST WHAT DISCOVERY FOUND, AND THE ENTITY AND LABEL ARE TAKEN FROM THAT
+  // ROW RATHER THAN FROM THE BODY — the same discipline the field-mappings PATCH applies, for the same
+  // reason: a client that sent a stale entity beside a correct id would persist a mapping whose two
+  // halves disagree, and the display would then contradict the resolution.
+  //
+  // ⚠ AND IT MUST BE AN `ALL_CLIENTS` FIELD. The referrer is named on the CLIENT; accepting a job- or
+  // invoice-entity configuration here would store a mapping that can never match a client record, which
+  // resolves to nothing — and "nothing" on this path means a contractor silently stops earning.
+  let pickedField = null;
+  if (referralSourceFieldId !== undefined) {
+    if (referralSourceFieldId === null || referralSourceFieldId === '') {
+      // An explicit clear — back to the legacy label path, which is a legitimate choice.
+      pickedField = { clear: true };
+    } else if (typeof referralSourceFieldId !== 'string' || !referralSourceFieldId.trim()) {
+      return res.status(400).json({ error: 'invalid_referral_source_field', message: 'field id must be a non-empty string' });
+    } else {
+      const { rows } = await pool.query(
+        `SELECT jobber_field_id, label, entity FROM contractor_jobber_fields
+          WHERE contractor_id = $1 AND jobber_field_id = $2`,
+        [contractorId, referralSourceFieldId.trim()]
+      );
+      if (rows.length === 0) {
+        return res.status(400).json({
+          error: 'invalid_referral_source_field',
+          message: 'that field id does not match any discovered field — run discovery first',
+        });
+      }
+      if (rows[0].entity !== REFERRAL_SOURCE_ENTITY) {
+        return res.status(400).json({
+          error: 'invalid_referral_source_field',
+          message: `the referral-source field must be a client field (${REFERRAL_SOURCE_ENTITY}), not ${rows[0].entity || 'an unknown entity'}`,
+        });
+      }
+      pickedField = rows[0];
+    }
+  }
+
   try {
+    if (pickedField) {
+      await pool.query(
+        `UPDATE contractor_crm_settings
+            SET referrer_field_id     = $2,
+                referrer_field_entity = $3,
+                referrer_field_label  = $4
+          WHERE contractor_id = $1`,
+        pickedField.clear
+          ? [contractorId, null, null, null]
+          : [contractorId, pickedField.jobber_field_id, pickedField.entity, pickedField.label]
+      );
+    }
     if (referrerFieldName !== undefined || stageMap !== undefined || syncIntervalMins !== undefined || attribution_source !== undefined) {
       await pool.query(
         `UPDATE contractor_crm_settings
