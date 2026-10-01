@@ -1221,3 +1221,35 @@ population the card hides, so the two agree **by construction** rather than by c
 
 **Its own guard-proof:** a client created **before** the start date with an invoice issued **after** it
 must produce **no credit** — and crediting it must go **red**.
+
+### WHERE THE CLIENT'S CREATION DATE COMES FROM (Danny, 2026-10-01, option (a)). BUILT IN C1.
+
+**The one start-date rule above needs the CLIENT's creation date, and it was stored in exactly one
+place: `pipeline_cache.jobber_created_at` — the row the fact path has to CREATE.** So the rule and
+ruling 1 (referred-by from facts, which creates that row on a first paid invoice) could not both be
+true. Measured before ruling: `jobber_clients.created_at` is `DEFAULT NOW()`, i.e. *our* row's insert
+time; and every `crm_*_facts.created_at` is that RECORD's date, never the client's.
+
+**The ruling:** add **`jobber_clients.jobber_created_at`**, nullable, written by `captureClientFacts`
+from the client's own `createdAt` on **every full capture**, and **backfilled once** from
+`pipeline_cache.jobber_created_at` where a row exists — *the same value, the same meaning.*
+
+⚠ **A CLIENT WHOSE CREATION DATE IS STILL UNKNOWN IS NOT ELIGIBLE. UNKNOWN IS NEVER PERMISSION.**
+It becomes eligible when its next full capture fills the column. This is the financed-flag precedent
+applied to a second nullable gate input, and it is the conservative direction on purpose: the cost of a
+NULL is a *delayed* bonus, which the catch-up converges; the cost of treating NULL as eligible is a
+bonus paid on a client the programme never covered, which is money out the door.
+
+⚠ **WHY A COLUMN RATHER THAN A FACT ROW.** `crm_custom_field_facts` exists for CUSTOM FIELDS. Filing a
+scalar there would make that table mean two things, and the resolver that reads it would need to know
+which. The client's creation date is an attribute of the client, so it belongs on the client's row.
+
+⚠ **AND THE BACKFILL IS HONEST BECAUSE THE SOURCE IS THE SAME FACT, NOT A PROXY.** This is the
+distinction `stage_derived_at` and `last_full_capture_at` were deliberately NOT backfilled on: there,
+no stored value meant what the new column claims, so any backfill would have asserted something false.
+Here `pipeline_cache.jobber_created_at` IS the client's Jobber creation date, already stored by the
+sync — so copying it asserts nothing new. **A backfill is wrong when it invents a value, not whenever
+it is a backfill.**
+
+⚠ **IT IS IN HAND AT CAPTURE TIME, WHICH IS WHY THIS IS CHEAP.** `CLIENT_FIELDS` has always selected
+the client's `createdAt`; every full capture already received it and discarded it.
