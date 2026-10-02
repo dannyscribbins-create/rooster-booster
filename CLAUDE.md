@@ -433,8 +433,61 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2491 server tests across 420 suites, and 1410 React tests across 86 files** (measured 2026-10-02 by the credit-visibility commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2491 · suites 420 · pass 2491 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CREDIT-VISIBILITY COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2499 server tests across 422 suites, and 1410 React tests across 86 files** (measured 2026-10-02 by the identity-row reorder commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2499 · suites 422 · pass 2499 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE IDENTITY-ROW REORDER COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2491 → 2499 is **+8**, one new file (`identityRowOrder.test.js`); suites 420 → 422 is that
+  file's **two** describes. React did not move and was re-measured — **no `src/` file was touched**.
+  ⚠ **THE GATE WAS RUN TWICE AND THE SECOND RUN IS THE ONE CITED.** The first read 2498 / 422, against a
+  7-case file; two of those cases were then REPAIRED (see below) and the file holds 8. **A figure measured
+  against code that no longer exists is a claim rather than a measurement**, so it was re-run rather than
+  adjusted. Both runs read `EXIT=0`; only `tests`/`pass` moved, by exactly the one added case.
+  ⚠ **RULING 3 (Danny, 2026-10-02): THE IDENTITY ROW IS CREATED BEFORE THE CAPTURE.** `captureClientFacts`
+  writes `jobber_created_at` and the full-capture marker with `UPDATE jobber_clients …`, and the identity
+  upsert that CREATES that row ran after both the capture and the decision — so on a FIRST SIGHTING both
+  writes affected **0 rows**. An `ON CONFLICT … DO NOTHING` pre-insert now runs before the capture lock.
+  ⚠ **A PRE-INSERT RATHER THAN A MOVE, AND THE REASON IS STRUCTURAL:** the real upsert writes
+  `pipeline_stage` and `stage_derived_at` from the DECIDED stage, so it cannot run before the decision.
+  Relocating it would split one statement into two writers of one row.
+  ⚠ **THE ELIGIBILITY EFFECT IS MEASURED AND IS NARROWER THAN THE RULING FEARED. Immediate effect: ZERO.**
+  The reorder changes no existing row and backfills nothing — measured read-only: the eligible set is
+  **3** before and after, the newly-reachable state (marker set AND no decision) has **0** members today,
+  and there are **0** clients with fact rows but no `jobber_clients` row. Going forward the only newly
+  eligible state is *a first sighting whose decision did not record*; where the decision DOES record the
+  capture commits first and the stage is stamped afterwards, so marker < decision and the client is not
+  selected. A case pins that end to end.
+  ⚠ **AND THE MEASUREMENT INVERTED A NOTE IN `PRE_LAUNCH_CHECKLIST.md`.** It said `client-create` /
+  `client-update` "stamp `last_full_capture_at` and leave `stage_derived_at` alone". **Measured on the
+  live door: the opposite, in BOTH columns** — `decideFromFacts` runs regardless of
+  `alsoDeriveReferredStatus` and the upsert's INSERT stamps `stage_derived_at` from its `CASE` (observed
+  `2026-10-02T15:30:48Z`), while `last_full_capture_at` was the column left NULL. **Inverted rather than
+  stale: it told the next reader the catch-up would make the first derivation for those clients, when
+  they were invisible to it.** Filed with the old wording quoted.
+  ⚠ **C1'S BRAND-NEW-CREDIT CASE WAS RE-POINTED OPENLY, WITH THE OLD ASSERTION QUOTED VERBATIM BESIDE
+  THE NEW ONE.** It asserted `jobber_created_at` was STILL NULL after a credit — correct when written,
+  and now forbidden. **A ruling changed the mechanism, not a bug.** "The column is empty" was never the
+  property; it was the only available PROOF that the gate used the supplied date, and with the column
+  filled that proof is gone. The supplied-date mechanism is still load-bearing — the bulk syncs write
+  `pipeline_cache`, never `jobber_clients` — and is pinned by guard-proofs instead.
+  ⚠ **FIVE GUARD-PROOFS, widths 4 · 2 · 1 · 2 · 2**, every revert byte-identical by sha256.
+  ⚠ **AND TWO OF MY OWN CASES WERE WRONG, BOTH FOUND BY A WIDTH-0 RESULT, BOTH REPAIRED RATHER THAN
+  EXPLAINED AWAY.** (a) *"the pre-insert carries IDENTITY"* was BEHAVIOURAL AND VACUOUS: the real upsert
+  runs immediately after and fills name, email and phone, so nulling every identity parameter in the
+  pre-insert left it green. It was observing the final state, which the real upsert determines, while
+  claiming to test the pre-insert — and the only window a bare row is visible in is not reachable from a
+  test. Re-pointed to a SOURCE assertion that the pre-insert binds the same identity expressions; (4)
+  then reds it. (b) The ORDERING injection added a SQL comment instead of MOVING the block, so it
+  reintroduced no defect — **my mistake, not a fence failure.** A genuine relocation is multi-line and
+  not expressible as a one-line injection, so the fence's order comparison is now exercised on SYNTHETIC
+  input in both directions, which is the only way that half could be observed at all. **The injection was
+  retired with its reason recorded rather than left reporting a meaningless 0.**
+  ⚠ **AND A FIXTURE FALLBACK HID A MISSING EXPORT, WHICH IS THE SHAPE THIS FILE KEEPS RECORDING.**
+  `certifyFullyPaged` was required from `jobberClientFetch` (which only imports it) behind a
+  `typeof === 'function' ? … : shape` fallback. The export was `undefined`, the fallback returned an
+  UNCERTIFIED shape, the marker was never stamped, and the case failed **for a harness reason that looked
+  exactly like the production defect.** It requires from `captureCompleteness` and asserts now.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CREDIT-VISIBILITY COMMIT ITSELF, BECAUSE IT
+  SHIPS TESTS.* It read **2491 / 420 / 1410 / 86**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE CREDIT-VISIBILITY COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2478 → 2491 is **+13**, one new file (`creditVisibility.test.js`); suites 416 → 420 is that
   file's **four** describes — one top-level and three nested. React did not move and was re-measured —
   **no `src/` file was touched at all**. **All four predicted before the run and matched.** Counted with

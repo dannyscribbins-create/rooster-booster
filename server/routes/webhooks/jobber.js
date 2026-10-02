@@ -639,6 +639,64 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 
   // capture failure means the facts are NOT saved; a decision failure means they ARE, and the client
   // is left in the "not yet derived" state the catch-up job looks for. Collapsing them into one catch
   // would make the alert unable to tell an operator which happened.
+  // ── RULING 3 (Danny, 2026-10-02) — THE IDENTITY ROW EXISTS BEFORE THE CAPTURE ──────────
+  //
+  // ⚠ THE DEFECT THIS CLOSES, MEASURED END TO END IN PRODUCTION ON 2026-10-02. `captureClientFacts`
+  // writes `jobber_created_at` and the full-capture marker with `UPDATE jobber_clients …`, and the
+  // identity upsert that CREATES that row ran AFTER both the capture and the decision. So on a client's
+  // FIRST SIGHTING both writes affected **0 rows**: the creation date stayed NULL even for a client that
+  // had just been credited, and `last_full_capture_at` stayed NULL so the catch-up could not see it until
+  // the client's NEXT full capture. `factCapture.js` records exactly that ordering for the marker, and
+  // called the resulting ineligibility "the conservative direction" — true of the marker, and not true
+  // of the creation date, which C1 had to work around by supplying the date from the live object.
+  //
+  // ⚠ IT IS AN `ON CONFLICT DO NOTHING` PRE-INSERT, NOT A MOVE OF THE REAL UPSERT, AND THE REASON IS
+  // THAT THE REAL UPSERT CANNOT MOVE. It writes `pipeline_stage` and `stage_derived_at` from `$10` — the
+  // DECIDED stage — so it structurally cannot run before the decision. Relocating it would mean splitting
+  // one statement into two writers of one row, which is how two writers come to disagree.
+  //
+  // ⚠ AND IT CARRIES IDENTITY RATHER THAN BEING A BARE KEY INSERT. A row with NULL name, email and phone
+  // would be visible to the contact matcher for the milliseconds before the real upsert fills it, and if
+  // that upsert then failed it would persist. Carrying the same identity values the real upsert uses
+  // means a brand-new row is correct the moment it exists.
+  // ⚠ `DO NOTHING`, SO AN EXISTING ROW IS UNTOUCHED. Every client the system has already seen is
+  // completely unaffected — this statement only ever creates a row that was about to be created anyway,
+  // a few milliseconds earlier.
+  //
+  // ⚠ NON-FATAL, AND GATED ON `relatedData`. It runs only when a capture is about to happen, which is
+  // exactly when the row needs to pre-exist; a failure here must not abort the webhook, because the real
+  // upsert below still runs and the next event retries.
+  if (relatedData && fullClient.id) {
+    try {
+      await pool.query(
+        `INSERT INTO jobber_clients
+           (jobber_client_id, contractor_id, first_name, last_name, email, phone,
+            is_company, is_lead, is_archived, last_synced_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+         ON CONFLICT (jobber_client_id, contractor_id) DO NOTHING`,
+        [
+          fullClient.id,
+          contractorId,
+          fullClient.firstName || null,
+          fullClient.lastName || null,
+          email,
+          phone,
+          (relatedData?.isCompany ?? fullClient.isCompany) === true,
+          (relatedData?.isLead ?? fullClient.isLead) === true,
+          (relatedData?.isArchived ?? fullClient.isArchived) === true,
+        ]
+      );
+    } catch (preErr) {
+      await logError({
+        req: null,
+        contractorId,
+        error: new Error(`[upsertAndTagClient] identity pre-insert failed for client ${fullClient.id}, the capture's UPDATEs will affect 0 rows on a first sighting: ${preErr.message}`),
+        source: 'upsertAndTagClient — identity pre-insert',
+        alert: false,
+      });
+    }
+  }
+
   let pipelineStage = null;
   let captureCommitted = false;
   if (relatedData) {

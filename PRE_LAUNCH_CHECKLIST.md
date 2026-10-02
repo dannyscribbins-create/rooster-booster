@@ -14768,10 +14768,59 @@ this section for the measurement and for what is still open.
       confirm it is what the citing sentence describes, and only then shift it** — or re-cite by ROLE,
       which is the form that does not rot.
 
-- [ ] 🔴 **RULED 2026-10-02 (Danny) — REORDER SO THE IDENTITY ROW IS CREATED BEFORE CAPTURE AND
-      DECISION ON A FIRST SIGHTING, SO THE CREATION DATE AND THE FULL-CAPTURE MARKER BOTH LAND ON THE
-      FIRST CAPTURE. ITS OWN SMALL COMMIT, AFTER C2, WITH ITS EFFECT ON CATCH-UP ELIGIBILITY MEASURED
-      AND REPORTED.**
+- [x] ✅ **DONE 2026-10-02 — THE IDENTITY-ROW REORDER (built, NOT PUSHED).** An `ON CONFLICT … DO
+      NOTHING` identity pre-insert runs before the capture lock in `upsertAndTagClient`, so a first
+      sighting now gets both its `jobber_created_at` and its full-capture marker on its FIRST capture.
+      ⚠ **A PRE-INSERT RATHER THAN A MOVE, AND THE REASON IS STRUCTURAL.** The real upsert writes
+      `pipeline_stage` and `stage_derived_at` from the DECIDED stage, so it cannot run before the
+      decision; relocating it would split one statement into two writers of one row.
+      ⚠ **IT CARRIES IDENTITY, NOT JUST THE KEY.** A row with NULL name, email and phone would be
+      visible to the contact matcher for the milliseconds before the real upsert fills it — and would
+      persist if that upsert then failed.
+      ⚠ **`DO NOTHING`, SO EVERY EXISTING CLIENT IS UNTOUCHED.** A sentinel case proves it does not
+      overwrite and does not duplicate.
+      **THE CATCH-UP ELIGIBILITY EFFECT, MEASURED IN PRODUCTION AND IN TESTS — AND IT IS NARROWER THAN
+      THE RULING FEARED:**
+      · **Immediate effect: ZERO.** The reorder changes no existing row and backfills nothing. Measured
+        read-only on `accent-roofing-dev`: the eligible set is **3** before and after; the state the
+        reorder newly reaches (marker set AND no decision) has **0** members today; and there are **0**
+        clients with fact rows but no `jobber_clients` row, so there is nothing stranded to pick up.
+      · **Going forward**, the only newly-eligible state is *a first sighting whose decision did not
+        record*. Where the decision DOES record, the capture commits in transaction 1 and the stage is
+        stamped by the upsert afterwards, so marker < decision and the client is **not** selected — a
+        case pins that end to end. **So the ordinary case adds no load.**
+      ⚠ **AND THE MEASUREMENT CORRECTED A NOTE IN THIS FILE — see the entry below it.**
+      ⚠ **SIX GUARD-PROOFS.** C1's brand-new-credit case was **re-pointed openly, with the old
+      assertion quoted verbatim beside the new one**: it asserted `jobber_created_at` was STILL NULL
+      after a credit, which was correct and is now forbidden. **A ruling changed the mechanism, not a
+      bug** — "the column is empty" was never the property, it was the only available PROOF that the
+      gate used the supplied date, and with the column filled that proof is gone. The supplied-date
+      mechanism is still load-bearing (the bulk syncs write `pipeline_cache`, never `jobber_clients`)
+      and is pinned by guard-proofs instead.
+
+- [ ] **CITATION ROT THE REORDER CAUSED, MEASURED AND NOT REPAIRED — 22 `LIKELY ROTTED`**, 11 of them
+      into `server/routes/webhooks/jobber.js` (which gained ~60 lines). Distribution: 10
+      `PRE_LAUNCH_CHECKLIST.md` · 3 `CDL_3c_PHASE05_RULINGS.md` · 2 each `SECURITY_HARDENING_SPEC.md` and
+      `MEMBER_RANK_ECONOMY_SPEC.md` · 1 each `TENANT_RESOLUTION_REBUILD_SPEC.md`,
+      `docs/GROUND_TRUTH_2026-08-21.md` and `CLAUDE.md`.
+      ⚠ **THE ONE IN `docs/GROUND_TRUTH_2026-08-21.md` MUST NOT BE SHIFTED** — a dated snapshot that
+      quotes verbatim what it cites. **And none of the others is repaired by adding the delta**, per the
+      rule: `LIKELY ROTTED` means "your edit moved the target line", never "this citation was correct
+      before".
+
+- [ ] **⚠ A NOTE IN THIS FILE WAS INVERTED FOR A FIRST SIGHTING, AND THE REORDER'S TESTS MEASURED IT.**
+      The 7d ruling-2 entry says *"`client-create` / `client-update` CAPTURING WITHOUT DERIVING IS
+      ACCEPTED AS IS: those doors stamp `last_full_capture_at` and leave `stage_derived_at` alone."*
+      **Measured 2026-10-02 on the `client-create` door: the opposite, in BOTH columns.**
+      `decideFromFacts` runs in transaction 2 regardless of `alsoDeriveReferredStatus`, and the identity
+      upsert's own INSERT stamps `stage_derived_at` from its `CASE` — observed at
+      `2026-10-02T15:30:48Z`. Meanwhile `last_full_capture_at` was the column left NULL, because the
+      capture's `UPDATE` affected 0 rows before the row existed.
+      ⚠ **IT IS INVERTED RATHER THAN MERELY STALE, WHICH IS THE DANGEROUS KIND:** it told the next
+      reader the catch-up would make the FIRST derivation for those clients, when in fact they were
+      invisible to it. **Recorded here rather than silently corrected in place**, because a reader who
+      believed it needs to see which claim was withdrawn. The behaviour it describes is now true as of
+      the reorder — the marker lands — so the note has become accidentally correct about one half.
       This closes the entry immediately below at its cause rather than at the symptom: today
       `captureClientFacts`' `UPDATE ... SET jobber_created_at` affects **0 rows** on a first sighting
       because the identity upsert that CREATES the row runs after both the capture and the decision.

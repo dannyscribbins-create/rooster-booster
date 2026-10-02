@@ -358,20 +358,46 @@ describe('C1 — the conversion credit from saved facts', () => {
         [TENANT, CLIENT]
       )).rows.length > 0, { timeout: 6000 });
 
-      // ⚠ THE PRECONDITION, ASSERTED RATHER THAN ASSUMED, AND IT IS THE WHOLE POINT OF THIS CASE.
-      // `jobber_clients.jobber_created_at` must still be NULL: that is the proof the credit did NOT
-      // come from a stored read, and therefore that it came from the supplied live date. Without this
-      // the case would pass identically on a tree where the ordering had been changed instead — which
-      // is a different fix, and this case would then be silently testing something else.
+      // ── ⚠ RE-POINTED BY RULING 3, AND THE OLD ASSERTION IS QUOTED RATHER THAN DELETED ──────────
+      //
+      // THIS CASE USED TO ASSERT THE OPPOSITE. Verbatim, as C1 shipped it:
+      //
+      //     assert.equal(jc.length, 1, 'the identity row exists by now — it is written after the credit');
+      //     assert.equal(
+      //       jc[0].jobber_created_at, null,
+      //       'the stored column is STILL NULL, so the credit cannot have read it — the supplied date is '
+      //       + 'what admitted this client, which is exactly what this case exists to pin'
+      //     );
+      //
+      // ⚠ THAT ASSERTION WAS CORRECT AND IS NOW FORBIDDEN, AND A RULING CHANGED IT RATHER THAN A BUG.
+      // C1 could prove the supplied date was what admitted the client by observing that the STORED
+      // column was still empty — true because the identity row was created AFTER the credit, so the
+      // capture's `UPDATE` affected 0 rows. Ruling 3 (Danny, 2026-10-02) moved the identity row's
+      // creation BEFORE the capture precisely so that stops being true: the column now fills on a
+      // client's first capture.
+      //
+      // ⚠ SO THE PROPERTY HAD TO CHANGE SHAPE, NOT MERELY ITS EXPECTED VALUE. "The column is empty"
+      // was never the thing worth pinning — it was the only available PROOF that the gate used the
+      // supplied date. With the column filled, that proof is gone, and the honest replacement is to
+      // assert what is still true and still matters: the client was credited, and the stored date now
+      // AGREES with the supplied one, so the two sources cannot have disagreed about this client.
+      // ⚠ AND THE SUPPLIED-DATE MECHANISM IS STILL LOAD-BEARING, WHICH IS WHY IT IS NOT DELETED. The
+      // bulk syncs write `pipeline_cache`, never `jobber_clients`, so a client only those paths have
+      // seen still has no stored date — and the catch-up still reads the column. Guard-proof (1) and
+      // C2's (6) are what pin the mechanism now that this case no longer can.
       const { rows: jc } = await pool.query(
         'SELECT jobber_created_at FROM jobber_clients WHERE contractor_id = $1 AND jobber_client_id = $2',
         [TENANT, CLIENT]
       );
-      assert.equal(jc.length, 1, 'the identity row exists by now — it is written after the credit');
+      assert.equal(jc.length, 1, 'the identity row exists');
+      assert.ok(
+        jc[0].jobber_created_at,
+        'ruling 3: the creation date is now stored on the first capture, where C1 measured it as NULL'
+      );
       assert.equal(
-        jc[0].jobber_created_at, null,
-        'the stored column is STILL NULL, so the credit cannot have read it — the supplied date is '
-        + 'what admitted this client, which is exactly what this case exists to pin'
+        new Date(jc[0].jobber_created_at).toISOString(), AFTER_START,
+        'and the STORED date agrees with the SUPPLIED one — the same Jobber field, so the two sources '
+        + 'cannot disagree about this client'
       );
 
       // And the referral record the credit created carries the date rather than a NULL.
