@@ -14650,6 +14650,107 @@ this section for the measurement and for what is still open.
       rule is part of C1 by Danny's instruction and cannot be deferred inside it — a credit path
       without it pays on pre-start clients, which is the thing the rule exists to stop.
 
+### ✅ C2 — THE SYNC CREDITS, AND THE LOCK PARTITION (built 2026-10-02, NOT PUSHED)
+
+- [x] ✅ **RULING 2's REMAINING HALF FOR THE SYNC IS DONE: `syncSingleClient` NOW CREDITS INSIDE ITS
+      OWN LOCK.** 7d recorded the blocker precisely — *"the sync needs a lock it does not have:
+      `attributeReferredClient`'s `pipeline_cache` upsert runs on the pool, outside the per-client lock
+      (the lock there wraps only the capture)"*. Before C2 a referred client the SYNC discovered as
+      already paid reached `'paid'` on the referrer's own screen and waited up to 30 minutes for the
+      catch-up to pay them.
+      **THE RESTRUCTURE, which is the commit's single subject of review:**
+      · **Transaction 1** — capture **and derive**, unchanged. ⚠ **The derive deliberately stayed in
+        here.** The first writing of C2 moved it into transaction 2, which would have made a derive
+        failure roll back the referral record — and catching it inside would not have helped, because a
+        SQL failure aborts the transaction and every later statement fails with *"current transaction is
+        aborted"*. `oneEngineFromFacts` (v) requires the record to be written even when the capture
+        fails, and that is only expressible with derive in transaction 1.
+      · **Transaction 2 (new, one lock)** — the pre-upsert reads, the `pipeline_cache` referral record,
+        the attribution engine, and the credit. Each reads what the previous wrote, so they are one unit
+        of work or none. ⚠ **The pre-upsert reads moved in too**: on the pool they sat on a different
+        connection from the write that consumes them, and `oldPipelineStatus` is what every transition
+        notification is gated on.
+      · **Outside, deliberately** — the Jobber fetch, every email, and `notifyReferralCredit`.
+      · **`attributeReferredClient` was DELETED rather than converted to take a `tx`.** It had exactly
+        one caller, so a wrapper only moved the engine one level away from the lock — and that broke
+        `oneEngineFromFacts` (iii), which requires the engine call to fall inside the PARENTHESISED
+        EXTENT of a `withClientLock` call and says of itself that *"a door that called the engine
+        through a helper invoked from inside the lock would not be seen"*. Inlining keeps that fence
+        working by its own mechanism rather than widening it.
+      · **The double capture is gone.** The sync captured once for the derivation and again inside
+        `attributeReferredClient` — the same facts, written twice, in two transactions. ⚠ **And the
+        second-chance Jobber fetch went with it, on purpose rather than by accident:** a retry is not
+        available inside a lock. When the capture fails the record is still written, the status stays
+        underived, and the next 30-minute tick retries.
+      ⚠ **SEVEN GUARD-PROOFS, widths 4 · 4 · 3 · 1 · 1 · 3 · 1**, every revert an inverse patch in a
+      `finally` proven byte-identical by sha256.
+      ⚠ **THE WIDTHS WERE MEASURED TWICE AND THE SECOND SET IS THE ONE QUOTED.** The lock callback's body
+      was re-indented by four spaces after the first run, so every anchor inside it stopped matching. The
+      harness SKIPPED rather than reporting a wrong width — which is the behaviour to want — but **a width
+      measured against code that no longer exists is a claim rather than a measurement.**
+      ⚠ **ONE CAME BACK WIDTH 0 AND THAT WAS A FINDING THAT CHANGED THE SUITE.** Moving the engine from
+      `(db, …)` to `(pool, …)` **inside** the lock broke nothing any test could see — and it is a real
+      defect: the engine's writes would commit on another connection, outside the transaction, surviving
+      a rollback of the record that justified them. **Both this file's outbound fence and
+      `oneEngineFromFacts` (iii) check a call's POSITION, not which connection it was handed** — a call
+      can sit perfectly inside a lock and bypass it through its first argument. A new case forbids the
+      word `pool` anywhere inside a locked callback; that injection and the "record written on the pool"
+      injection then red **exactly 1** each.
+- [ ] **CITATION ROT THE C2 COMMIT CAUSED, MEASURED AND NOT REPAIRED — 35 `LIKELY ROTTED`, 26 of them
+      into `server/crm/pipelineSync.js`** (which gained ~198 net lines), plus 37 `TARGET TOUCHED`.
+      Distribution: **11** `PRE_LAUNCH_CHECKLIST.md` · **10** `docs/GROUND_TRUTH_2026-08-21.md` · **3**
+      `CDL_3c_PHASE05_RULINGS.md` · **2** each `CLAUDE_REGISTRY.md` and `CLAUDE.md` · **1** each
+      `docs/ASSIGNMENT_RULES_LOCKED.md`, `CONTRACTOR2_READINESS_AUDIT.md`, `CDL_3c_PHASE0_REPORT.md`,
+      `CDL_3b_BUILD_SPEC.md`, `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md`.
+      ⚠ **THE TEN IN `docs/GROUND_TRUTH_2026-08-21.md` MUST NOT BE SHIFTED AT ALL, AND THAT IS A
+      DIFFERENT JOB FROM THE OTHER TWENTY-FIVE.** `CLAUDE.md` records it as a **dated snapshot that
+      QUOTES VERBATIM what it cites** — its line numbers are part of a record of a past state, not
+      pointers into today's file, and renumbering them would make the document claim its quotes come
+      from lines that now hold something else. **Do not sweep them together with the rest.**
+      ⚠ **AND NONE OF THE OTHERS IS REPAIRED BY ADDING THE DELTA.** `LIKELY ROTTED` means "your edit
+      moved the target line", never "this citation was correct before" — the commit that shipped
+      `--changed-files` flagged eleven of its own and ALL ELEVEN had already been wrong beforehand.
+      **The procedure: read the cited content at the OLD line in the OLD revision, confirm it is what
+      the citing sentence describes, and only then shift it** — or re-cite by ROLE, which does not rot.
+
+      ⚠ **AND ONE ANCHOR WAS UNIQUE FORWARDS AND NOT BACKWARDS** — `await upsertReferralRecord(pool);`
+      already exists in the legitimate falsy-`contractorId` branch, so the revert had two candidates.
+      The harness refused it rather than guessing. **An anchor unique in one direction is not therefore
+      unique in the other.**
+
+### ✅ C1 — THE POST-DEPLOY LIVE CHECK (2026-10-02, pushed `bcc06e3`, deployment `8fb83327`)
+
+- [x] ✅ **THE CREDIT PATH EXECUTED ON LIVE TRAFFIC AND CREDITED NOBODY, WHICH IS THE EXPECTED ANSWER.**
+      Backups were taken by Danny first (Railway Postgres + admin Run Backup Now) per ruling 4.
+      **LOG WINDOW, STATED BECAUSE AN ABSENCE WITH NO WINDOW IS NOT A FINDING:**
+      `railway logs 8fb83327 --service rooster-booster --lines 5000`, 148 lines, covering 12:51Z (deploy)
+      to 13:13Z — which includes the **13:10 catch-up run** and the invoice-paid traffic after it.
+      · **Boot:** every migration `✓`, no failure, and the one-time backfill logged its own count —
+        `[client-created-at] backfilled 15 client(s) from pipeline_cache`. `/health` → HTTP 200, `status: ok`.
+      · **The catch-up ran:** `eligible 7, decided 7, changed 0, failed 0, skipped-partial 19364,
+        beyond limit 0 (230ms)`. ⚠ **`changed 0` is the load-bearing figure** — no stage moved, so none
+        moved backwards.
+      · **The invoice-paid door ran:** 16 `door=invoice-paid` capture-cost lines, with
+        `q=GetClientRelated requested=3733` — the widened Commit A selection, visible in the price.
+      · **Nothing was credited:** `referral_conversions` **2, newest 2026-05-05** — unchanged; **0**
+        conversions since the deploy. **No bonus email** (the notify is gated on a row being inserted).
+        **0** `error_log` rows since the deploy, and **0** ever naming the credit or the notify.
+      ⚠ **THE BACKFILL COUNT RECONCILED, AND THE RECONCILIATION IS ITSELF THE EVIDENCE.** 16
+      `pipeline_cache` rows carry a creation date; **15** have a matching `jobber_clients` row, which is
+      exactly what the backfill could reach and exactly what it logged. The 16th has no identity row, so
+      the backfill structurally cannot touch it. And **one** `jobber_clients` row held a date with no
+      `pipeline_cache` date — written by a **live capture after boot**, which is direct production
+      evidence the new capture write works. Measured again at 13:13Z: **22 filled**, up from 16.
+      ⚠ **WHY EACH REFERRED CLIENT WAS REFUSED, COUNTED PER GATE RATHER THAN AS "the first to fire".**
+      Replicating `evaluateReferral`'s ORDER in a verification query would be a second implementation of
+      the money rules, which is the thing the one-shared-credit design exists to prevent. Of **20**
+      referred clients: **14** have no referrer account · **17** have no qualifying paid invoice · **5**
+      have an unknown client creation date · **19** have no custom-field facts at all. And of the **4**
+      that DO clear the paid-invoice gate, **all 4** carry a **NULL** financed flag — so the
+      TRUE-or-NULL change is their second line of defence, exactly as 7d predicted before it shipped.
+      ⚠ **READ-ONLY THROUGHOUT:** bare `SELECT`s over the public Postgres proxy, from a script outside
+      the repo, credentials never printed or written. Every query is quoted in the session report.
+
 ### C1 — THREE THINGS THE BUILD FOUND, AND WHAT IS LEFT OPEN (2026-10-02)
 
 - [ ] **CITATION ROT THE C1 COMMIT CAUSED, MEASURED AND DELIBERATELY NOT REPAIRED — 26 `LIKELY ROTTED`
@@ -14666,6 +14767,30 @@ this section for the measurement and for what is still open.
       **The procedure when this is picked up: read the cited content at the OLD line in the OLD revision,
       confirm it is what the citing sentence describes, and only then shift it** — or re-cite by ROLE,
       which is the form that does not rot.
+
+- [ ] 🔴 **RULED 2026-10-02 (Danny) — REORDER SO THE IDENTITY ROW IS CREATED BEFORE CAPTURE AND
+      DECISION ON A FIRST SIGHTING, SO THE CREATION DATE AND THE FULL-CAPTURE MARKER BOTH LAND ON THE
+      FIRST CAPTURE. ITS OWN SMALL COMMIT, AFTER C2, WITH ITS EFFECT ON CATCH-UP ELIGIBILITY MEASURED
+      AND REPORTED.**
+      This closes the entry immediately below at its cause rather than at the symptom: today
+      `captureClientFacts`' `UPDATE ... SET jobber_created_at` affects **0 rows** on a first sighting
+      because the identity upsert that CREATES the row runs after both the capture and the decision.
+      ⚠ **IT ALSO CHANGES A SECOND THING, AND THAT IS WHY THE MEASUREMENT IS PART OF THE RULING, NOT A
+      COURTESY.** The full-capture marker (`last_full_capture_at`) is `UPDATE`-only for the same reason,
+      and `factCapture.js` records "the client is simply not eligible for the catch-up until its next
+      full capture" as **the conservative direction**. Reordering makes a brand-new client eligible on
+      its FIRST sighting, which grows the catch-up's selected population. **Measure it before and
+      after and report the number** — the same discipline Commit A's eligibility climb was accepted
+      under, where `changed 0` on two consecutive runs was the load-bearing figure.
+      ⚠ **AND A CASE PINS THE CURRENT ORDERING DELIBERATELY** — C1's brand-new-credit case asserts
+      `jobber_created_at` is STILL NULL after a credit, as its proof the supplied date is what admitted
+      the client. **That case must be re-pointed openly, not quietly deleted:** once the reorder lands,
+      the column WILL be filled, and the case's property becomes "the supplied date is still what the
+      gate used" rather than "the column is empty". Characterization rule — the assertion inverts
+      because a ruling changed the mechanism, not because it was wrong.
+      ⚠ **AFTER C2, NOT BEFORE, AND NOT MERGED WITH IT.** C2's single subject of review is the
+      lock/connection partition in the sync; a diff containing both a lock restructure and a door
+      reorder cannot be reviewed.
 
 - [ ] **🔴 `jobber_clients.jobber_created_at` IS STILL NULL FOR A CLIENT'S FIRST SIGHTING, AND THAT IS
       NOT WHAT CLOSED C1 — THE SUPPLIED DATE IS.** Measured 2026-10-02, end to end through the real
@@ -14687,6 +14812,23 @@ this section for the measurement and for what is still open.
       case that deliberately pins the current ordering, so it is a behaviour change beyond C1's scope.
       ⚠ **Do not "fix" the NULL by having the identity upsert write the column** without deciding that
       question — it would make two writers of one column whose ordering is the whole subject.
+
+- [ ] **🔴 THE CATCH-UP'S CREDIT IS INVISIBLE IN PRODUCTION LOGS, AND C1 SHIPPED THE COUNTER WITHOUT
+      THE LOG LINE.** Found 2026-10-02 while trying to show the credit path executing on live traffic.
+      `runRedecideStaleClients` maintains `summary.credited` and `formatSummary()` prints a
+      `CREDITED` row — but **the cron does not call `formatSummary`.** `server/cron/jobs/redecideStaleClients.js`
+      builds its own line: `eligible, decided, changed, failed, skipped-partial, beyond limit`. C1 added
+      the counter and did not add it there.
+      ⚠ **SO A CREDIT MADE BY THE CATCH-UP LEAVES NO LOG EVIDENCE AT ALL, AND NEITHER DOES ITS ABSENCE.**
+      `[credit] reason=...` does not exist either: `creditReferralFromFacts` RETURNS a reason and no
+      caller logs it, so a client that is persistently not credited — `referrer_not_found`,
+      `client_created_at_unknown`, `no_job_type_found` — is indistinguishable from a client nobody
+      looked at. **That is the silent-gate shape on the money path, in the observability layer rather
+      than the logic.**
+      ⚠ **IT IS WHY THE 2026-10-02 LIVE CHECK HAD TO BE ANSWERED FROM THE DATABASE RATHER THAN THE LOGS**,
+      and a live check that cannot see its subject is weak evidence however green it looks.
+      **A small commit: add `credited` to the cron's line, and log the per-client reason at a level that
+      does not storm the log.** ⚠ **Not folded into C2** — C2's single subject is the lock partition.
 
 - [ ] **🔴 A SECOND EMAIL SEAM REPORTED COVERAGE IT DID NOT HAVE, AND THE SUITE TIMED OUT RATHER THAN
       FAILING.** `server/utils/referralNotify.js` carries its own `_sendEmail`, and its comment claimed

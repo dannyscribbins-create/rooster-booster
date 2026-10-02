@@ -21,6 +21,11 @@ const { runAttributionEngine } = require('../utils/attributionEngine');
 const { captureClientFacts } = require('../utils/factCapture');
 const { makeRequestReader } = require('../utils/requestFacts');
 const { withClientLock } = require('../utils/clientLock');
+// ⚠ C2 — THE SYNC CREDITS NOW. Both are required at the top rather than lazily: neither module
+// requires anything from this file, so there is no cycle (unlike `attributionDecide` and
+// `referredStatus`, which do and are required lazily for exactly that reason).
+const { creditReferralFromFacts } = require('../utils/referralCredit');
+const { notifyReferralCredit } = require('../utils/referralNotify');
 const { fetchFullClient, CUSTOM_FIELDS_VALUE_ONLY } = require('../utils/jobberClientFetch');
 // ⚠ SAFE AS A TOP-LEVEL REQUIRE, unlike `referredStatus`/`attributionDecide` above: this module
 // requires only `fieldMapping`, which requires nothing from here, so there is no cycle.
@@ -172,58 +177,6 @@ function getReferredByValue(client, referralSourceField) {
   return readReferredByValue(client?.customFields, referralSourceField);
 }
 
-/**
- * Captures a referred client's facts and runs the engine from them, inside the per-client lock.
- * Inputs: the contractor, the Jobber client id, the referral anchor, an optional capture-shape
- *         client, and a token used only if one must be fetched.
- * Output: nothing. Throws on a capture failure, which the caller records and swallows.
- *
- * ⚠ THE FETCH IS OUTSIDE THE LOCK AND MUST STAY THERE. Holding a pooled connection across a
- * Jobber round trip is the one thing server/utils/clientLock.js forbids outright: a slow Jobber
- * would exhaust the pool rather than delay one client.
- *
- * ⚠ A FAILED CAPTURE MEANS NO DECISION (Commit 5, rule 2), AND ON THIS DOOR THAT MATTERS MORE
- * THAN ON THE OTHERS. This is the only path whose writeOrphanOnMiss is TRUE, so a decision taken
- * from a partial fact set would not merely be wrong — it would raise an orphan flag and ring the
- * admin bell about a referral that is fine. Throwing here leaves the pipeline_cache row, the
- * notifications and the rest of the sync untouched; the next 30-minute tick retries.
- *
- * ⚠ decideFromFacts IS REQUIRED LAZILY, AND IT IS NOT A STYLE CHOICE. attributionDecide requires
- * classifyPipelineStatus from THIS file, so a top-level require here is a cycle — under which
- * Node hands out a half-initialised module and the symbol is `undefined` at call time, with no
- * error until something invokes it. The lazy require resolves after both modules are loaded.
- */
-async function attributeReferredClient({ contractorId, jobberClientId, referralAnchor, captureClient, token }) {
-  const { decideFromFacts } = require('../utils/attributionDecide');
-
-  const forCapture = captureClient || await _psFetchFullClient(jobberClientId, token, {
-    door: 'pipeline-sync', contractorId,
-  });
-
-  await withClientLock(pool, { contractorId, jobberClientId, door: 'pipeline-sync' }, async (tx) => {
-    await captureClientFacts(tx, { contractorId, client: forCapture });
-    // `tx`, not `pool` — a read on another connection would sit outside the lock and could miss
-    // the capture on the line above.
-    const decided = await decideFromFacts(tx, { contractorId, jobberClientId });
-    await _runAttributionEngine(tx, {
-      contractorId,
-      jobberClientId,
-      // ⚠ FROM THE FACTS, NOT FROM classifyPipelineStatus(client) AS IT WAS BEFORE 7b.
-      // ⚠ AND IT CAN NOW DIFFER FROM pipeline_cache.pipeline_status, WHICH IS STILL CLASSIFIED
-      // FROM THE LIVE OBJECT A FEW LINES UP. That is deliberate and scoped: pipeline_cache is the
-      // REFERRAL display and drives bonus timing, and moving it onto facts is a separate change
-      // with its own blast radius. The DECISION is what R5i governs. Same accepted, temporary
-      // split Commit 4 recorded for jobber_clients.pipeline_stage, filed with it.
-      currentStatus: decided.currentStatus,
-      client: decided.client,
-      readRequests: makeRequestReader(tx, contractorId),
-      referralAnchor,
-      // ⚠ NO writeOrphanOnMiss HERE, SO IT DEFAULTS TO TRUE — and that is the referral pipeline's
-      // ruling (R3 is scoped to the request path ONLY). A referral resolving to no rep is a money
-      // question and an incident. Do not add `false` for symmetry with the other doors.
-    });
-  });
-}
 
 // ── SYNC SINGLE CLIENT ────────────────────────────────────────────────────────
 // Input: contractorId string, Jobber client object, referralStartDate Date object
@@ -317,6 +270,10 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
   // `withClientLock: contractorId is required` before the existing guard was ever reached.
   let forCapture = null;
   let derived = null;
+  // ⚠ DECLARED OUT HERE SO THE NOTIFY CAN READ IT AFTER THE LOCK HAS BEEN RELEASED (C2). It stays
+  // null on every path that does not credit, and the notify is gated on it — so "no credit" and
+  // "credited but no email" cannot be confused.
+  let creditOutcome = null;
   if (contractorId) {
     try {
       // ⚠ THE FETCH IS INSIDE THE try, AND IT WAS OUTSIDE IT IN THE FIRST WRITING OF THIS COMMIT.
@@ -327,6 +284,18 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
       forCapture = captureClient || await _psFetchFullClient(client.id, token, {
         door: 'pipeline-sync', contractorId,
       });
+      // ── C2 — TRANSACTION 1: CAPTURE AND DERIVE, UNCHANGED ──────────────────
+      // ⚠ THE DERIVATION STAYS IN HERE WITH THE CAPTURE, AND THAT IS WHAT PRESERVES THE FAIL-SAFE.
+      // The referral record must STILL be written when a capture fails (`oneEngineFromFacts` (v)), so
+      // the upsert cannot share this transaction — a capture throw would roll the record back and a
+      // brand-new referred client would simply not appear. Keeping derive HERE rather than moving it
+      // into transaction 2 means it reads the facts in the very transaction that wrote them, and a
+      // failure of either leaves `derived` null while the record below is still written.
+      // ⚠ AND THAT IS WHY THE SPLIT IS 'capture+derive' / 'record+attribute+credit' RATHER THAN
+      // 'capture' / 'derive+record+…'. The first writing of C2 moved derive out, which would have made
+      // a derive failure roll back the referral record — and catching it inside the transaction would
+      // not have helped, because a SQL failure aborts the transaction and every later statement fails
+      // with "current transaction is aborted". The fail-safe is only expressible with derive in here.
       derived = await withClientLock(
         pool, { contractorId, jobberClientId: client.id, door: 'pipeline-sync' },
         async (tx) => {
@@ -363,26 +332,35 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
   // ── PRE-UPSERT STATUS CAPTURE (#1 first-referral, #2/#3/#5/#33 transitions) ──
   // Capture old status before upsert so we can detect transitions afterward.
   // Count existing rows for this referrer to detect first-ever referral.
+  //
+  // ⚠ C2 — THESE READS MOVED INSIDE TRANSACTION 2 WITH THE UPSERT THEY PRECEDE. On the pool they sat
+  // on a DIFFERENT connection from the write that consumes them, so a concurrent sync of the same
+  // client could upsert between the read and this one's write — and `oldPipelineStatus` is what every
+  // transition notification below is gated on. Reading "not paid" and then writing after someone else
+  // already wrote 'paid' is how a transition fires twice.
   let oldPipelineStatus = null;
   let isFirstReferralForReferrer = false;
-  try {
-    const existingCacheRow = await pool.query(
-      `SELECT pipeline_status FROM pipeline_cache WHERE contractor_id=$1 AND jobber_client_id=$2`,
-      [contractorId, client.id]
-    );
-    oldPipelineStatus = existingCacheRow.rows[0]?.pipeline_status || null;
 
-    // Only count when this is a new client row — avoids false positive on re-syncs
-    if (!oldPipelineStatus) {
-      const referrerRowCount = await pool.query(
-        `SELECT COUNT(*) AS cnt FROM pipeline_cache WHERE contractor_id=$1 AND LOWER(referred_by)=LOWER($2)`,
-        [contractorId, referredBy]
+  async function readPreUpsertState(db) {
+    try {
+      const existingCacheRow = await db.query(
+        `SELECT pipeline_status FROM pipeline_cache WHERE contractor_id=$1 AND jobber_client_id=$2`,
+        [contractorId, client.id]
       );
-      isFirstReferralForReferrer = parseInt(referrerRowCount.rows[0]?.cnt || '0') === 0;
+      oldPipelineStatus = existingCacheRow.rows[0]?.pipeline_status || null;
+
+      // Only count when this is a new client row — avoids false positive on re-syncs
+      if (!oldPipelineStatus) {
+        const referrerRowCount = await db.query(
+          `SELECT COUNT(*) AS cnt FROM pipeline_cache WHERE contractor_id=$1 AND LOWER(referred_by)=LOWER($2)`,
+          [contractorId, referredBy]
+        );
+        isFirstReferralForReferrer = parseInt(referrerRowCount.rows[0]?.cnt || '0') === 0;
+      }
+    } catch (preCheckErr) {
+      await logError({ req: null, error: preCheckErr });
+      console.error('[pipelineSync] pre-upsert status check failed:', preCheckErr.message);
     }
-  } catch (preCheckErr) {
-    await logError({ req: null, error: preCheckErr });
-    console.error('[pipelineSync] pre-upsert status check failed:', preCheckErr.message);
   }
 
   // ⚠ THE EARLIEST PAID INVOICE'S OWN DATE, NEVER `new Date()` (Danny ruling 4, 2026-09-29).
@@ -394,7 +372,14 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
   // is excluded from the ON CONFLICT update below, so on a re-sync this returns the ORIGINAL
   // first-seen instant, not "now". Reading it back this way (rather than capturing new Date() in JS
   // beforehand) avoids clock/round-trip drift between the JS timestamp and what's actually stored.
-  const upsertResult = await pool.query(
+  // ⚠ C2 — ONE COPY OF THE STATEMENT, TAKING A `db`, BECAUSE IT HAS TWO CALLERS NOW. It runs inside
+  // transaction 2 for a real contractor, and on the pool for the falsy-contractorId path that
+  // `syncSingleClient` tolerates (`attributionWiring.test.js` case (c) drives it, and
+  // `withClientLock` THROWS on a falsy contractorId). Pasting a second copy of a money-adjacent
+  // upsert is what this repo has already paid for twice.
+  let referralAnchor = null;
+  async function upsertReferralRecord(db) {
+    const upsertResult = await db.query(
     `INSERT INTO pipeline_cache
        (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status,
         pre_start_date, jobber_created_at, last_synced_at, updated_at, paid_at,
@@ -440,8 +425,122 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
      RETURNING created_at`,
     [contractorId, client.id, clientName, referredBy, status,
      isPreStart, createdAt, paidAt, statusDerivedAt]
-  );
-  const referralAnchor = upsertResult.rows[0].created_at;
+    );
+    referralAnchor = upsertResult.rows[0].created_at;
+  }
+
+  // ── C2 — TRANSACTION 2: THE REFERRAL RECORD, THE ATTRIBUTION AND THE CREDIT, UNDER ONE LOCK ──
+  //
+  // ⚠ THIS IS THE COMMIT'S SUBJECT. Before C2 the `pipeline_cache` upsert ran on the POOL, outside
+  // any lock, with `attributeReferredClient` opening a SECOND lock of its own afterwards. 7d recorded
+  // that as the blocker to the sync ever crediting: a conversion written "inside its lock" could not
+  // be atomic with the referral record that justifies it while the two lived in different
+  // transactions, and nothing serialised two concurrent syncs of one client between the read and the
+  // write.
+  //
+  // ⚠ WHAT IS INSIDE: the pre-upsert reads, the referral record, the attribution engine and the
+  // credit. Each one reads what the previous wrote, so they belong to one unit of work or to none.
+  //
+  // ⚠ WHAT IS DELIBERATELY OUTSIDE, AND THIS IS THE PARTITION UNDER REVIEW: the Jobber fetch (above,
+  // before transaction 1), every email, and `notifyReferralCredit`. A pooled connection must never be
+  // held across an outbound HTTP call — commit 6b fixed exactly that defect inside `withClientLock`
+  // itself, where the rollback path awaited `logError` and was safe ONLY because that one call passed
+  // `alert: false`. **Pool safety resting on a flag is not pool safety**, which is why this is fenced
+  // and behaviourally tested rather than asserted in a comment.
+  //
+  // ⚠ THE ATTRIBUTION STAYS FAIL-SAFE, AND IT HAD TO BE CAUGHT *INSIDE* THE LOCK TO STAY THAT WAY.
+  // Its own ruling is that an attribution error must never abort the sync. Catching it outside the
+  // lock would mean the throw unwinds the transaction first, taking the referral record with it.
+  // ⚠ THE CALLBACK IS INLINE RATHER THAN A NAMED FUNCTION, AND A FENCE IS WHY. `oneEngineFromFacts`
+  // (iii) requires the engine call to fall inside the PARENTHESISED EXTENT of a `withClientLock`
+  // call. Passing a named callback put the engine one level away and the fence went red on a
+  // property that still held — the moved-target failure a non-vacuity floor exists to produce. The
+  // falsy-contractorId path is handled in its own branch below rather than by sharing this body.
+  if (contractorId) {
+    await withClientLock(
+      pool, { contractorId, jobberClientId: client.id, door: 'pipeline-sync' },
+      async (db) => {
+        await readPreUpsertState(db);
+        await upsertReferralRecord(db);
+
+        // ── THE ATTRIBUTION ENGINE, INLINE AND INSIDE THE LOCK ────────────────────
+        //
+        // ⚠ IT USED TO LIVE IN `attributeReferredClient`, WHICH OPENED A LOCK OF ITS OWN AND CAPTURED THE
+        // CLIENT A SECOND TIME. C2 deleted that function rather than converting it to take a `tx`: it had
+        // exactly one caller, so the wrapper only moved the engine call one level away from the lock.
+        // ⚠ AND MOVING IT AWAY BROKE A FENCE, WHICH IS WHY IT IS INLINE RATHER THAN EXTRACTED.
+        // `oneEngineFromFacts` (iii) requires the engine call to fall inside the PARENTHESISED EXTENT of a
+        // `withClientLock` call in the same file, and says of itself that "a door that called the engine
+        // through a helper invoked from inside the lock would not be seen". A `tx`-taking wrapper made this
+        // door exactly that case: the property still held and the fence could no longer check it. Inlining
+        // keeps the fence working by its own mechanism instead of widening it — and the locked extent is
+        // visibly contiguous, which is what makes the partition reviewable at all.
+        //
+        // ⚠ decideFromFacts IS REQUIRED LAZILY, AND IT IS NOT A STYLE CHOICE. `attributionDecide` requires
+        // `classifyPipelineStatus` from THIS file, so a top-level require is a cycle — under which Node
+        // hands out a half-initialised module and the symbol is `undefined` at call time, with no error
+        // until something invokes it.
+        //
+        // ⚠ FAIL-SAFE, AND CAUGHT *INSIDE* THE LOCK DELIBERATELY. An attribution error must never abort
+        // the sync; catching it outside would let the throw unwind the transaction first and take the
+        // referral record with it.
+        try {
+          const { decideFromFacts } = require('../utils/attributionDecide');
+          // `db`, not `pool` — a read on another connection would sit outside the lock and could miss
+          // the capture committed by transaction 1.
+          const decided = await decideFromFacts(db, { contractorId, jobberClientId: client.id });
+          await _runAttributionEngine(db, {
+            contractorId,
+            jobberClientId: client.id,
+            // ⚠ FROM THE FACTS, NOT FROM classifyPipelineStatus(client) AS IT WAS BEFORE 7b.
+            // ⚠ AND IT CAN NOW DIFFER FROM pipeline_cache.pipeline_status, WHICH IS STILL CLASSIFIED
+            // FROM THE LIVE OBJECT. That is deliberate and scoped: pipeline_cache is the REFERRAL
+            // display and drives bonus timing, and moving it onto facts is a separate change with its
+            // own blast radius. The DECISION is what R5i governs.
+            currentStatus: decided.currentStatus,
+            client: decided.client,
+            readRequests: makeRequestReader(db, contractorId),
+            referralAnchor,
+            // ⚠ NO writeOrphanOnMiss HERE, SO IT DEFAULTS TO TRUE — and that is the referral pipeline's
+            // ruling (R3 is scoped to the request path ONLY). A referral resolving to no rep is a money
+            // question and an incident. Do not add `false` for symmetry with the other doors.
+          });
+        } catch (err) {
+          await logError({ req: null, error: err, contractorId, source: 'pipelineSync/attribution' });
+        }
+
+        // ── THE CREDIT, THROUGH THE ONE SHARED CREDIT (C2) ──────────────────────
+        // ⚠ THIS IS WHAT "the sync credits instantly" MEANS. Until now only the invoice-paid door and the
+        // catch-up job credited, so a referred client the SYNC discovered as already paid reached 'paid'
+        // on the referrer's own screen and waited up to 30 minutes for the catch-up to pay them.
+        //
+        // ⚠ THE CLIENT'S CREATION DATE IS SUPPLIED FROM THE LIVE OBJECT, for the same reason the
+        // invoice-paid door supplies it: this path writes `pipeline_cache`, NOT `jobber_clients`, so for a
+        // client no webhook has ever captured there is no stored `jobber_created_at` to read and the one
+        // start-date rule would refuse it as `client_created_at_unknown`. `client.createdAt` is the same
+        // Jobber field `captureClientFacts` writes that column from.
+        // ⚠ AND IT IS PASSED EVEN WHEN ABSENT: a client the fetch returned with no `createdAt` is passed
+        // as null and REFUSED, rather than falling through to a stored read that cannot answer. Unknown is
+        // never permission.
+        //
+        // ⚠ IT NEVER THROWS INTO THIS CALLBACK. `creditReferralFromFacts` swallows and alerts, because a
+        // referral that cannot be evaluated must not roll back the referral record it rode in on.
+        creditOutcome = await creditReferralFromFacts(db, {
+          contractorId,
+          jobberClientId: client.id,
+          req: null,
+          clientCreatedAt: client.createdAt ?? null,
+        });
+      }
+    );
+  } else {
+    // ⚠ NO LOCK, BECAUSE `withClientLock` THROWS ON A FALSY contractorId AND THIS FUNCTION TOLERATES
+    // ONE BY DESIGN (`attributionWiring.test.js` case (c) drives it). Only the referral record is
+    // written here — the attribution and the credit are both contractor-scoped. Behaviour is unchanged
+    // from before C2, where the upsert always ran on the pool.
+    await readPreUpsertState(pool);
+    await upsertReferralRecord(pool);
+  }
 
   // ── EARNING LIVES HERE NOW, NOT ON A PAGE VIEW (Danny, 2026-09-29) ─────────
   // ⚠ `users.paid_count` AND THE PIPELINE-DRIVEN BADGES USED TO BE WRITTEN BY
@@ -507,25 +606,36 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
   // a REFERRED client: the `if (!referredBy) return` above has already sent everyone else home,
   // so the added Jobber cost is one fetch per referred client per sync, not per client.
   //
-  // Fail-safe: an attribution error must never abort the sync or block notifications.
-  try {
-    if (contractorId) {
-      // ⚠ `forCapture`, NOT `captureClient` (N4 commit 7b). `captureClient` is null for both sync
-      // callers, so passing it made this function FETCH THE CLIENT A SECOND TIME — once for the
-      // status derivation above and once here, two ~3,515-reservation calls per referred client
-      // per sync. The capture-shape client is already in hand; reusing it halves the Jobber cost
-      // and guarantees both steps decided from the same fetch rather than from two snapshots
-      // taken moments apart.
-      // ⚠ AND ON THE FAILURE PATH `forCapture` IS null, WHICH IS DELIBERATE RATHER THAN A GAP:
-      // `attributeReferredClient` then fetches for itself, so a transient failure gets a second
-      // chance here, and if that one fails too the catch below logs it and the sync still finishes.
-      // The status stays underived either way — the upsert above has already run.
-      await attributeReferredClient({
-        contractorId, jobberClientId: client.id, referralAnchor, captureClient: forCapture, token,
-      });
+  // ── C2 — THE ATTRIBUTION CALL MOVED UP INTO TRANSACTION 2 ────────────────────
+  //
+  // ⚠ IT USED TO RUN HERE, ON THE POOL, AFTER THE UPSERT, OPENING A LOCK OF ITS OWN AND CAPTURING THE
+  // CLIENT A SECOND TIME. Both are gone: the single lock above captures once (transaction 1) and
+  // attributes once (transaction 2), so this sync now makes ONE capture rather than two identical ones
+  // in two transactions. The second capture was pure cost — the same facts, written twice.
+  //
+  // ⚠ AND THE SECOND-CHANCE FETCH WENT WITH IT, DELIBERATELY. The old comment here recorded that a
+  // null `forCapture` let `attributeReferredClient` fetch for itself, "so a transient failure gets a
+  // second chance". That retry is NOT available inside a lock — a Jobber call there is the one thing
+  // `clientLock.js` forbids — so it is given up on purpose rather than lost by accident. When the
+  // capture failed, `captureCommitted` is false, the status stays underived, the referral record is
+  // still written, and the next 30-minute tick retries the whole thing. That is the same convergence
+  // the invoice-paid door relies on.
+  //
+  // ⚠ THE NOTIFY, AFTER THE LOCK IS RELEASED, ONLY ON A NEW CREDIT.
+  // ⚠ HERE RATHER THAN INSIDE, AND THAT IS THE PARTITION THIS COMMIT EXISTS TO ESTABLISH.
+  // `notifyReferralCredit` sends through Resend with retries; calling it inside `withClientLock` would
+  // hold a pooled connection across an outbound HTTP call, so a slow Resend would exhaust the pool
+  // rather than delay one email. It takes `pool`, not `tx`, so it is not even callable from inside.
+  // ⚠ GATED ON `credited`, NEVER ON `qualified`. A duplicate is `qualified: true` with
+  // `inserted: false`, and emailing on `qualified` is how a referrer is told twice about one bonus.
+  if (creditOutcome && creditOutcome.credited) {
+    try {
+      await notifyReferralCredit(pool, { ...creditOutcome, contractorId, req: null });
+    } catch (notifyErr) {
+      // A failed email must never undo a credit that is already committed — the money is the record,
+      // the email is the courtesy.
+      await logError({ req: null, error: notifyErr, contractorId, source: 'pipelineSync — notify' });
     }
-  } catch (err) {
-    logError({ req: null, error: err, source: 'pipelineSync/attribution' });
   }
 
   // ── #25 NEW REFERRAL ADMIN ALERT (non-blocking) ──────────────────────────────

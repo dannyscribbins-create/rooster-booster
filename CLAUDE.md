@@ -433,8 +433,76 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2468 server tests across 414 suites, and 1410 React tests across 86 files** (measured 2026-10-02 by the N4 C1 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2468 · suites 414 · pass 2468 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE C1 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2478 server tests across 416 suites, and 1410 React tests across 86 files** (measured 2026-10-02 by the N4 C2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2478 · suites 416 · pass 2478 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE C2 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2468 → 2478 is **+10**, one new file (`syncLockPartition.test.js`); suites 414 → 416 is that
+  file's **two** describes. React did not move and was re-measured — **no `src/` file was touched at
+  all**. **All four predicted before the run and matched.** Counted with an anchored `^\s*it\(` (10);
+  every loop was checked for POSITION — one in `beforeEach`, the rest inside `it()` bodies or inside the
+  `lockedExtents` helper — so **none wraps a case**.
+  ⚠ **THE COMMIT'S SUBJECT IS A PARTITION, NOT A FEATURE, AND THAT IS DANNY'S FRAMING.** `syncSingleClient`
+  now credits inside its own lock, so a referred client the SYNC discovers as already paid is paid at once
+  instead of waiting up to 30 minutes for the catch-up. The reviewable question is the boundary: what may
+  run while a pooled connection is held, and what may not.
+  ⚠ **TRANSACTION 1 KEEPS THE DERIVE, AND THE FIRST WRITING OF C2 GOT THAT WRONG.** I moved derive into
+  transaction 2, which would have made a derive failure roll back the referral record — and catching it
+  inside would not have helped, because **a SQL failure aborts the transaction and every later statement
+  fails with "current transaction is aborted"**. `oneEngineFromFacts` (v) requires the record to be written
+  even when the capture fails, and that is only expressible with derive in transaction 1. The split is
+  therefore `capture+derive` / `record+attribute+credit`, not `capture` / `derive+record+…`.
+  ⚠ **`attributeReferredClient` WAS DELETED RATHER THAN CONVERTED TO TAKE A `tx`, AND A FENCE DECIDED
+  THAT.** It had exactly one caller, so a wrapper only moved the engine one level away from the lock —
+  and `oneEngineFromFacts` (iii) requires the engine call to fall inside the PARENTHESISED EXTENT of a
+  `withClientLock` call, stating of itself that *"a door that called the engine through a helper invoked
+  from inside the lock would not be seen"*. **The property still held and the fence could no longer check
+  it**, which is the moved-target failure a non-vacuity floor exists to produce. Inlining keeps the fence
+  working by its own mechanism instead of widening it, and the locked extent is visibly contiguous — which
+  is what makes a partition reviewable at all. **The lock's callback is inline for the same reason**: a
+  named callback put the engine out of the extent too.
+  ⚠ **AND THE DOUBLE CAPTURE WENT WITH IT.** The sync captured once for the derivation and again inside
+  that function — the same facts, written twice, in two transactions, with the `pipeline_cache` upsert on
+  the POOL between them. ⚠ **The second-chance Jobber fetch went too, on purpose rather than by accident:
+  a retry is not available inside a lock.** On a capture failure the record is still written, the status
+  stays underived, and the next tick retries.
+  ⚠ **A GUARD-PROOF MEASURED WIDTH 0 AND THE REPAIR IS THE ENTRY WORTH KEEPING.** Changing
+  `_runAttributionEngine(db, …)` to `(pool, …)` **inside** the lock broke nothing any test could see — and
+  it is a real defect: the engine's writes would commit on another connection, outside the transaction,
+  surviving a rollback of the record that justified them and serialised by nothing. ⚠ **BOTH FENCES ARE
+  BLIND TO IT FOR THE SAME REASON: they check a call's POSITION, never which connection it was handed.**
+  A call can sit perfectly inside a locked extent and bypass the lock through its first argument. The new
+  case forbids the word `pool` anywhere inside a locked callback, skipping past `withClientLock`'s own
+  first argument, which is legitimately the pool. (4) and (7) then red **exactly 1** each against it.
+  ⚠ **THE BEHAVIOURAL HALF PATCHES `withClientLock` IN THE TEST, BEFORE `pipelineSync` IS REQUIRED, AND
+  THE ORDER IS THE WHOLE TRICK.** The sync destructures the lock at module load, capturing the function
+  REFERENCE, so replacing the export afterwards would change nothing. Patching first means the sync
+  captures the tracking wrapper — and **production is untouched**, so the thing under test is the shipped
+  code rather than a testability variant of it. Each outbound stub records the lock depth when it fires.
+  ⚠ **AND IT CARRIES THREE PRECONDITIONS, BECAUSE "every outbound call saw depth 0" IS TRIVIALLY TRUE OF
+  A RUN THAT MADE NO OUTBOUND CALL AND EQUALLY TRUE OF A RUN THAT TOOK NO LOCK.** It asserts outbound
+  calls fired, that a lock was really taken, and that a conversion was written — plus a PAIRED POSITIVE
+  proving the probe can see a call made inside a lock, without which a mis-ordered require would report
+  the partition as proven while nothing was observed.
+  ⚠ **SEVEN GUARD-PROOFS, EVERY REVERT AN INVERSE PATCH IN A `finally` PROVEN BYTE-IDENTICAL BY sha256.**
+  Widths: (1) the notify sent from inside the lock → **4**; (2) a Jobber fetch from inside it → **4**;
+  (3) the sync stops crediting → **3**; (4) the referral record written on the pool again → **1**;
+  (5) a capture failure rethrown instead of swallowed → **1**; (6) the sync stops supplying the client's
+  creation date → **3**; (7) the engine handed the pool inside the lock → **1**.
+  ⚠ **THE WIDTHS WERE MEASURED TWICE, AND THE SECOND SET IS THE ONE CITED.** The lock callback's body was
+  re-indented by four spaces after the first run, so every anchor inside it stopped matching — the harness
+  SKIPPED rather than reporting a wrong width, which is the behaviour to want, **and a width measured
+  against code that no longer exists is a claim rather than a measurement.**
+  ⚠ **ONE ANCHOR WAS UNIQUE FORWARDS AND NOT BACKWARDS, AND THE HARNESS REFUSED IT.**
+  `await upsertReferralRecord(pool);` already exists in the legitimate falsy-`contractorId` branch, so the
+  INVERSE patch had two candidates. **An anchor unique in one direction is not therefore unique in the
+  other** — this file already records that from `db.js`, and it cost nothing this time because the check
+  runs before anything is written.
+  ⚠ **AND THE INTERLOCK NOISE IN THE GATE LOG IS PRE-EXISTING, CHECKED RATHER THAN ASSUMED.** 109
+  `ABORTING the send` refusals, **none** of them a bonus email — measured against the C1 gate's 354 on the
+  same tree shape. C2 added no new refused send; the retries are `errorLogger`'s first-occurrence alerts
+  in suites that have not opted in, which `PRE_LAUNCH_CHECKLIST.md` already records.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE C1 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
+  It read **2468 / 414 / 1410 / 86**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE C1 COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2445 → 2468 is **+23**, one new file (`c1Credit.test.js`); suites 408 → 414 is that file's
   **six** describes — one top-level and five nested, and **a nested describe adds a suite exactly as a
   top-level one does**. React did not move and was re-measured: **no `src/` file was touched at all**.
