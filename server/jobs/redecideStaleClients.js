@@ -53,6 +53,8 @@
 
 const { decideFromFacts } = require('../utils/attributionDecide');
 const { writeReferredStatus } = require('../utils/referredStatus');
+const { creditReferralFromFacts } = require('../utils/referralCredit');
+const { notifyReferralCredit } = require('../utils/referralNotify');
 const { withClientLock } = require('../utils/clientLock');
 const { derivableClientIdSql } = require('../utils/derivableClient');
 const { logError: realLogError } = require('../middleware/errorLogger');
@@ -93,7 +95,34 @@ async function selectStaleClients(db, { contractorId, limit = DEFAULT_LIMIT } = 
       WHERE jc.contractor_id = $1
         AND ${derivableClientIdSql('jc.jobber_client_id')}
         AND jc.last_full_capture_at IS NOT NULL
-        AND (jc.stage_derived_at IS NULL OR jc.last_full_capture_at > jc.stage_derived_at)
+        AND (
+          jc.stage_derived_at IS NULL OR jc.last_full_capture_at > jc.stage_derived_at
+          -- THE REFERRER-VISIBLE HALF (7d ruling 2).
+          -- WITHOUT THIS CLAUSE A SYNC-DECIDED CLIENT IS NEVER CREDITED BY THIS JOB. The two surfaces
+          -- carry their own decision markers: stage_derived_at on jobber_clients for the DISPLAYED
+          -- stage, and status_derived_at on pipeline_cache for the REFERRER-VISIBLE status. A client
+          -- the sync has already decided has a current stage_derived_at, so the first two conditions
+          -- are both false, and the client falls out of the selection with its referrer uncredited.
+          -- Measured before this clause: status_derived_at was written by two statements and read by
+          -- nothing at all.
+          -- THIS IS WHAT MAKES "credited within one run" TRUE for every path that decides the
+          -- referrer-visible status without crediting, which after C1 is the sync.
+          -- IT IS AN EXISTS RATHER THAN A JOIN, deliberately. pipeline_cache is unique on
+          -- (contractor, client) so a join is safe today, but answering a boolean with a join is the
+          -- fan-out shape that double-counted a rep's book, found in a browser and not by a test.
+          -- A boolean needs EXISTS; a join is for columns you SELECT.
+          -- NO BACKTICKS IN THIS COMMENT, AND THAT IS NOT STYLE: this SQL lives in a template
+          -- literal, so a backtick here closes the string. The first writing of this block used them
+          -- and the file failed to parse with "missing ) after argument list" — the exact signature
+          -- CLAUDE.md records for this defect. Reworded, never escaped.
+          OR EXISTS (
+            SELECT 1 FROM pipeline_cache pc
+             WHERE pc.contractor_id = jc.contractor_id
+               AND pc.jobber_client_id = jc.jobber_client_id
+               AND (pc.status_derived_at IS NULL
+                    OR jc.last_full_capture_at > pc.status_derived_at)
+          )
+        )
       ORDER BY jc.stage_derived_at ASC NULLS FIRST, jc.last_full_capture_at ASC
       LIMIT $2`,
     [contractorId, limit]
@@ -160,6 +189,7 @@ async function redecideOne(pool, { contractorId, jobberClientId }) {
     // `writeReferredStatus` is an UPDATE, so a client the referral sync has never seen affects 0 rows
     // and that is the expected quiet outcome.
     let referredRows = 0;
+    let creditOutcome = null;
     const cached = await tx.query(
       `SELECT 1 FROM pipeline_cache WHERE contractor_id = $1 AND jobber_client_id = $2`,
       [contractorId, jobberClientId]
@@ -169,10 +199,31 @@ async function redecideOne(pool, { contractorId, jobberClientId }) {
       referredRows = ref.rowCount;
     }
 
+    // ── THE CREDIT, THROUGH THE ONE SHARED CREDIT (7d) ────────────────────────
+    // ⚠ THE SAME FUNCTION THE DOOR CALLS. This is the whole reason the catch-up matters for money and
+    // not only for display: a client that becomes paid by a route with no webhook — this job, the sync,
+    // a re-capture — used to reach 'paid' on the referrer's screen and never be credited. A second copy
+    // of the gate logic here would be a second set of money rules.
+    //
+    // ⚠ IT IS OUTSIDE THE `cached` BRANCH, AND THAT IS RULING 1 RATHER THAN AN OVERSIGHT. The credit
+    // reads the referrer from SAVED CLIENT FACTS and creates the `pipeline_cache` row itself when a
+    // capture shows a referrer and no row exists — so gating it on the row already existing would make
+    // the brand-new-referral path, which ruling 1 exists for, structurally unreachable from this job.
+    // ⚠ A client with no referrer in its facts returns `not_referred` and writes nothing, so running it
+    // for every selected client costs one indexed read on the clients that are not referred.
+    // ⚠ AND THE ORDER MATTERS: `writeReferredStatus` above is an UPDATE that affects 0 rows when no row
+    // exists yet. If the credit CREATES the row, the referrer-visible status is written by the NEXT
+    // run — which is the conservative direction, because a status written before its facts were
+    // credited would show a stage with no bonus beside it.
+    creditOutcome = await creditReferralFromFacts(tx, { contractorId, jobberClientId });
+
     return {
       status: decided.currentStatus,
       stageChanged: (before.rows[0]?.pipeline_stage ?? null) !== decided.currentStatus,
       referredRows,
+      // ⚠ RETURNED SO THE CALLER CAN NOTIFY *AFTER* THE LOCK. Sending inside would hold a pooled
+      // connection across an outbound HTTP call — the defect commit 6b fixed in withClientLock.
+      creditOutcome,
     };
   });
 }
@@ -208,6 +259,7 @@ async function runRedecideStaleClients(pool, {
     redecided: 0,
     stageChanged: 0,
     referredUpdated: 0,
+    credited: 0,
     failed: [],
     elapsedMs: null,
   };
@@ -218,6 +270,13 @@ async function runRedecideStaleClients(pool, {
       summary.redecided += 1;
       if (out.stageChanged) summary.stageChanged += 1;
       if (out.referredRows > 0) summary.referredUpdated += 1;
+      // ── NOTIFY AFTER THE LOCK, ONLY ON A NEW CREDIT (7d) ────────────────────
+      // `redecideOne` has returned, so its transaction is committed and its lock released. Gated on
+      // `credited`, which is true only when a conversion row was INSERTED — a duplicate sends none.
+      if (out.creditOutcome && out.creditOutcome.credited) {
+        summary.credited += 1;
+        await notifyReferralCredit(pool, { ...out.creditOutcome, contractorId, req: null });
+      }
     } catch (err) {
       summary.failed.push({ id: c.jobberClientId, message: err.message });
       onLine(`[redecideStaleClients] FAILED ${c.jobberClientId}: ${err.message}`);
@@ -251,6 +310,7 @@ function formatSummary(s) {
     `re-decided          ${s.redecided}`,
     `stage CHANGED       ${s.stageChanged}`,
     `referrer status set ${s.referredUpdated}`,
+    `CREDITED            ${s.credited}`,
     `failed              ${s.failed.length}`,
   ];
   for (const f of s.failed) lines.push(`  - ${f.id}: ${f.message}`);

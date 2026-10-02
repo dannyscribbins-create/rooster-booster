@@ -14591,9 +14591,22 @@ quadruples is evidence about the estimate, not about the wave:
       stored vs derived vs live (⚠ **three-way, not two-way** — a binary test that assumes the stored
       stage is `'paid'` misclassified the one `sold→lead` case in this investigation).
 
-## 🔴 C1 — THE ONE START-DATE RULE CANNOT BE DRIVEN FROM FACTS YET (raised 2026-10-01, build stopped)
+## ✅ C1 — THE ONE START-DATE RULE (raised 2026-10-01, BUILT 2026-10-02, NOT PUSHED)
 
-- [ ] **🔴 THE CLIENT'S JOBBER CREATION DATE IS STORED IN EXACTLY ONE PLACE, AND IT IS THE ROW THE
+✅ **CLOSED BY THE C1 COMMIT, WHICH IS ON `main` LOCALLY AND DELIBERATELY NOT PUSHED.** It carries DDL
+(`jobber_clients.jobber_created_at`), so ruling 4's backup ask binds: **Danny clicks Run Backup Now and
+confirms before any push.** What landed: the nullable column plus the one-time backfill from
+`pipeline_cache.jobber_created_at` (option (a) below); `captureClientFacts` writing it outside the
+certification gate; STEP 3b in `evaluateReferral` requiring the CLIENT's creation date to be on or after
+the programme start, with an unknown date refused; and `creditReferralFromFacts` / `referralNotify.js`
+as the one shared credit and the one shared notify.
+⚠ **AND ONE THING THE DESIGN BELOW DID NOT ANTICIPATE: OPTION (a) ALONE IS NOT SUFFICIENT.** Persisting
+the column does not help the case ruling 1 exists for, because on a first sighting the row does not
+exist yet when the credit runs. The gate reads the column when nobody supplies a date, and takes a
+supplied live date where one is available — see **C1 — THREE THINGS THE BUILD FOUND** immediately after
+this section for the measurement and for what is still open.
+
+- [x] **✅ THE CLIENT'S JOBBER CREATION DATE IS STORED IN EXACTLY ONE PLACE, AND IT IS THE ROW THE
       FACT PATH HAS TO CREATE.** Measured 2026-10-01, by grep across `server/`:
       · `pipeline_cache.jobber_created_at` — **the only store**, written only by `syncSingleClient`'s
         upsert.
@@ -14636,6 +14649,80 @@ quadruples is evidence about the estimate, not about the wave:
       ⚠ **WHAT WAS NOT BUILT, SAID PLAINLY: C1 IS NOT STARTED BEYOND THIS FINDING.** The start-date
       rule is part of C1 by Danny's instruction and cannot be deferred inside it — a credit path
       without it pays on pre-start clients, which is the thing the rule exists to stop.
+
+### C1 — THREE THINGS THE BUILD FOUND, AND WHAT IS LEFT OPEN (2026-10-02)
+
+- [ ] **CITATION ROT THE C1 COMMIT CAUSED, MEASURED AND DELIBERATELY NOT REPAIRED — 26 `LIKELY ROTTED`
+      across six documents.** From **+42 lines** inserted into `server/referralRules.js` (the
+      `clientCreatedAt` option and STEP 3b's supplied/stored branch) and **+38** into
+      `server/routes/webhooks/jobber.js` (the notify-seam forwarding and the supplied-date call site).
+      Distribution: **11** `PRE_LAUNCH_CHECKLIST.md` · **6** `TENANT_RESOLUTION_REBUILD_SPEC.md` · **3**
+      `MEMBER_RANK_ECONOMY_SPEC.md` · **2** `SECURITY_HARDENING_SPEC.md` · **1** each
+      `CLAUDE_REGISTRY.md` and `CDL_3c_PHASE0_REPORT.md`. Also 39 `TARGET TOUCHED`.
+      ⚠ **NOT REPAIRED BY ADDING THE DELTA, AND THAT IS THE RULE RATHER THAN LAZINESS.** `LIKELY ROTTED`
+      means "your edit moved the target line", never "this citation was correct before" — and the commit
+      that shipped `--changed-files` flagged ELEVEN of its own, of which ALL ELEVEN had already been wrong
+      beforehand. Adding 42 to each would certify wrong numbers as repaired.
+      **The procedure when this is picked up: read the cited content at the OLD line in the OLD revision,
+      confirm it is what the citing sentence describes, and only then shift it** — or re-cite by ROLE,
+      which is the form that does not rot.
+
+- [ ] **🔴 `jobber_clients.jobber_created_at` IS STILL NULL FOR A CLIENT'S FIRST SIGHTING, AND THAT IS
+      NOT WHAT CLOSED C1 — THE SUPPLIED DATE IS.** Measured 2026-10-02, end to end through the real
+      invoice-paid door: after a brand-new referred client is credited, that column reads **NULL**.
+      `captureClientFacts` writes it with an `UPDATE`, and the webhook's identity upsert — the statement
+      that CREATES the `jobber_clients` row — runs **after** both the capture and the decision.
+      `server/utils/factCapture.js` already records exactly that ordering for the full-capture marker
+      sitting directly above it. So on a first sighting the write affects **0 rows**.
+      ⚠ **THE CREDIT ONLY WORKS BECAUSE THE DOOR HANDS THE DATE OVER DIRECTLY**
+      (`clientCreatedAt: relatedData?.createdAt`, the `categoryValues` precedent). A case pins the
+      NULL column deliberately: it is the proof the credit did not come from a stored read.
+      ⚠ **WHAT IS STILL OPEN, SAID PLAINLY:** the column fills on that client's **next** full capture,
+      so between the two the stored value is unknown. Nothing is mis-paid — the conversion exists and
+      `UNIQUE(user_id, jobber_client_id)` makes it exactly-once — but a re-decide in that window reads
+      `client_created_at_unknown`.
+      **THE ALTERNATIVE FIX WAS NOT TAKEN, AND IT IS A RULING RATHER THAN A TIDY-UP:** moving the
+      identity upsert **before** the capture would make both the date and the full-capture marker land
+      on a first sighting. It also changes catch-up eligibility for brand-new clients and touches a
+      case that deliberately pins the current ordering, so it is a behaviour change beyond C1's scope.
+      ⚠ **Do not "fix" the NULL by having the identity upsert write the column** without deciding that
+      question — it would make two writers of one column whose ordering is the whole subject.
+
+- [ ] **🔴 A SECOND EMAIL SEAM REPORTED COVERAGE IT DID NOT HAVE, AND THE SUITE TIMED OUT RATHER THAN
+      FAILING.** `server/utils/referralNotify.js` carries its own `_sendEmail`, and its comment claimed
+      *"ONE SEAM, MATCHING THE WEBHOOK ROUTER'S"* — parity that did not exist from a caller's point of
+      view. Overriding the router's seam left the notify holding the real Resend client, so the two
+      bonus emails the invoice-paid door is responsible for went into the 7d-0 interlock's capture
+      ledger where no assertion could see them. **Nothing threw, nothing logged, the credit was written
+      correctly, and four cases waiting on `emails.length >= 2` simply timed out.**
+      ✅ **CLOSED IN C1** — `_setTestOverrides` forwards into the notify module and `_resetTestOverrides`
+      resets it, so the comment is now true. Forwarded rather than duplicated per suite, because the
+      alternative is that every suite must know about two seams and the forgotten one is the one whose
+      emails vanish.
+      ⚠ **THE GENERAL SHAPE IS WORTH THE LINE: A MODULE THAT GREW ITS OWN TEST SEAM WHILE A COMMENT
+      ASSERTED PARITY WITH ANOTHER ONE.** When extracting code that sends, moving the send moves the
+      seam — and a seam whose absence is invisible is indistinguishable from one that works.
+
+- [x] ✅ **RULED 2026-10-01 (Danny) — NO MIGRATION FOR THE LEGACY LABEL-STRING `work_category` MAPPING.**
+      No contractor uses it: only Accent exists and it is already mapped by configuration id, and every
+      new contractor maps through the by-id picker. **Instead, in the post-N4 cleanup commit:** confirm
+      no admin path can still SAVE the legacy string form, then remove the legacy string handling
+      (pre-launch, nothing depends on it).
+      ⚠ **UNTIL THEN A LEGACY MAPPING CORRECTLY CREDITS NOTHING, AND C1 PINS THAT AS A NAMED CASE**
+      rather than leaving it to be rediscovered: `resolveCategoryValue` returns `mapping_not_by_id` with
+      a null value, so `categoryValues` is `[]` and the engine reports `no_job_type_found`. The retired
+      live path fell back to a label scan and paid. **No live effect; it is a future-contractor gate.**
+
+- [ ] **THE DOOR'S DERIVABLE-ID GUARD IS THE FILTER FOR A PROGRAMMER-ERROR THROW, NOT A CREDIT GATE —
+      MEASURED, AND IT CHANGED WHAT THE TEST HAD TO ASSERT.** A guard-proof removing
+      `isDerivableJobberClientId` from the invoice-paid door came back **width 0**: no placeholder was
+      wrongly credited. Cause — `deriveReferredStatus` carries a deliberate throw for a non-Jobber id
+      and its own comment says callers "must filter FIRST", so removing the door's check makes the whole
+      decision transaction **raise** instead. Both states write no conversion; only an `error_log` row
+      separates them. The case now asserts the placeholder is **skipped cleanly**, which is what makes
+      the guard falsifiable at all. ⚠ **Consequence if it were ever removed: an alert on EVERY
+      invoice-paid webhook for a placeholder client, while the referrer-visible status stopped being
+      written.**
 
 ## 7d — TWO RULINGS NEEDED BEFORE THE CREDIT CAN SHIP (raised 2026-10-01, build stopped)
 

@@ -649,15 +649,42 @@ describe('7c-2 — the fences on the selection and the link', () => {
     assert.match('if (row.label === x) {', /\blabel\b\s*(===|==|\.toLowerCase)/);
   });
 
-  it('CURRENT STATE: the resolver has no production caller yet, and that is 7d', () => {
-    // ⚠ LABELLED AS THE STATE OF THINGS RATHER THAN FENCED, so wiring it in 7d means updating a
-    // clearly-named case instead of arguing with a guard that forbade the feature. `evaluateReferral`
-    // still reads the category off the live invoice object; moving the MONEY path onto saved facts is
-    // 7d's subject, and doing it inside this capture commit would mix a schema change with a payout
-    // change in one unreviewable diff.
-    const rules = read('referralRules.js');
-    assert.doesNotMatch(rules, /categorySource|resolveCategoryValue/,
-      'when this fails, 7d has landed — update this case, do not delete it');
-    assert.match(rules, /customFields/, 'it still reads the live object today');
+  it('7d HAS LANDED: the resolver has a production caller, and it is the shared credit', () => {
+    // ⚠ UPDATED, NOT DELETED — WHICH IS WHAT ITS OWN PREVIOUS WORDING INSTRUCTED. This case read
+    // *"CURRENT STATE: the resolver has no production caller yet, and that is 7d"* and asserted
+    // `referralRules.js` did NOT mention `categorySource`, with the note *"when this fails, 7d has
+    // landed — update this case, do not delete it"*. C1 is 7d's credit, so it landed.
+    //
+    // ⚠ AND THE OLD ASSERTION WOULD NOW FAIL FOR THE WRONG REASON, WHICH IS WORTH RECORDING. C1 does
+    // NOT make `referralRules.js` import `categorySource` — the CREDIT resolves the category and passes
+    // it in as `categoryValues`, deliberately, so the engine keeps one definition of the gates and
+    // gains no second source for the category. What trips the old needle is a COMMENT in that file
+    // naming `categorySource` to explain the option. **The fence was reading prose**, which is this
+    // repo's recorded "scans read comments" shape, so the replacement asserts the real wiring instead
+    // of the absence of a word.
+    const credit = read('utils/referralCredit.js');
+    assert.match(credit, /resolveCategoryValue\(/,
+      'the shared credit must resolve the category through the configuration link');
+    assert.match(credit, /recordMismatch:\s*true/,
+      'and it must record a mismatch rather than silently preferring the invoice copy');
+
+    // ⚠ THE ENGINE TAKES THE RESOLVED VALUE RATHER THAN RESOLVING ONE, and that is the property that
+    // keeps the category to a single source. Asserted on CODE, after stripping comments, so the
+    // sentence above cannot satisfy it.
+    // ⚠ DECLARED LOCALLY, BECAUSE THE SUITE'S OTHER `stripComments` LIVES INSIDE A DIFFERENT `it()`
+    // BODY AND IS NOT IN SCOPE HERE. Reaching for it would have thrown `ReferenceError` — the exact
+    // class of defect this session just fixed in `CRMSettings.jsx`, where an identifier declared in one
+    // function was used in another.
+    const stripLineComments = (src) => src
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+      .replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length));
+    const rules = stripLineComments(read('referralRules.js'));
+    assert.match(rules, /opts\.categoryValues/,
+      'evaluateReferral must accept a supplied category');
+    assert.ok(!/require\(.*categorySource/.test(rules),
+      'but it must NOT resolve one itself — that would be a second source for the category');
+    // The label scan survives for callers that still hand over a live invoice object; removing it
+    // would break every unmapped contractor, which 7c-0 records as a regression dressed as a cleanup.
+    assert.match(rules, /customFields/, 'the live-object label scan survives for live callers');
   });
 });

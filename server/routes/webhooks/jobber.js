@@ -15,7 +15,6 @@ const crypto = require('crypto');
 const axios = require('axios');
 const { pool } = require('../../db');
 const { syncSingleClient, classifyPipelineStatus } = require('../../crm/pipelineSync');
-const { writeReferralConversion } = require('../../utils/referralConversion');
 const { writeReferredStatus } = require('../../utils/referredStatus');
 // ⚠ ONE RESOLVER FOR BOTH EXTRACTION SITES (Commit B). `crm/pipelineSync.js` requires the same two
 // symbols; a second `.find()` spelled here is how the two doors drift apart on which field names the
@@ -23,6 +22,15 @@ const { writeReferredStatus } = require('../../utils/referredStatus');
 const {
   resolveReferralSourceField, readReferredByValue,
 } = require('../../utils/referralSourceField');
+// ── C1 — ONE SHARED CREDIT, ONE SHARED NOTIFY ────────────────────────────────────────────────────
+// ⚠ TWO MODULES RATHER THAN ONE, AND THE SPLIT IS THE POINT: the credit WRITES and takes a `tx` inside
+// the lock; the notify SENDS and takes the `pool` after the lock is released. Collapsing them would put
+// an outbound HTTP call inside a held connection.
+const { creditReferralFromFacts } = require('../../utils/referralCredit');
+const { notifyReferralCredit } = require('../../utils/referralNotify');
+// ⚠ THE MODULE ITSELF, ONLY SO `_setTestOverrides` CAN FORWARD THE EMAIL SEAM TO IT. Production
+// never calls the notify's override setter; see the note in `_setTestOverrides` below.
+const notifyModule = require('../../utils/referralNotify');
 const { isDerivableJobberClientId } = require('../../utils/derivableClient');
 const { refreshClientSales } = require('../../utils/clientSales');
 const { logError } = require('../../middleware/errorLogger');
@@ -31,9 +39,7 @@ const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { jobberShouldRetry, resendShouldRetry } = require('../../utils/retryHelpers');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
-const { evaluateReferral } = require('../../referralRules');
 const { isEmailSuppressed } = require('../../utils/emailSuppression');
-const { applyTag } = require('../../utils/tags');
 const deriveAndSaveTags = require('../../utils/deriveJobberTags');
 const { runContactMatchingPass } = require('../../jobs/contactMatchingPass');
 const { refreshTokenIfNeeded, getFreshContractorAccessToken, fetchRequestById } = require('../../crm/jobber');
@@ -53,6 +59,12 @@ const { withClientLock } = require('../../utils/clientLock');
 // crm/jobber.js entirely, so no door can reach for it by habit.
 const { makeRequestReader } = require('../../utils/requestFacts');
 const { isInvoicePaid, PAID_STATUS } = require('../../utils/invoicePaid');
+// ⚠ THREE IMPORTS WERE REMOVED HERE BY C1 AND THEY WENT TOGETHER: `evaluateReferral`,
+// `writeReferralConversion` and `applyTag`. Their ONLY call sites were inside the 173-line
+// live-object referral block this commit retired (see STEP 9 below). All three are still used —
+// by `server/utils/referralCredit.js`, which is now the one place that evaluates, writes a
+// conversion and applies the Active Referrer tag. Named rather than silently dropped, because
+// three vanished imports in a 200-line deletion is exactly where a side effect gets lost.
 const {
   fetchFullClient,
   assertNoJobberGraphQLErrors,
@@ -342,7 +354,7 @@ const RELATED_QUOTE_FIELDS = `id quoteStatus createdAt lastTransitioned { approv
 
 const RELATED_BASE_QUERY = `query GetClientRelated($id: EncodedId!) {
           client(id: $id) {
-            id isCompany isLead
+            id createdAt isCompany isLead
             tags { nodes { label } }
             ${CUSTOM_FIELDS}
             jobs(first: ${RELATED_PAGE_SIZE}) {
@@ -469,7 +481,22 @@ function _setTestOverrides({
   if (a !== undefined) _fetchInvoiceWithJobs        = a;
   if (b !== undefined) _fetchFullClient              = b;
   if (c !== undefined) _fetchClientRelatedData       = c;
-  if (d !== undefined) _sendEmail                    = d;
+  if (d !== undefined) {
+    _sendEmail                    = d;
+    // ── C1 — THE NOTIFY'S SEAM IS THE SAME SEAM, AND IT HAD TO BE SAID IN CODE ─────────
+    // ⚠ `referralNotify.js` CARRIES ITS OWN `_sendEmail`, AND ITS COMMENT CLAIMS "ONE SEAM, MATCHING
+    // THE WEBHOOK ROUTER'S". That parity did not exist from a CALLER's point of view: overriding this
+    // router's seam left the notify holding the real Resend client, so the two bonus emails this door
+    // is responsible for went somewhere no assertion could see them.
+    // ⚠ AND IT FAILED SILENTLY RATHER THAN LOUDLY, WHICH IS WHY IT IS WORTH THE LINES. With the 7d-0
+    // interlock armed by `captureResend()`, those sends were RECORDED by the interlock instead of
+    // refused — so nothing threw, nothing logged, the credit was written correctly, and four cases
+    // waiting on `emails.length >= 2` simply timed out. A seam that reports coverage it does not have
+    // is this repo's recurring shape; forwarding is what makes the notify's comment true.
+    // ⚠ FORWARDED RATHER THAN DUPLICATED IN EVERY SUITE, deliberately. The alternative is that each
+    // suite must know about two seams, and the one that gets forgotten is the one whose emails vanish.
+    notifyModule._setTestOverrides({ sendEmail: d });
+  }
   if (e !== undefined) _fetchClientJobsForJobUpdate  = e;
   if (f !== undefined) _refreshTokenIfNeeded         = f;
   if (g !== undefined) _getFreshContractorAccessToken = g;
@@ -479,6 +506,10 @@ function _setTestOverrides({
 
 // test seam — inert in production, never called outside server/test/
 function _resetTestOverrides() {
+  // ⚠ RESET THE NOTIFY'S SEAM TOO. `_setTestOverrides` forwards into it, so resetting only this
+  // module's own seam would leave one suite's stub installed in `referralNotify` for every suite that
+  // ran after it — a cross-file leak that shows up as someone else's emails arriving in your array.
+  notifyModule._resetTestOverrides();
   _fetchInvoiceWithJobs        = fetchInvoiceWithJobs;
   _fetchFullClient             = fetchFullClient;
   _fetchClientRelatedData      = fetchClientRelatedData;
@@ -648,6 +679,12 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 
   // capture is the one thing the pre-split code did that this ruling exists to stop: the facts may be
   // absent or stale, and a confident wrong stage is worse than none because the next event sees a
   // stored answer and has no reason to look again.
+  //
+  // ⚠ DECLARED OUT HERE SO THE NOTIFY CAN READ IT AFTER THE LOCK HAS BEEN RELEASED (C1). It stays null
+  // on every path that does not credit — a failed capture, a non-derivable id, a client with no
+  // referrer in its facts — and the notify is gated on it, so "no credit" and "credit but no email"
+  // cannot be confused.
+  let creditOutcome = null;
   if (captureCommitted) {
     try {
       pipelineStage = await withClientLock(pool, { contractorId, jobberClientId: fullClient.id, door }, async (tx) => {
@@ -674,6 +711,44 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 
         // `$3::text` casts, the write-once `paid_at` CASE and the UPDATE-never-INSERT rule with it.
         if (alsoDeriveReferredStatus && isDerivableJobberClientId(fullClient.id)) {
           await writeReferredStatus(tx, { contractorId, jobberClientId: fullClient.id });
+
+          // ── THE CREDIT, THROUGH THE ONE SHARED CREDIT (C1) ────────────────────
+          // ⚠ THE THIRD PARAGRAPH ABOVE IS NOW OUT OF DATE BY DESIGN AND IS LEFT STANDING AS THE
+          // RECORD: it says this door "writes no conversion and credits nobody … blocked on 7c".
+          // 7c shipped, Commit A made the custom-field facts reachable on this door, and C1 is the
+          // credit. The old sentence is kept rather than deleted because a reader who believed it
+          // needs to see which claim was withdrawn.
+          //
+          // ⚠ INSIDE THE LOCK AND INSIDE THIS TRANSACTION, so the conversion row and the stage
+          // decision that justified it commit together or not at all.
+          //
+          // ⚠ IT NEVER THROWS INTO THIS CALLBACK. `creditReferralFromFacts` swallows and alerts,
+          // because a referral that cannot be evaluated must not roll back the stage decision it
+          // rode in on — the transaction coupling that cost seven clients their facts on this very
+          // door when `$3` was left uncast.
+          //
+          // ⚠ AND IT SENDS NO EMAIL. The notify runs after the lock is released, below — sending
+          // here would hold a pooled connection across an outbound HTTP call, which is the defect
+          // commit 6b fixed inside `withClientLock` itself.
+          //
+          // ⚠ THE CLIENT'S CREATION DATE IS SUPPLIED FROM THE LIVE OBJECT, AND WITHOUT IT THE BRAND-NEW
+          // CASE COULD NEVER BE CREDITED. The identity upsert below is what CREATES the `jobber_clients`
+          // row, and it runs after this block — `factCapture.js` records the same ordering for the
+          // full-capture marker in terms — so on a first sighting `captureClientFacts`' write of
+          // `jobber_created_at` affects 0 rows and the one start-date rule reads nothing. Measured
+          // 2026-10-01: the credit returned `client_created_at_unknown` and ruling 1's *"credited
+          // immediately rather than waiting for the sync"* was dark for exactly the client it names.
+          // ⚠ `relatedData`, NOT `fullClient`. The shell built at the invoice-paid call site carries only
+          // id, name, emails and phones; `relatedData` is the full client fetch and is the same object
+          // `captureClientFacts` writes the column from, so the two can never disagree.
+          // ⚠ AND IT IS PASSED EVEN WHEN ABSENT, deliberately: `clientCreatedAt: undefined` would be
+          // indistinguishable from not supplying it, so a client the fetch returned with no `createdAt`
+          // is passed as null and REFUSED, rather than falling through to a stored read that cannot
+          // answer. Unknown is never permission.
+          creditOutcome = await creditReferralFromFacts(tx, {
+            contractorId, jobberClientId: fullClient.id, req: null,
+            clientCreatedAt: relatedData?.createdAt ?? null,
+          });
         }
 
         return decided.currentStatus;
@@ -694,6 +769,24 @@ async function upsertAndTagClient(contractorId, fullClient, relatedData, door = 
       });
       pipelineStage = null;
     }
+  }
+
+  // ── THE NOTIFY, AFTER THE LOCK IS RELEASED, ONLY ON A NEW CREDIT (C1) ───────
+  // ⚠ HERE RATHER THAN INSIDE THE LOCK, AND THAT IS NOT A STYLE CHOICE. `notifyReferralCredit` sends
+  // through Resend with retries; doing it inside `withClientLock` would hold a pooled connection across
+  // an outbound HTTP call, so a slow Resend would exhaust the pool rather than delay one email. That is
+  // precisely the defect commit 6b fixed inside `withClientLock` itself, and it is why this function
+  // takes `pool` rather than `tx`.
+  //
+  // ⚠ GATED ON `credited`, NEVER ON `qualified`. A duplicate webhook delivery is `qualified: true` with
+  // `inserted: false`, and emailing on `qualified` is exactly how a referrer gets told twice about one
+  // bonus. `credited` is true only when a conversion row was INSERTED by this call.
+  //
+  // ⚠ AND IT IS AWAITED RATHER THAN FIRED AND FORGOTTEN, so a send failure reaches the handler's own
+  // catch and is logged. An unawaited promise here would reach no log at all — the shape
+  // `.claude/rules/frontend.md` records for an unwrapped async IIFE, on the server side.
+  if (creditOutcome && creditOutcome.credited) {
+    await notifyReferralCredit(pool, { ...creditOutcome, contractorId, req: null });
   }
 
   // ── BLANK PROTECTION (Wave 0.2 item 1) ──────────────────────────────────────
@@ -1549,179 +1642,38 @@ router.post('/jobber/invoice-paid', async (req, res) => {
         }
       })();
 
-      // ── STEP 9 — REFERRAL RULES ENGINE ───────────────────────────────────────
-      // Runs unconditionally — independent of experience flow flag and result.
-      // Only fires if: client has a referred_by value AND invoice data was fetched.
-      if (referredBy && invoiceWithJobs) {
-        try {
-          const result = await evaluateReferral(contractorId, invoiceWithJobs, referredBy);
-
-          if (result.qualified) {
-            // ── THE CONVERSION WRITE MOVED TO ONE SHARED WRITER (N4 commit 6) ──────
-            // ⚠ A PURE EXTRACTION. The SQL, the ON CONFLICT clause, the parameter order and the
-            // prior-count read are unchanged; they live in server/utils/referralConversion.js so
-            // that commit 7 — which makes a revealed paid invoice credit automatically — adds a
-            // CALLER rather than a second copy of this statement.
-            // ⚠ AND THE ORDERING IS NOW A PROPERTY OF THE WRITER, NOT OF THIS CALL SITE.
-            // `isFirstConversion` is only correct when the count is taken BEFORE the insert, and
-            // left here it was one harmless-looking reordering away from being wrong.
-            // ⚠ server/test/referralConversionWriter.test.js fails if any other file INSERTs into
-            // referral_conversions, naming file and line.
-            const conversion = await writeReferralConversion(pool, {
-              userId: result.referrerId,
-              contractorId,
-              jobberClientId: result.jobberClientId,
-              bonusAmount: result.bonusAmount,
-            });
-            const isFirstConversion = conversion.isFirstConversion;
-            const conversionInsert = { rowCount: conversion.inserted ? 1 : 0 };
-
-            // Non-blocking Active Referrer tag write.
-            // ⚠ THE `paid_count + 1` INCREMENT THAT LIVED HERE IS RETIRED (Danny, 2026-09-29).
-            // `users.paid_count` now has exactly ONE writer: an absolute recompute in the pipeline
-            // sync (server/utils/referrerProgress.js). The old comment argued the `rowCount > 0`
-            // guard made the increment safe against duplicate deliveries, and it did — **but only
-            // against duplicates that reach THIS branch.** An increment cannot self-heal: any
-            // divergence from the real count, from any cause, is permanent, and a second writer
-            // (the GET, now also removed) meant two mechanisms disagreed about the same column.
-            // A recompute is idempotent and corrects drift on every tick.
-            if (conversionInsert.rowCount > 0) {
-              ;(async () => {
-                try {
-                  const referrerEmailRes = await pool.query(
-                    `SELECT email FROM users WHERE id = $1 LIMIT 1`,
-                    [result.referrerId]
-                  );
-                  if (referrerEmailRes.rows.length > 0) {
-                    const refEmail = referrerEmailRes.rows[0].email;
-                    const contactRes = await pool.query(
-                      `SELECT id FROM contacts WHERE contractor_id = $1 AND LOWER(email) = LOWER($2) LIMIT 1`,
-                      [contractorId, refEmail]
-                    );
-                    if (contactRes.rows.length > 0) {
-                      await applyTag(pool, contactRes.rows[0].id, contractorId, 'Active Referrer', 'system');
-                    }
-                  }
-                } catch (tagErr) {
-                  await logError({ req, error: tagErr, contractorId, source: 'POST /webhooks/jobber/invoice-paid — Active Referrer tag' });
-                }
-              })();
-            }
-
-            // Activity log for qualified conversion
-            await pool.query(
-              `INSERT INTO activity_log (event_type, detail)
-               VALUES ($1, $2)`,
-              [
-                'referral_conversion',
-                `Referral bonus $${result.bonusAmount} — schedule: ${result.scheduleName} — referrer user_id: ${result.referrerId} — client: ${clientName}`,
-              ]
-            );
-
-            console.log(
-              `[invoice-paid] Referral conversion recorded — user ${result.referrerId}, ` +
-              `$${result.bonusAmount}, schedule: ${result.scheduleName}, client: ${clientName}`
-            );
-
-            // ── #4 BONUS EARNED EMAIL ─────────────────────────────────────────────
-            // Only fires when a NEW conversion row was inserted (not on duplicates).
-            if (conversionInsert.rowCount > 0) {
-              try {
-                const referrerLookup = await pool.query(
-                  'SELECT full_name, email FROM users WHERE id=$1',
-                  [result.referrerId]
-                );
-                const referrerRow = referrerLookup.rows[0];
-                if (referrerRow?.email) {
-                  const csLookup = await pool.query(
-                    `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id=$1 LIMIT 1`,
-                    [contractorId]
-                  );
-                  const cs = csLookup.rows[0] || {};
-                  const fromName = escapeHtml(cs.email_sender_name || cs.company_name || 'RoofMiles');
-                  const frontendUrl = process.env.FRONTEND_URL || 'https://roofmiles.com';
-                  const firstName = escapeHtml((referrerRow.full_name || '').split(' ')[0] || referrerRow.full_name);
-                  const safeClientName = escapeHtml(clientName);
-                  const formattedAmount = formatDollars(result.bonusAmount);
-
-                  const suppressed4 = await isEmailSuppressed(contractorId, referrerRow.email, 'bonus_earned');
-                  if (!suppressed4) await retryWithBackoff(
-                    () => _sendEmail({
-                      from: `${fromName} <noreply@roofmiles.com>`,
-                      to: referrerRow.email,
-                      subject: `You just earned $${formattedAmount}`,
-                      html: `
-                        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
-                          <h2 style="color:#012854;margin:0 0 12px;">Your reward is ready</h2>
-                          <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName}, ${safeClientName}'s job is complete and your $${formattedAmount} reward has been added to your balance. Cash out anytime directly from the app.</p>
-                          <div style="text-align:center;margin-bottom:24px;">
-                            <a href="${frontendUrl}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">Cash Out Now</a>
-                          </div>
-                        </div>
-                      `,
-                    }),
-                    { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
-                  );
-                }
-              } catch (bonusEmailErr) {
-                await logError({ req, error: bonusEmailErr, contractorId, source: 'POST /webhooks/jobber/invoice-paid — #4 bonus email' });
-              }
-            }
-
-            // ── #13 FIRST REWARD MILESTONE ──────────────────────────────────────────
-            // Fires alongside #4 only on the referrer's very first conversion ever.
-            if (conversionInsert.rowCount > 0 && isFirstConversion) {
-              try {
-                const referrerLookup13 = await pool.query(
-                  'SELECT full_name, email FROM users WHERE id=$1',
-                  [result.referrerId]
-                );
-                const referrerRow13 = referrerLookup13.rows[0];
-                if (referrerRow13?.email) {
-                  const csLookup13 = await pool.query(
-                    `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id=$1 LIMIT 1`,
-                    [contractorId]
-                  );
-                  const cs13 = csLookup13.rows[0] || {};
-                  const fromName13 = escapeHtml(cs13.email_sender_name || cs13.company_name || 'RoofMiles');
-                  const frontendUrl13 = process.env.FRONTEND_URL || 'https://roofmiles.com';
-                  const firstName13 = escapeHtml((referrerRow13.full_name || '').split(' ')[0] || referrerRow13.full_name);
-                  const suppressed13 = await isEmailSuppressed(contractorId, referrerRow13.email, 'first_reward_milestone');
-                  if (!suppressed13) await retryWithBackoff(
-                    () => _sendEmail({
-                      from: `${fromName13} <noreply@roofmiles.com>`,
-                      to: referrerRow13.email,
-                      subject: `You just earned your first reward`,
-                      html: `
-                        <div style="font-family:sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;">
-                          <h2 style="color:#012854;margin:0 0 12px;">First one in the books</h2>
-                          <p style="color:#444;margin:0 0 24px;line-height:1.6;">${firstName13}, your first referral reward just posted to your balance. This is just the beginning — every referral you send is another opportunity to earn. Cash out anytime.</p>
-                          <div style="text-align:center;margin-bottom:24px;">
-                            <a href="${frontendUrl13}" style="display:inline-block;background:#012854;color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;font-weight:600;font-size:15px;">Cash Out Now</a>
-                          </div>
-                        </div>
-                      `,
-                    }),
-                    { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
-                  );
-                }
-              } catch (milestone13Err) {
-                await logError({ req, error: milestone13Err, contractorId, source: 'POST /webhooks/jobber/invoice-paid — #13 first milestone' });
-              }
-            }
-          } else {
-            // Not qualified — log reason and exit cleanly. No action needed.
-            console.log(
-              `[invoice-paid] Referral not qualified — reason: ${result.reason}, ` +
-              `client: ${clientName}, referred_by: "${referredBy}"`
-            );
-          }
-        } catch (err) {
-          // Referral engine failure must never affect experience flow or crash the handler
-          console.error('[invoice-paid] Referral rules engine error:', err.message);
-          await logError({ req, error: err, contractorId });
-        }
-      }
+      // ── STEP 9 — RETIRED. THE CREDIT NOW HAPPENS FROM FACTS, INSIDE THE LOCK (C1) ──────────
+      //
+      // ⚠ 170 LINES OF LIVE-OBJECT EVALUATION USED TO SIT HERE, AND RETIRING THEM IS 7d RULING 5.
+      // They called `evaluateReferral(contractorId, invoiceWithJobs, referredBy)` against the LIVE
+      // invoice object this handler had just fetched, then wrote the conversion, the activity-log
+      // line, the 'Active Referrer' tag and both emails inline.
+      //
+      // ⚠ WHY IT HAD TO GO RATHER THAN BE LEFT AS A SECOND PATH: it was the ONLY path that could
+      // credit, so a client that became paid by any other route — the sync, a stage webhook, the
+      // catch-up job, a re-capture — reached 'paid' on the referrer's own screen and was never
+      // credited at all. And leaving it beside the fact-driven credit would mean TWO evaluators of
+      // one money question, which is the shape this repo has already paid for twice (the cash-out
+      // balance, the speculative payout ladder).
+      //
+      // ⚠ EVERYTHING IT DID STILL HAPPENS, IN ONE PLACE EACH, AND THIS LIST IS THE REVIEWABLE PART:
+      //   · the gates              → `evaluateReferral`, unchanged, now fed an invoice built from facts
+      //   · the conversion row     → `writeReferralConversion`, the single writer
+      //   · the activity-log row   → `creditReferralFromFacts`, inside the same transaction
+      //   · the Active Referrer tag → same, and now INSIDE the transaction rather than
+      //                              fire-and-forget on the pool, so it cannot land for a credit that
+      //                              rolled back
+      //   · both emails (#4 bonus, #13 first milestone) → `notifyReferralCredit`, after the lock
+      //
+      // ⚠ AND THE CATEGORY CHANGED SOURCE, WHICH IS THE ONE BEHAVIOURAL DIFFERENCE WORTH NAMING.
+      // This block scanned the live invoice's jobs for a field matching the mapped LABEL. Three live
+      // configurations share the label "Job Type" across ALL_JOBS, ALL_INVOICES and ALL_QUOTES, so a
+      // label scan can read quote vocabulary onto a job-reading schedule. The fact path resolves it
+      // through `categorySource`, which follows the configuration LINK: the invoice's own copy first,
+      // then the job, then the linked quote.
+      //
+      // ⚠ `referredBy` AND `invoiceWithJobs` ARE STILL READ ABOVE AND ARE STILL USED — by the
+      // experience flow and by the pending-referral matcher. Do not delete them as orphans.
 
     } catch (err) {
       await logError({ req, error: err, contractorId });

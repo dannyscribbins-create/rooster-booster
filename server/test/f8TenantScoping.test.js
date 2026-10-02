@@ -71,6 +71,29 @@ const B = 'f8-tenant-b';
 const ACCOUNT_A = 'JACCT_F8_A';
 const SHARED_NAME = 'Jane Referrer';
 
+// ── C1 ── THE F8 CONTROL NEEDED THE SAME FIXTURE MIGRATION AS invoicePaidWebhook --------------
+// ⚠ AND IT IS THE CONTROL THAT WENT RED, WHICH IS THE MECHANISM WORKING. F8-1a exists so F8-1b's
+// *"no conversion row"* means "tenancy held" rather than "nothing qualified". When the credit moved to
+// saved facts (ruling 1), the control stopped writing a conversion -- so BOTH cases went vacuous
+// together, and only the control said so. Repairing it restores F8-1b's meaning as a side effect.
+// ⚠ THREE REPAIRS, each the same as in `invoicePaidWebhook.test.js`: a real EncodedId (the old
+// `'jc-f8'` is rejected by `isDerivableJobberClientId`, so the credit block never ran), a capture-shape
+// `fetchClientRelatedData` instead of `null` (no capture meant no facts to credit from), and a
+// work_category mapping BY CONFIGURATION ID (a legacy label string resolves `mapping_not_by_id` and
+// credits nothing).
+// ⚠ THE FACTS ARE WRITTEN BY THE REAL CAPTURE, NOT PRE-SEEDED -- the same reasoning as there: a test
+// that inserts the rows itself cannot discover that nothing upstream supplies them.
+const { JOBBER_CLIENT_GID_PREFIX } = require('../utils/derivableClient');
+const CLIENT_F8 = Buffer.from(`${JOBBER_CLIENT_GID_PREFIX}920001`).toString('base64');
+const INVOICE_F8 = 'inv-node-f8';
+const JOB_F8 = 'job-node-f8';
+const WORK_CATEGORY_FIELD_F8 = Buffer.from('gid://Jobber/CustomFieldConfigurationDropdown/730114').toString('base64');
+const REFERRER_FIELD_F8 = Buffer.from('gid://Jobber/CustomFieldConfigurationText/3655374').toString('base64');
+// ⚠ NO `referral_start_date` IS SEEDED BY THIS SUITE, so the one start-date rule is skipped entirely
+// and this date is inert. Carried anyway because the capture shape is shared with the credit path and
+// an absent `createdAt` is a different fixture from a present one.
+const CLIENT_CREATED_AT_F8 = '2026-02-01T00:00:00.000Z';
+
 describe('Wave 0.3 F8 — tenant scoping on user matching (RED first)', () => {
   let pool, server, port;
 
@@ -92,6 +115,17 @@ describe('Wave 0.3 F8 — tenant scoping on user matching (RED first)', () => {
     await pool.query('DELETE FROM pending_referrals');
     await pool.query('DELETE FROM contact_tags');
     await pool.query('DELETE FROM contacts');
+    // ── C1 ── THE TABLES THE REAL CAPTURE NOW WRITES -------------------------
+    // ⚠ REQUIRED BY THE 6c RESET-COVERAGE FENCE, and load-bearing beyond tidiness: F8-1b asserts an
+    // ABSENCE, and an uncleared fact table would have it measuring the control case's leftovers.
+    await pool.query('DELETE FROM category_mismatches');
+    await pool.query('DELETE FROM crm_custom_field_facts');
+    await pool.query('DELETE FROM crm_invoice_job_links');
+    await pool.query('DELETE FROM crm_invoice_facts');
+    await pool.query('DELETE FROM crm_job_facts');
+    await pool.query('DELETE FROM crm_quote_facts');
+    await pool.query('DELETE FROM crm_request_facts');
+    await pool.query('DELETE FROM contractor_jobber_fields');
     await pool.query('DELETE FROM jobber_clients');
     await pool.query('DELETE FROM pipeline_cache');
     await pool.query('DELETE FROM experience_invite_tokens');
@@ -148,17 +182,74 @@ describe('Wave 0.3 F8 — tenant scoping on user matching (RED first)', () => {
   const PAID_INVOICE = {
     invoiceStatus: 'paid', invoiceNumber: 'INV-F8', issuedDate: '2026-06-10',
     waitingForFinancedPayment: false, amounts: { total: 10000, invoiceBalance: 0 },
-    client: { id: 'jc-f8', name: 'Test Client' },
-    jobs: { nodes: [{ id: 'job-f8', customFields: [{ label: 'Job Type', valueDropdown: 'Roof Replacement' }] }] },
+    client: { id: CLIENT_F8, name: 'Test Client' },
+    jobs: { nodes: [{ id: JOB_F8, customFields: [{ label: 'Job Type', valueDropdown: 'Roof Replacement' }] }] },
     archivedJobs: { nodes: [] },
   };
 
   const CLIENT_WITH_REFERRAL = {
-    id: 'jc-f8', firstName: 'Test', lastName: 'Client',
+    id: CLIENT_F8, createdAt: CLIENT_CREATED_AT_F8, firstName: 'Test', lastName: 'Client',
     emails: [{ address: 'f8client@example.com' }], phones: [{ number: '5550009999' }],
     customFields: [{ label: 'Referred by', valueText: SHARED_NAME }],
     quotes: { nodes: [] }, jobs: { nodes: [] },
   };
+
+  // The capture shape the real `captureClientFacts` writes A's facts from.
+  // ⚠ EVERY NODE CARRIES `client { id }` AND EVERY CUSTOM FIELD CARRIES `customFieldConfiguration
+  // { id }` -- each writer filters out a node missing either, and reports success having written nothing.
+  const RELATED_F8 = {
+    id: CLIENT_F8, createdAt: CLIENT_CREATED_AT_F8, isCompany: false, isLead: false,
+    tags: { nodes: [] },
+    customFields: [{
+      label: 'Referred by', valueText: SHARED_NAME, valueDropdown: null,
+      customFieldConfiguration: { id: REFERRER_FIELD_F8 },
+    }],
+    quotes: { nodes: [] }, requests: { nodes: [] },
+    jobs: { nodes: [{
+      id: JOB_F8, jobNumber: 1, jobStatus: 'active', jobType: 'ONE_OFF', title: 'Roof',
+      createdAt: '2026-06-01T00:00:00.000Z', updatedAt: '2026-06-01T00:00:00.000Z',
+      startAt: null, endAt: null, completedAt: null,
+      total: 10000, invoicedTotal: 10000, uninvoicedTotal: 0,
+      client: { id: CLIENT_F8 }, quote: null, request: null, salesperson: null,
+      invoices: { nodes: [] },
+      customFields: [{
+        label: 'Job Type', valueDropdown: 'Roof Replacement', valueText: null,
+        customFieldConfiguration: { id: WORK_CATEGORY_FIELD_F8 },
+      }],
+    }] },
+    invoices: { nodes: [{
+      id: INVOICE_F8, client: { id: CLIENT_F8 }, invoiceNumber: 'INV-F8', invoiceStatus: 'paid',
+      // ⚠ EXPLICITLY false -- the 7d gate blocks on TRUE *or* NULL.
+      waitingForFinancedPayment: false,
+      amounts: { total: 10000, invoiceBalance: 0 },
+      issuedDate: '2026-06-10T00:00:00.000Z', dueDate: null,
+      receivedDate: '2026-06-11T00:00:00.000Z',
+      createdAt: '2026-06-10T00:00:00.000Z', updatedAt: '2026-06-11T00:00:00.000Z',
+      customFields: [],
+      jobs: { nodes: [{ id: JOB_F8 }], pageInfo: { hasNextPage: false } },
+      archivedJobs: { nodes: [], pageInfo: { hasNextPage: false } },
+    }] },
+  };
+
+  // The work_category mapping, BY CONFIGURATION ID, plus the discovered-field rows the resolver walks.
+  async function seedFieldMappingF8(contractorId) {
+    await pool.query(
+      `INSERT INTO contractor_settings (contractor_id, contractor_field_mappings)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (contractor_id) DO UPDATE
+         SET contractor_field_mappings = EXCLUDED.contractor_field_mappings`,
+      [contractorId, JSON.stringify({
+        work_category: { field_id: WORK_CATEGORY_FIELD_F8, entity: 'ALL_JOBS', label: 'Job Type' },
+      })]
+    );
+    await pool.query(
+      `INSERT INTO contractor_jobber_fields
+         (contractor_id, jobber_field_id, label, field_type, entity, transferable, archived)
+       VALUES ($1, $2, 'Job Type', 'DROPDOWN', 'ALL_JOBS', TRUE, FALSE),
+              ($1, $3, 'Referred by', 'TEXT', 'ALL_CLIENTS', FALSE, FALSE)`,
+      [contractorId, WORK_CATEGORY_FIELD_F8, REFERRER_FIELD_F8]
+    );
+  }
 
   // Drives invoice-paid end to end for contractor A. Returns nothing; the caller
   // asserts on referral_conversions.
@@ -166,10 +257,11 @@ describe('Wave 0.3 F8 — tenant scoping on user matching (RED first)', () => {
     await seedCrmSettings(A, ACCOUNT_A);
     await seedEngagementSettings(pool, { contractorId: A, experienceFlowEnabled: false });
     await seedReferralSchedule(pool, { contractorId: A, jobberLabel: 'Roof Replacement', flatAmount: 250 });
+    await seedFieldMappingF8(A);
     _setTestOverrides({
       fetchInvoiceWithJobs: async () => PAID_INVOICE,
       fetchFullClient: async () => CLIENT_WITH_REFERRAL,
-      fetchClientRelatedData: async () => null,
+      fetchClientRelatedData: async () => RELATED_F8,
       sendEmail: async () => ({ data: null, error: null }),
     });
     const resp = await post('/webhooks/jobber/invoice-paid', envelope({

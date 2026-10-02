@@ -501,8 +501,34 @@ async function captureClientFacts(db, { contractorId, client }) {
   // until its next full capture. That is the conservative direction and a case pins it: creating a
   // row here would give `referredCaptureBackfill` the identity-writing side effect it deliberately
   // does not have.
+  // ── C1 — THE CLIENT'S OWN CREATION DATE, OUTSIDE THE CERTIFICATION GATE ─────
+  //
+  // ⚠ IT IS NOT A COMPLETENESS CLAIM, SO IT MUST NOT BE GATED ON ONE. The first writing of this commit
+  // put it inside `if (isCertifiedFullyPaged(client) && client.id)` alongside the marker, and that was
+  // wrong for a reason that would have been silent: the marker asserts "every connection was paged to
+  // exhaustion", which only a certifying fetcher may claim; the creation date is just an attribute of
+  // the client, true whether or not the fetch was exhaustive.
+  //
+  // ⚠ AND GATING IT WOULD HAVE RECREATED THE EXACT DEFECT THIS COLUMN EXISTS TO CLOSE. The start-date
+  // rule refuses a client whose creation date is unknown, so any capture path that held the date and
+  // did not write it would leave a referred client permanently `client_created_at_unknown` — ruling 1's
+  // immediate credit silently never firing, which is the failure the column was added to prevent.
+  //
+  // ⚠ `COALESCE($3, …)` — A CAPTURE THAT DID NOT CARRY THE DATE MUST NOT ERASE ONE. Writing a bare `$3`
+  // would null the column on any door whose query omits `createdAt`, making the gate oscillate between
+  // eligible and not between two captures of the same client.
+  if (client.id && client.createdAt) {
+    await db.query(
+      `UPDATE jobber_clients
+          SET jobber_created_at = COALESCE($3::timestamptz, jobber_created_at)
+        WHERE contractor_id = $1 AND jobber_client_id = $2`,
+      [contractorId, client.id, new Date(client.createdAt)]
+    );
+  }
+
   let fullCaptureStamped = 0;
   if (isCertifiedFullyPaged(client) && client.id) {
+    // ── THE FULL-CAPTURE MARKER ────────────────────────────────────────────────
     const stamp = await db.query(
       `UPDATE jobber_clients SET last_full_capture_at = NOW()
         WHERE contractor_id = $1 AND jobber_client_id = $2`,

@@ -249,17 +249,42 @@ describe('N4 commit 6 — the single-writer fence', () => {
     }
   });
 
-  it('the webhook no longer writes the conversion itself', () => {
-    const src = strip(fs.readFileSync(
+  it('the webhook no longer writes the conversion itself, and the ONE caller is the shared credit', () => {
+    // ⚠ RE-POINTED BY C1, AND THE FLOOR IS WHY THIS CASE WENT RED RATHER THAN QUIETLY PASSING.
+    // It required `webhooks/jobber.js` to still CALL `writeReferralConversion`. C1 moved that call into
+    // `server/utils/referralCredit.js` — the shared credit every path now goes through — so the floor
+    // failed LOUDLY on a moved target instead of slicing past it and asserting nothing. That is exactly
+    // what a non-vacuity floor is for, and it is the second time this one has caught a relocation.
+    //
+    // ⚠ THE PROPERTY IS UNCHANGED: `referral_conversions` has exactly one writer. What moved is WHERE
+    // that writer is called from, and the new target is more durable — a fence below keeps
+    // `referralCredit.js` the only caller, so this cannot drift again without something going red.
+    const webhookSrc = strip(fs.readFileSync(
       path.join(SERVER_ROOT, 'routes', 'webhooks', 'jobber.js'), 'utf8'));
     assert.ok(
-      !new RegExp(VERB + '\\s+' + TABLE, 'i').test(src),
-      'the invoice-paid webhook must call the shared writer'
+      !new RegExp(VERB + '\\s+' + TABLE, 'i').test(webhookSrc),
+      'the invoice-paid webhook must not write the conversion itself'
     );
+    // ⚠ AND IT MUST NOT CALL THE WRITER EITHER, WHICH IS STRICTER THAN BEFORE. The door credits through
+    // `creditReferralFromFacts`; a direct call here would be a second crediting path with none of the
+    // gates the shared credit applies.
     assert.ok(
-      src.includes('writeReferralConversion('),
-      'and it must actually call it — an absence assertion alone would pass against a webhook '
-      + 'that stopped writing conversions entirely'
+      !webhookSrc.includes('writeReferralConversion('),
+      'the door must credit through creditReferralFromFacts, not by calling the writer directly'
+    );
+
+    const creditSrc = strip(fs.readFileSync(
+      path.join(SERVER_ROOT, 'utils', 'referralCredit.js'), 'utf8'));
+    assert.ok(
+      creditSrc.includes('writeReferralConversion('),
+      'HARNESS FLOOR: the shared credit must actually call the writer — an absence assertion alone '
+      + 'would pass against a codebase that stopped writing conversions entirely'
+    );
+    // And the door must reach the credit, or the two assertions above are satisfied by a door that
+    // simply does nothing.
+    assert.ok(
+      webhookSrc.includes('creditReferralFromFacts('),
+      'HARNESS FLOOR: the invoice-paid door must still credit, through the shared credit'
     );
   });
 });

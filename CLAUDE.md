@@ -433,8 +433,88 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2445 server tests across 408 suites, and 1410 React tests across 86 files** (measured 2026-10-01 by the CRMSettings crash-fix commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2445 · suites 408 · pass 2445 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CRASH-FIX COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2468 server tests across 414 suites, and 1410 React tests across 86 files** (measured 2026-10-02 by the N4 C1 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2468 · suites 414 · pass 2468 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE C1 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2445 → 2468 is **+23**, one new file (`c1Credit.test.js`); suites 408 → 414 is that file's
+  **six** describes — one top-level and five nested, and **a nested describe adds a suite exactly as a
+  top-level one does**. React did not move and was re-measured: **no `src/` file was touched at all**.
+  **All four predicted before the run and matched.** ⚠ **NO PHANTOM, ASKED BEFORE THE RUN:** this commit
+  adds no non-test file under `src/components/admin`, `src/constants`, `src/components/superAdmin` or
+  `src/utils` — `adminBranding.test.jsx`'s four walked roots — so the arithmetic closes at exactly 23 and 0.
+  ⚠ **23 FROM 22 `it(` LINES, AND THE GAP IS WHY THE COUNT IS COUNTED RATHER THAN READ.** An anchored
+  `^\s*it\(` reports **22**. Seven loops were each checked for POSITION and **exactly one WRAPS an
+  `it()`** — a two-entry `for` over the preview/replay FILES, asserted per file BY NAME; the other six
+  sit in `beforeEach` or inside `it()` bodies. So 21 × 1 + 1 × 2 = 23. **Reading "22 lines" as 22 cases
+  would have been low by one**, the direction that looks identical to a suite that partly failed to register.
+  ⚠ **TWO EXISTING SUITES WERE MIGRATED AND CONTRIBUTE 0**, which is the expected shape:
+  `invoicePaidWebhook.test.js` holds at 11 and `f8TenantScoping.test.js` at 13 — both had fixtures
+  repaired, neither gained a case.
+  ⚠ **THE COMMIT'S SUBJECT: RULING 1's HEADLINE WAS STRUCTURALLY DARK, AND THE CAUSE WAS ORDERING
+  RATHER THAN LOGIC.** C1 added `jobber_clients.jobber_created_at` so the one start-date rule could gate
+  on the CLIENT's creation date. On the invoice-paid door the identity upsert that CREATES that row runs
+  **after** both the capture and the decision — `factCapture.js` records exactly that ordering for the
+  full-capture marker directly above the new write — so on a first sighting `captureClientFacts`'
+  `UPDATE` affects **0 rows**, the gate read nothing, and the credit returned `client_created_at_unknown`.
+  **Ruling 1 exists precisely so a first paid invoice is credited immediately rather than waiting for the
+  sync, so the one case the stored read cannot serve is the one the ruling names.** Measured end to end:
+  after the fix the client is credited and that column is **still NULL**, which is the case's own proof
+  that the supplied live date is what admitted it.
+  ⚠ **AND THE FIX IS AN OPTION ON THE GATE, NOT A REORDER OF THE DOOR.** `evaluateReferral` takes an
+  optional `clientCreatedAt` — the `categoryValues` precedent from the same commit — and falls back to the
+  stored column, which is what keeps the catch-up (holding no live client) correct. ⚠ **`undefined` and
+  `null` are deliberately different**: absent means "read the column", null means "I looked and there is
+  none" and is REFUSED. Guard-proof 10 collapses the two and reds **8**.
+  ⚠ **A GUARD-PROOF MEASURED ONE OF MY OWN GUARDS AT WIDTH 0 AND THE REPAIR CHANGED WHAT THE CASE
+  ASSERTS.** Removing the door's `isDerivableJobberClientId` check credited no placeholder: it makes
+  `deriveReferredStatus` RAISE instead, because that function carries a deliberate programmer-error throw
+  and its own comment says callers "must filter FIRST". Both states write no conversion and only an
+  `error_log` row separates them, so every conversion assertion stayed green. The case now asserts the
+  placeholder is **skipped cleanly**; (12) then reds **exactly 1**. **A guard whose failure mode has never
+  been observed is a claim, not a check** — and here the observable was not the one I had assumed.
+  ⚠ **AND A SECOND EMAIL SEAM REPORTED COVERAGE IT DID NOT HAVE, FAILING BY TIMEOUT RATHER THAN LOUDLY.**
+  `referralNotify.js` carries its own `_sendEmail` while its comment claimed *"ONE SEAM, MATCHING THE
+  WEBHOOK ROUTER'S"*. Overriding the router left the notify holding the real Resend client, so the two
+  bonus emails went into the 7d-0 interlock's capture ledger where no assertion could see them — **nothing
+  threw, nothing logged, the credit was correct, and four cases waiting on `emails.length >= 2` simply
+  timed out.** `_setTestOverrides` forwards into the module now, and `_resetTestOverrides` resets it so one
+  suite's stub cannot leak into the next.
+  ⚠ **TWO INJECTIONS ARE DELIBERATELY TWO-PART, AND SAYING SO IS THE HONEST REPORT.** A duplicate
+  delivery is refused by TWO independent mechanisms — `evaluateReferral`'s STEP 8 returns
+  `conversion_already_recorded` **before** the writer runs, and the writer's `ON CONFLICT DO NOTHING`
+  behind `UNIQUE(user_id, jobber_client_id)` is the net under it. **Breaking either alone leaves the
+  outcome AND the reason string identical**, so a one-line injection reports width 0 against a property
+  that is genuinely protected. Reporting that as a fence failing to fire would have been wrong, and
+  calling it one edit would have misdescribed what the property rests on.
+  ⚠ **AND A COMMENT OF MINE CLAIMED A MEASUREMENT I HAD NOT MADE, CORRECTED IN THE SAME COMMIT.** It said
+  dropping `ON CONFLICT` leaves the duplicate case green "measured" — true, but only because STEP 8 shields
+  the writer, which I had not established when I wrote it. **A recorded cost is a claim like any other number.**
+  ⚠ **TWELVE GUARD-PROOFS, EVERY REVERT AN INVERSE PATCH IN A `finally` PROVEN BYTE-IDENTICAL BY sha256
+  ACROSS SEVEN WATCHED FILES, ANCHORS CHECKED UNIQUE IN BOTH DIRECTIONS, EMPTY-STRING REPLACEMENTS REFUSED
+  OUTRIGHT, AND EVERY INJECTION CONFIRMED LANDED BEFORE ITS RESULT WAS BELIEVED.** Widths: (1) the supplied
+  date ignored, the exact pre-fix state → **3**; (2) a pre-start client admitted → **2**; (3) the
+  unknown-date guard removed, so the refusal survives and the DIAGNOSIS does not → **1**; (4) the financed
+  gate back to `=== true` → **1**; (5) two-part, a duplicate emails twice → **3**; (6) two-part, a duplicate
+  becomes an alert → **1**; (7) the catch-up stops crediting → **1**; (8) the rebuild preview names the
+  credit → **1**; (9) the category resolver accepts any configuration → **1**; (10) the supplied/omitted
+  distinction collapsed → **8**; (11) ruling 1's referral-record create removed → **2**; (12) the
+  derivable-id filter removed → **1**.
+  ⚠ **(10) IS WIDE BECAUSE THE INJECTION IS WIDE, NOT BECAUSE THE CASES ARE COUPLED** — every direct
+  `creditReferralFromFacts` call in the suite omits the key, so collapsing the distinction breaks the
+  stored read for all of them at once.
+  ⚠ **THE HARNESS PARSES TAP, NOT THE DEFAULT REPORTER.** `# fail N` is pure ASCII and parsed by TOKENS;
+  the default summary's prefix glyph is the one whose stripping produced `-1` for every count in an
+  earlier arc, through four anchor spellings. Output is ASCII-folded, because a cp1252 `UnicodeEncodeError`
+  in the printer after an injection has landed turns the printer into a source edit.
+  ⚠ **CITATION ROT THIS COMMIT CAUSED, MEASURED AND NOT REPAIRED: 26 LIKELY ROTTED across six documents**
+  (11 in `PRE_LAUNCH_CHECKLIST.md`, 6 in `TENANT_RESOLUTION_REBUILD_SPEC.md`, 3 in
+  `MEMBER_RANK_ECONOMY_SPEC.md`, 2 in `SECURITY_HARDENING_SPEC.md`, 1 each in `CLAUDE_REGISTRY.md` and
+  `CDL_3c_PHASE0_REPORT.md`), from +42 lines in `referralRules.js` and +38 in `webhooks/jobber.js`.
+  **NOT repaired by adding the delta**, per this file's own rule: the commit that shipped `--changed-files`
+  flagged eleven of its own and all eleven had already been wrong beforehand. Filed on
+  `PRE_LAUNCH_CHECKLIST.md`.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CRASH-FIX COMMIT ITSELF, BECAUSE IT SHIPS
+  TESTS.* It read **2445 / 408 / 1410 / 86**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE CRASH-FIX COMMIT, BECAUSE IT SHIPS TESTS.**
   React 1398 → 1410 is **+12**, one new file (`src/components/admin/CRMSettings.test.jsx`), and 85 → 86
   is that file. **Server did not move — no `server/` file was touched at all** — and was re-measured.
   **All four predicted before the run and matched.** ⚠ **NO PHANTOM, ASKED BEFORE THE RUN:** the new

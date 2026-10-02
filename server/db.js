@@ -3013,6 +3013,50 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
   await pool.query(`INSERT INTO cron_job_locks (job_name) VALUES ('redecide_stale_clients')
                     ON CONFLICT DO NOTHING`);
 
+  // ── C1 — THE CLIENT'S OWN JOBBER CREATION DATE, SO THE START-DATE RULE CAN READ IT ───────────
+  //
+  // ⚠ IT WAS STORED IN EXACTLY ONE PLACE AND THAT PLACE IS THE ROW THE FACT PATH HAS TO CREATE.
+  // `pipeline_cache.jobber_created_at` is written only by `syncSingleClient`'s upsert, so a credit that
+  // creates the referral record itself (ruling 1) had no creation date to gate on, and the catch-up job
+  // — which decides from facts and holds no live client — could never obtain one.
+  //
+  // ⚠ `jobber_clients.created_at` IS NOT THIS. It is `TIMESTAMPTZ DEFAULT NOW()`, i.e. when ROOFMILES
+  // first inserted the row. Reading it would gate the programme on when we first saw the client rather
+  // than when the contractor created them — the obvious candidate, and wrong.
+  //
+  // ⚠ NULLABLE, AND A NULL IS NOT ELIGIBLE (Danny, 2026-10-01). Unknown is never permission. A client
+  // whose column is still NULL cannot earn a bonus until its next full capture fills it. Same shape as
+  // `waiting_for_financed_payment`: the cost of a NULL is a DELAYED bonus, which the catch-up converges;
+  // the cost of treating NULL as eligible is a bonus paid on a client the programme never covered.
+  await pool.query(`ALTER TABLE jobber_clients
+    ADD COLUMN IF NOT EXISTS jobber_created_at TIMESTAMPTZ`);
+
+  // ── THE ONE-TIME BACKFILL, AND IT IS HONEST BECAUSE THE SOURCE IS THE SAME FACT ──────────────
+  //
+  // ⚠ THIS IS THE OPPOSITE CASE FROM `stage_derived_at` AND `last_full_capture_at`, WHICH WERE
+  // DELIBERATELY NOT BACKFILLED. There, nothing already stored meant what the new column claims, so any
+  // backfill would have asserted something false — "this client was decided at this moment", "every
+  // connection was paged to exhaustion". Here `pipeline_cache.jobber_created_at` IS the client's Jobber
+  // creation date, already written by the sync, so copying it asserts nothing new.
+  // **A backfill is wrong when it invents a value, not whenever it is a backfill.**
+  //
+  // ⚠ `WHERE jc.jobber_created_at IS NULL` MAKES IT A PERMANENT NO-OP AFTER THE FIRST RUN, and it never
+  // overwrites a value a capture has since written — which matters because the capture is the more
+  // current source once it starts running.
+  const clientCreatedBackfill = await pool.query(
+    `UPDATE jobber_clients jc
+        SET jobber_created_at = pc.jobber_created_at
+       FROM pipeline_cache pc
+      WHERE pc.contractor_id = jc.contractor_id
+        AND pc.jobber_client_id = jc.jobber_client_id
+        AND jc.jobber_created_at IS NULL
+        AND pc.jobber_created_at IS NOT NULL`
+  );
+  if (clientCreatedBackfill.rowCount > 0) {
+    // diagnostic log — intentional
+    console.log(`[client-created-at] backfilled ${clientCreatedBackfill.rowCount} client(s) from pipeline_cache`);
+  }
+
   // ── COMMIT B — THE REFERRAL-SOURCE FIELD IS PICKED, NOT TYPED ────────────────────────────────
   //
   // ⚠ `referrer_field_name` IS NOT REPLACED AND MUST NOT BE. It stays as the LEGACY FALLBACK for a

@@ -36,7 +36,56 @@ const { parseMappingEntry } = require('./utils/fieldMapping');
 //               Must include: client.id, issuedDate, waitingForFinancedPayment,
 //               amounts.total, jobs.nodes, archivedJobs.nodes
 // referredBy:   string — raw value from Jobber "Referred by" custom field on client
-async function evaluateReferral(contractorId, invoiceData, referredBy) {
+/**
+ * @param {object} [opts]
+ * @param {string[]|null} [opts.categoryValues] — the payout category, ALREADY RESOLVED by the caller.
+ *
+ * ⚠ THE OPTION EXISTS SO THE FACT PATH DOES NOT NEED A SECOND EVALUATOR, AND THAT IS THE WHOLE REASON
+ * IT IS AN OPTION RATHER THAN A REWRITE. `creditReferralFromFacts` resolves the category through
+ * `categorySource` — which follows the configuration LINK (invoice copy first, then job, then the linked
+ * quote) because THREE live configurations share the label "Job Type" across ALL_JOBS, ALL_INVOICES and
+ * ALL_QUOTES. The label scan below cannot tell them apart and would read quote vocabulary onto a
+ * job-reading schedule.
+ * ⚠ AND WHEN IT IS OMITTED THE LABEL SCAN STILL RUNS, UNCHANGED. Any caller that still hands over a live
+ * invoice object behaves exactly as before — which is what keeps this an addition rather than a
+ * migration of every call site.
+ * ⚠ AN EMPTY ARRAY IS A REAL ANSWER AND IS NOT THE SAME AS OMITTING IT. `[]` means "the resolver looked
+ * and there is no category", which must reach `no_job_type_found`; `undefined` means "nobody resolved
+ * one, scan the object". Collapsing the two would make a resolved-absent category fall back to a label
+ * scan over an object the fact path assembled with no jobs on it — and that scan would find nothing
+ * while reporting the wrong reason.
+ *
+ * @param {string|Date|null} [opts.clientCreatedAt] — the CLIENT's own Jobber creation date, when the
+ *   caller holds it live. STEP 3b falls back to the stored column when this is omitted.
+ *
+ * ⚠ THE OPTION EXISTS BECAUSE A BRAND-NEW CLIENT HAS NO STORED ROW TO READ, AND WITHOUT IT RULING 1's
+ * HEADLINE IS STRUCTURALLY DARK. Measured 2026-10-01: on the invoice-paid door the `jobber_clients`
+ * identity upsert runs AFTER both the capture and the decision (`upsertAndTagClient`), so
+ * `captureClientFacts`' `UPDATE ... SET jobber_created_at` affects **0 rows** on a first sighting —
+ * `factCapture.js` says so in terms, for the full-capture marker directly above it. STEP 3b then read
+ * no row, returned `client_created_at_unknown`, and the credit never fired. Ruling 1 exists precisely
+ * so *"a first paid invoice is credited immediately rather than waiting for the sync"*, and that is the
+ * one case the stored read cannot serve.
+ * ⚠ IT IS NOT A SECOND SOURCE OF TRUTH. The value is the client's own Jobber `createdAt` from the very
+ * object `captureClientFacts` writes the column from, so supplied and stored can never disagree about
+ * the same client — one is simply available an instant earlier than the other.
+ * ⚠ AND IT NARROWS NOTHING: an UNKNOWN date is still refused, and a date BEFORE the programme start is
+ * still refused, on this path exactly as on the stored one. The paired guard-proof is what pins both
+ * directions, because a supplied date that was only ever tested in the admitting direction would be a
+ * money gate proven in one direction only.
+ * ⚠ THE CATCH-UP DELIBERATELY DOES NOT SUPPLY IT. `redecideStaleClients` holds no live client, and its
+ * selector reads `jobber_clients`, so the row always exists by the time it runs — the stored read is
+ * correct there and must stay the default rather than become a special case.
+ */
+async function evaluateReferral(contractorId, invoiceData, referredBy, opts = {}) {
+  const suppliedCategoryValues = Array.isArray(opts.categoryValues) ? opts.categoryValues : null;
+  // ⚠ `undefined` MEANS "NOBODY SUPPLIED ONE, READ THE COLUMN" — it is NOT the same as a null date.
+  // A caller that holds a client with no `createdAt` passes null and is refused, exactly as an absent
+  // column is; collapsing the two would make "I looked and there is none" fall back to a stored read
+  // that the brand-new case cannot answer, which is the defect this option closes.
+  const suppliedClientCreatedAt = Object.prototype.hasOwnProperty.call(opts, 'clientCreatedAt')
+    ? opts.clientCreatedAt
+    : undefined;
 
   // ── STEP 0 — Invoice Status Guard ────────────────────────────────────────────
   // Defensive safety net: only process paid invoices. The webhook handler guards
@@ -101,10 +150,70 @@ async function evaluateReferral(contractorId, invoiceData, referredBy) {
     return { qualified: false, reason: 'invoice_before_start_date' };
   }
 
+  // ── STEP 3b — THE CLIENT'S OWN CREATION DATE (ONE START-DATE RULE, Danny 2026-10-01) ──────────
+  //
+  // ⚠ BOTH DATES ARE NOW REQUIRED, AND THIS IS THE HALF THAT WAS MISSING. A bonus is earned only if the
+  // CLIENT was created on or after the programme start AND the INVOICE was issued on or after it. Until
+  // this gate existed the engine read only the invoice date, while `pipeline_cache.pre_start_date`
+  // suppressed the CARD on the client date — so a pre-start client with a post-start invoice qualified
+  // in the engine and got a `referral_conversions` row the referrer could never see.
+  //
+  // ⚠ IT CLOSES THAT GAP IN THE CONSERVATIVE DIRECTION, WHICH IS WHY IT IS SAFE TO ADD TO A MONEY PATH:
+  // it can only REFUSE conversions that previously qualified, never create one. The engine now refuses
+  // the same population the card already hides, so the two agree by construction instead of by accident.
+  //
+  // ⚠ READ FROM `jobber_clients.jobber_created_at`, NOT `created_at`. The latter is `DEFAULT NOW()` —
+  // when ROOFMILES inserted the row — and gating on it would exclude or admit clients by when we first
+  // saw them. The column this reads is written by `captureClientFacts` from the client's own Jobber
+  // `createdAt`, and backfilled once from `pipeline_cache.jobber_created_at`.
+  //
+  // ⚠ AND AN UNKNOWN DATE IS NOT ELIGIBLE (Danny's ruling). Unknown is never permission. A client whose
+  // column is still NULL waits for its next full capture rather than being paid on an assumption —
+  // the same reasoning the nullable `waiting_for_financed_payment` exists for, and the opposite of
+  // `IS NOT TRUE`, which would fold unknown in with "fine".
+  //
+  // ⚠ THE GATE IS SKIPPED ENTIRELY WHEN THE CONTRACTOR HAS NO START DATE, exactly as the invoice gate
+  // above is. With no programme start there is nothing to be before, and refusing every client for want
+  // of a setting would be a worse answer than the one this replaces.
+  if (referralStartDate) {
+    // ⚠ SUPPLIED WINS OVER STORED, AND ONLY BECAUSE STORED CANNOT EXIST YET ON THE PATH THAT SUPPLIES.
+    // See the `clientCreatedAt` note on this function's signature: on a first sighting the identity row
+    // is written after the credit, so the column is unreadable at exactly the moment ruling 1 requires
+    // an answer. Where both are available they are the same value from the same Jobber field.
+    let clientCreatedAt = null;
+    if (suppliedClientCreatedAt !== undefined) {
+      clientCreatedAt = suppliedClientCreatedAt ? new Date(suppliedClientCreatedAt) : null;
+      // ⚠ AN UNPARSEABLE SUPPLIED DATE IS UNKNOWN, NOT NOW(). `new Date('nonsense')` is an Invalid Date,
+      // and comparing one against the start date is FALSE in both directions — so without this check a
+      // malformed value would slip past the start-date comparison and be read as eligible.
+      if (clientCreatedAt && Number.isNaN(clientCreatedAt.getTime())) clientCreatedAt = null;
+    } else {
+      const clientRow = await pool.query(
+        `SELECT jobber_created_at FROM jobber_clients
+          WHERE contractor_id = $1 AND jobber_client_id = $2`,
+        [contractorId, invoiceData.client?.id || null]
+      );
+      clientCreatedAt = clientRow.rows[0]?.jobber_created_at
+        ? new Date(clientRow.rows[0].jobber_created_at)
+        : null;
+    }
+    if (!clientCreatedAt) {
+      return { qualified: false, reason: 'client_created_at_unknown' };
+    }
+    if (clientCreatedAt < referralStartDate) {
+      return { qualified: false, reason: 'client_before_start_date' };
+    }
+  }
+
   // ── STEP 4 — waitingForFinancedPayment Gate ───────────────────────────────────
-  // Defer processing — cron sync will re-evaluate on next cycle.
-  if (invoiceData.waitingForFinancedPayment === true) {
-    console.log(`[referralRules] Invoice ${invoiceData.invoiceNumber} deferred — waitingForFinancedPayment is true`);
+  // ⚠ IT BLOCKS UNLESS THE FLAG IS EXPLICITLY `false` (Danny, 7d ruling 3). `TRUE` or `NULL` is NOT
+  // eligible. This read `=== true`, which converted on NULL — and NULL is what all 3,881 invoice fact
+  // rows predating the column hold, plus every row a query that does not select the field produces.
+  // ⚠ **NEVER `!== true` OR `IS NOT TRUE`**: those fold unknown in with false and convert on unknown,
+  // which is the whole reason the column was made nullable with no default rather than `NOT NULL
+  // DEFAULT FALSE`.
+  if (invoiceData.waitingForFinancedPayment !== false) {
+    console.log(`[referralRules] Invoice ${invoiceData.invoiceNumber} deferred — waitingForFinancedPayment is not explicitly false`);
     return { qualified: false, reason: 'waiting_for_financed_payment' };
   }
 
@@ -163,8 +272,11 @@ async function evaluateReferral(contractorId, invoiceData, referredBy) {
     });
   }
 
-  const jobTypeValues = [];
-  for (const job of allJobs) {
+  // ⚠ THE SUPPLIED CATEGORY SHORT-CIRCUITS THE LABEL SCAN ENTIRELY, rather than being merged with it.
+  // Merging would let the label scan contribute a value the configuration-linked resolver deliberately
+  // rejected — which is the ambiguity 7c-1 exists to remove, reintroduced through the back door.
+  const jobTypeValues = suppliedCategoryValues !== null ? [...suppliedCategoryValues] : [];
+  for (const job of (suppliedCategoryValues !== null ? [] : allJobs)) {
     const fields = job.customFields || [];
     // ⚠ CASE-INSENSITIVE ON THE LABEL, MATCHING deriveJobberTags' getCustomFieldValue. The two read
     // the same field off the same record and disagreed: that one folds case, this one used `===`.

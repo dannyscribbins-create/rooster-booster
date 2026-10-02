@@ -37,21 +37,68 @@ const {
 // Both stubs are reused across tests that need a paid invoice + client.
 // Tests that need specific variants define their own inline.
 
+// ── C1 — WHY THESE FIXTURES MOVED, AND WHAT EACH PART OF THE MOVE IS FOR ──────
+//
+// The credit no longer reads the LIVE client's "Referred by" custom field. It reads SAVED CLIENT
+// FACTS (Danny, ruling 1), inside the lock, from an invoice assembled out of `crm_invoice_facts`.
+// Four cases in this file therefore went red on wip/c1, and every one of them needed the same
+// three repairs — stated here once rather than three times:
+//
+// ⚠ 1. THE CLIENT ID HAD TO BECOME A REAL JOBBER EncodedId. It was `'jobber-c1'`, which
+// `isDerivableJobberClientId` REJECTS, so the whole `alsoDeriveReferredStatus` block — the status
+// write AND the credit — was skipped before it began. Assembled from the exported
+// `JOBBER_CLIENT_GID_PREFIX` rather than from a literal typed twice: a fixture that hardcodes its
+// own expectation cannot notice the production value changing underneath it.
+//
+// ⚠ 2. `fetchClientRelatedData` HAD TO RETURN A CAPTURE SHAPE INSTEAD OF `null`. It returned null,
+// so NO CAPTURE RAN AT ALL and there were no facts to credit from. ⚠ THE FACTS ARE WRITTEN BY THE
+// REAL `captureClientFacts` FROM THIS OBJECT — they are deliberately NOT pre-seeded. A test that
+// inserts the fact rows itself cannot discover that nothing upstream supplies them, which is the
+// defect CLAUDE.md records from the font columns and from `requests` on this very door.
+//
+// ⚠ 3. THE CONTRACTOR NEEDED A work_category MAPPING BY CONFIGURATION ID, plus the discovered-field
+// rows the resolver walks. A legacy label-string mapping resolves `mapping_not_by_id` and credits
+// NOTHING (7c-1, deliberately — "rather than being paid on a guess"), so a label-mapped fixture
+// would have failed for a reason that has nothing to do with what these cases are about.
+//
+// ⚠ AND THE LIVE CUSTOM FIELD STAYS ON `FULL_CLIENT_WITH_REFERRAL` — it is NOT dead weight. The
+// experience flow and the pending-referral matcher both still read `referredBy` off the live client;
+// only the CREDIT moved to facts. Deleting it as an orphan would break two other paths silently.
+
+const { JOBBER_CLIENT_GID_PREFIX } = require('../utils/derivableClient');
+
+// A real Jobber client EncodedId, built from the production prefix.
+const CLIENT_ID = Buffer.from(`${JOBBER_CLIENT_GID_PREFIX}910001`).toString('base64');
+
+const INVOICE_ID = 'inv-node-ip1';
+const JOB_ID = 'job-node-ip1';
+
+// ⚠ TWO DISTINCT CONFIGURATION IDS, AND THEY MUST DIFFER FROM EACH OTHER FOR THE FIXTURE TO MEAN
+// ANYTHING. The referrer field and the category field are resolved by DIFFERENT mechanisms reading
+// the SAME fact table; one id for both would let a resolver match the wrong row and still look right.
+const WORK_CATEGORY_FIELD_ID = Buffer.from('gid://Jobber/CustomFieldConfigurationDropdown/730114').toString('base64');
+const REFERRER_FIELD_ID = Buffer.from('gid://Jobber/CustomFieldConfigurationText/3655374').toString('base64');
+
+// The client's own Jobber creation date. ⚠ AFTER any programme start these cases set, so the one
+// start-date rule ADMITS it — the refusing direction is pinned in c1Credit.test.js, not here.
+const CLIENT_CREATED_AT = '2026-02-01T00:00:00.000Z';
+
 const PAID_INVOICE = {
   invoiceStatus: 'paid',
   invoiceNumber: 'INV-001',
   issuedDate: '2026-06-10',
   waitingForFinancedPayment: false,
   amounts: { total: 10000, invoiceBalance: 0 },
-  client: { id: 'jobber-c1', name: 'Test Client' },
+  client: { id: CLIENT_ID, name: 'Test Client' },
   jobs: {
-    nodes: [{ id: 'job-1', customFields: [{ label: 'Job Type', valueDropdown: 'Roof Replacement' }] }],
+    nodes: [{ id: JOB_ID, customFields: [{ label: 'Job Type', valueDropdown: 'Roof Replacement' }] }],
   },
   archivedJobs: { nodes: [] },
 };
 
 const FULL_CLIENT_WITH_REFERRAL = {
-  id: 'jobber-c1',
+  id: CLIENT_ID,
+  createdAt: CLIENT_CREATED_AT,
   firstName: 'Test',
   lastName: 'Client',
   emails: [{ address: 'testclient@example.com' }],
@@ -65,6 +112,75 @@ const FULL_CLIENT_NO_REFERRAL = {
   ...FULL_CLIENT_WITH_REFERRAL,
   customFields: [],
 };
+
+// ── THE CAPTURE SHAPE `fetchClientRelatedData` RETURNS ───────────────────────
+// ⚠ EVERY NODE CARRIES `client { id }`. Each fact writer keys its row on it and FILTERS OUT a node
+// without one — so a missing `client` makes the capture report success having written nothing, which
+// is the silent shape this file's reds were a symptom of.
+// ⚠ AND EVERY CUSTOM FIELD CARRIES `customFieldConfiguration { id }`. `writeCustomFieldFacts` skips
+// any field without one, so a fixture spelling only `label` would write ZERO custom-field facts and
+// the credit would read `not_referred` — the exact defect Commit A closed on this door in production.
+const relatedClient = ({ referred = true } = {}) => ({
+  id: CLIENT_ID,
+  createdAt: CLIENT_CREATED_AT,
+  isCompany: false,
+  isLead: false,
+  tags: { nodes: [] },
+  customFields: referred
+    ? [{
+      label: 'Referred by',
+      valueText: 'Jane Referrer',
+      valueDropdown: null,
+      customFieldConfiguration: { id: REFERRER_FIELD_ID },
+    }]
+    : [],
+  quotes: { nodes: [] },
+  requests: { nodes: [] },
+  jobs: {
+    nodes: [{
+      id: JOB_ID,
+      jobNumber: 1,
+      jobStatus: 'active',
+      jobType: 'ONE_OFF',
+      title: 'Roof',
+      createdAt: '2026-06-01T00:00:00.000Z',
+      updatedAt: '2026-06-01T00:00:00.000Z',
+      startAt: null, endAt: null, completedAt: null,
+      total: 10000, invoicedTotal: 10000, uninvoicedTotal: 0,
+      client: { id: CLIENT_ID },
+      quote: null, request: null, salesperson: null,
+      invoices: { nodes: [] },
+      customFields: [{
+        label: 'Job Type',
+        valueDropdown: 'Roof Replacement',
+        valueText: null,
+        customFieldConfiguration: { id: WORK_CATEGORY_FIELD_ID },
+      }],
+    }],
+  },
+  invoices: {
+    nodes: [{
+      id: INVOICE_ID,
+      client: { id: CLIENT_ID },
+      invoiceNumber: 'INV-001',
+      invoiceStatus: 'paid',
+      // ⚠ EXPLICITLY `false`, NEVER OMITTED. The 7d gate blocks unless this is exactly false, and an
+      // absent field is stored as NULL — which would make every one of these cases fail on
+      // `waiting_for_financed_payment` rather than on their own subject.
+      waitingForFinancedPayment: false,
+      amounts: { total: 10000, invoiceBalance: 0 },
+      issuedDate: '2026-06-10T00:00:00.000Z',
+      dueDate: null, receivedDate: '2026-06-11T00:00:00.000Z',
+      createdAt: '2026-06-10T00:00:00.000Z', updatedAt: '2026-06-11T00:00:00.000Z',
+      customFields: [],
+      jobs: { nodes: [{ id: JOB_ID }], pageInfo: { hasNextPage: false } },
+      archivedJobs: { nodes: [], pageInfo: { hasNextPage: false } },
+    }],
+  },
+});
+
+const RELATED_DATA = relatedClient();
+const RELATED_DATA_NO_REFERRAL = relatedClient({ referred: false });
 
 // ── TEST SUITE ────────────────────────────────────────────────────────────────
 
@@ -93,6 +209,21 @@ describe('invoice-paid webhook (characterization suite)', () => {
     await pool.query('DELETE FROM referral_schedules');
     await pool.query('DELETE FROM contact_tags');
     await pool.query('DELETE FROM contacts');
+    // ── C1 — THE TABLES THE REAL CAPTURE NOW WRITES ───────────────────────────
+    // ⚠ ADDED BECAUSE THE CAPTURE RUNS FOR REAL NOW, and the 6c reset-coverage fence requires every
+    // table a suite touches to be cleared by its own reset. An uncleared fact table is worse than
+    // untidy: the next case's "no conversion was written" would be measuring the previous case's
+    // leftovers, which is the vacuity family wearing a fixture.
+    await pool.query('DELETE FROM category_mismatches');
+    await pool.query('DELETE FROM crm_custom_field_facts');
+    await pool.query('DELETE FROM crm_invoice_job_links');
+    await pool.query('DELETE FROM crm_invoice_facts');
+    await pool.query('DELETE FROM crm_job_facts');
+    await pool.query('DELETE FROM crm_quote_facts');
+    await pool.query('DELETE FROM crm_request_facts');
+    await pool.query('DELETE FROM pipeline_cache');
+    await pool.query('DELETE FROM contractor_jobber_fields');
+    await pool.query('DELETE FROM contractor_settings');
     await pool.query('DELETE FROM jobber_clients');
     await pool.query('DELETE FROM experience_invite_tokens');
     await pool.query('DELETE FROM activity_log');
@@ -143,6 +274,36 @@ describe('invoice-paid webhook (characterization suite)', () => {
       `INSERT INTO contractor_crm_settings (contractor_id, jobber_account_id) VALUES ($1, 'JACCT_TEST')
        ON CONFLICT (contractor_id) DO UPDATE SET jobber_account_id = EXCLUDED.jobber_account_id`,
       ['test-roofing']
+    );
+  }
+
+  // ── C1 — THE work_category MAPPING, BY CONFIGURATION ID ─────────────────────
+  // ⚠ BY ID, NEVER BY LABEL, AND THE DIFFERENCE IS THE WHOLE OF 7c-1. The legacy string form
+  // (`{"work_category": "Job Type"}`) resolves `mapping_not_by_id` with a null value, so
+  // `categoryValues` is `[]` and `evaluateReferral` returns `no_job_type_found` — a fixture mapped
+  // that way credits nobody, and would have failed every case below for a reason unrelated to its
+  // subject. Three live configurations share the label "Job Type", which is why the resolver refuses
+  // to guess rather than picking one.
+  // ⚠ THE DISCOVERED-FIELD ROWS ARE NOT DECORATION. `resolveAcceptableConfigurations` reads
+  // `contractor_jobber_fields` to follow `transfered_from` links, and `resolveReferralSourceField`
+  // reads it to confirm the picked field still exists. Seeding the mapping without them resolves a
+  // field the contractor is not recorded as having.
+  async function seedFieldMappingById() {
+    await pool.query(
+      `INSERT INTO contractor_settings (contractor_id, contractor_field_mappings)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (contractor_id) DO UPDATE
+         SET contractor_field_mappings = EXCLUDED.contractor_field_mappings`,
+      ['test-roofing', JSON.stringify({
+        work_category: { field_id: WORK_CATEGORY_FIELD_ID, entity: 'ALL_JOBS', label: 'Job Type' },
+      })]
+    );
+    await pool.query(
+      `INSERT INTO contractor_jobber_fields
+         (contractor_id, jobber_field_id, label, field_type, entity, transferable, archived)
+       VALUES ($1, $2, 'Job Type', 'DROPDOWN', 'ALL_JOBS', TRUE, FALSE),
+              ($1, $3, 'Referred by', 'TEXT', 'ALL_CLIENTS', FALSE, FALSE)`,
+      ['test-roofing', WORK_CATEGORY_FIELD_ID, REFERRER_FIELD_ID]
     );
   }
 
@@ -253,12 +414,13 @@ describe('invoice-paid webhook (characterization suite)', () => {
       jobberLabel: 'Roof Replacement',
       flatAmount: 250,
     });
+    await seedFieldMappingById();
 
     const emails = [];
     _setTestOverrides({
       fetchInvoiceWithJobs:   async () => PAID_INVOICE,
       fetchFullClient:        async () => FULL_CLIENT_WITH_REFERRAL,
-      fetchClientRelatedData: async () => null,
+      fetchClientRelatedData: async () => RELATED_DATA,
       sendEmail: async args => { emails.push(args); return { id: 'test-email' }; },
     });
 
@@ -276,7 +438,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
     const { rows: rcRows } = await pool.query('SELECT * FROM referral_conversions');
     assert.equal(rcRows.length, 1, 'one referral_conversions row');
     assert.equal(parseFloat(rcRows[0].bonus_amount), 250, 'bonus_amount = 250');
-    assert.equal(rcRows[0].jobber_client_id, 'jobber-c1', 'jobber_client_id recorded');
+    assert.equal(rcRows[0].jobber_client_id, CLIENT_ID, 'jobber_client_id recorded');
 
     // ⚠ INVERTED BY A RULING, NOT BY A BUG (Danny, 2026-09-29). This asserted
     // `paid_count === 1` — the webhook's `paid_count + 1`. That increment is RETIRED:
@@ -313,12 +475,13 @@ describe('invoice-paid webhook (characterization suite)', () => {
       jobberLabel: 'Roof Replacement',
       flatAmount: 250,
     });
+    await seedFieldMappingById();
 
     const emails = [];
     _setTestOverrides({
       fetchInvoiceWithJobs:   async () => PAID_INVOICE,
       fetchFullClient:        async () => FULL_CLIENT_WITH_REFERRAL,
-      fetchClientRelatedData: async () => null,
+      fetchClientRelatedData: async () => RELATED_DATA,
       sendEmail: async args => { emails.push(args); return { id: 'test-email' }; },
     });
 
@@ -341,7 +504,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
 
     assert.equal(row.user_id, expectedUserId, 'user_id is the matched referrer');
     assert.equal(row.contractor_id, 'test-roofing', 'contractor_id is carried — a conversion is tenant-scoped');
-    assert.equal(row.jobber_client_id, 'jobber-c1', 'jobber_client_id is the invoice\'s client');
+    assert.equal(row.jobber_client_id, CLIENT_ID, 'jobber_client_id is the invoice\'s client');
     assert.equal(parseFloat(row.bonus_amount), 250, 'bonus_amount is the schedule\'s flat amount');
     assert.equal(row.payout_status, 'pending_review', 'payout_status takes the column default — the writer must not set it');
     assert.ok(row.id, 'the row has an id');
@@ -398,13 +561,14 @@ describe('invoice-paid webhook (characterization suite)', () => {
       jobberLabel: 'Roof Replacement',
       flatAmount: 250,
     });
+    await seedFieldMappingById();
 
     const emails = [];
     let fetchRelatedCallCount = 0;
     _setTestOverrides({
       fetchInvoiceWithJobs:   async () => PAID_INVOICE,
       fetchFullClient:        async () => FULL_CLIENT_WITH_REFERRAL,
-      fetchClientRelatedData: async () => { fetchRelatedCallCount++; return null; },
+      fetchClientRelatedData: async () => { fetchRelatedCallCount++; return RELATED_DATA; },
       sendEmail: async args => { emails.push(args); return { id: 'test-email' }; },
     });
 
@@ -549,7 +713,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
     _setTestOverrides({
       fetchInvoiceWithJobs:   async () => PAID_INVOICE,
       fetchFullClient:        async () => FULL_CLIENT_NO_REFERRAL,
-      fetchClientRelatedData: async () => { fetchRelatedCalled = true; return null; },
+      fetchClientRelatedData: async () => { fetchRelatedCalled = true; return RELATED_DATA_NO_REFERRAL; },
       sendEmail: async () => { throw new Error('must not be called'); },
     });
 
@@ -579,6 +743,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
       jobberLabel: 'Roof Replacement',
       flatAmount: 250,
     });
+    await seedFieldMappingById();
 
     let invoiceCallCount = 0;
     const invoiceCallTokens = [];
@@ -600,7 +765,7 @@ describe('invoice-paid webhook (characterization suite)', () => {
         fullClientToken = token;
         return FULL_CLIENT_WITH_REFERRAL;
       },
-      fetchClientRelatedData: async () => null,
+      fetchClientRelatedData: async () => RELATED_DATA,
       sendEmail: async () => ({ id: 'test-email' }),
       // TF session (CRM_TOKEN_FIX_SPEC.md v1.0 §6, TEST 8): pins the NEW refreshTokenIfNeeded
       // contract — contractorId as the first argument, { force } as the second. The seam

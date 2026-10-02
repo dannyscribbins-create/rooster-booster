@@ -253,10 +253,27 @@ async function attributeFromRequest(pool, { contractorId, request, fetchFullClie
  * with the pool it would write on another connection — outside the lock, and therefore able to
  * land between another event's capture and decide, which is the interleaving Commit 6 removes.
  */
+// ⚠ IT STAMPS `stage_derived_at` TOO (Danny, ruling 2, 2026-10-01): ANY PATH THAT WRITES A
+// FACT-DERIVED DISPLAYED STAGE ALSO RECORDS THAT IT DECIDED.
+//
+// ⚠ THE CONSEQUENCE OF NOT STAMPING WAS SILENT AND PERMANENT, WHICH IS WHY IT NEEDED A RULING RATHER
+// THAN A TIDY-UP. `stage_derived_at` appeared in only two writers — the catch-up job and
+// `webhooks/jobber.js`'s identity upsert — so a client whose stage THIS path wrote looked
+// NEVER DECIDED to the catch-up selector for ever, and was re-decided on every run. Measured: the
+// hourly `repRequestSweep` captures ~30 clients, all of which became permanently eligible.
+//
+// ⚠ AND IT IS CORRECT TO STAMP HERE RATHER THAN MERELY CHEAP. This writes a stage derived from saved
+// facts by `decideFromFacts`, which is exactly the event the column records. Stamping on a path that
+// COPIED a stage, or filled one in, would be the lie — which is why `repImportScope`'s fill-only
+// writers do not stamp and must not start.
+//
+// ⚠ UNCONDITIONAL, matching the catch-up job's own reasoning: reaching this line means a decision was
+// made for this client now. A COALESCE here would keep an older marker and reintroduce the staleness.
 async function writeStage(tx, contractorId, jobberClientId, currentStatus) {
   await tx.query(
     `UPDATE jobber_clients
-        SET pipeline_stage = $3
+        SET pipeline_stage = $3,
+            stage_derived_at = NOW()
       WHERE contractor_id = $1 AND jobber_client_id = $2`,
     [contractorId, jobberClientId, currentStatus]
   );
