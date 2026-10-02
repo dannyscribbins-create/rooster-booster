@@ -37,6 +37,7 @@ const { withLock } = require('../withLock');
 const { pool } = require('../../db');
 const { logError } = require('../../middleware/errorLogger');
 const { runRedecideStaleClients, DEFAULT_LIMIT } = require('../../jobs/redecideStaleClients');
+const { formatCreditTally } = require('../../utils/creditReasonTally');
 
 const PER_RUN_LIMIT = 200;
 const LOCK_NAME = 'redecide_stale_clients';
@@ -65,12 +66,32 @@ async function runRedecideStaleClientsCron() {
       });
       summaries.push(summary);
       // diagnostic log — intentional
+      //
+      // ⚠ `credited` IS ON THIS LINE BECAUSE IT WAS MISSING AND THAT MADE THE CREDIT INVISIBLE. C1 added
+      // `summary.credited` and `formatSummary()` prints a CREDITED row — but this cron does not call
+      // `formatSummary`, it builds its own line, and the counter was never added here. So a credit made
+      // by the catch-up left no log evidence at all, and the 2026-10-02 live check had to be answered
+      // from the database instead. **A counter nothing prints is not observability.**
       console.log(
         `[redecideStaleClients] ${contractorId}: eligible ${summary.considered}, `
         + `decided ${summary.redecided}, changed ${summary.stageChanged}, `
+        + `credited ${summary.credited}, `
         + `failed ${summary.failed.length}, skipped-partial ${summary.skippedPartial}, `
         + `beyond limit ${summary.remaining} (${summary.elapsedMs}ms)`
       );
+
+      // ⚠ ONE AGGREGATED LINE, AND ONLY WHEN THERE IS SOMETHING TO SAY. The refusal reasons are what
+      // turn "credited 0" from a number into a diagnosis — `referrer_not_found 14` and
+      // `invoice_not_paid 3` call for completely different actions. Skipped entirely when no client
+      // reached the credit, because an empty `credit outcomes:` line reads as "the credit ran and found
+      // nothing", which is a different and false claim.
+      // ⚠ NEVER ONE LINE PER CLIENT: the run is bounded at 200 and the full sync iterates ~19,600, so
+      // per-client logging would bury the summary it exists to surface.
+      const creditLine = formatCreditTally(summary.creditReasons);
+      if (creditLine) {
+        // diagnostic log — intentional
+        console.log(`[redecideStaleClients] ${contractorId}: credit outcomes — ${creditLine}`);
+      }
       // ⚠ A PER-CLIENT FAILURE ALERTS AT THE RUN LEVEL, not only in the job's own per-client log.
       // The job records each one with alert:false so one bad client cannot storm the inbox; this is
       // the single summary alert that makes a persistent problem visible.

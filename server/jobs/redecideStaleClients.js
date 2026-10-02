@@ -54,6 +54,7 @@
 const { decideFromFacts } = require('../utils/attributionDecide');
 const { writeReferredStatus } = require('../utils/referredStatus');
 const { creditReferralFromFacts } = require('../utils/referralCredit');
+const { tallyCreditOutcome } = require('../utils/creditReasonTally');
 const { notifyReferralCredit } = require('../utils/referralNotify');
 const { withClientLock } = require('../utils/clientLock');
 const { derivableClientIdSql } = require('../utils/derivableClient');
@@ -260,6 +261,10 @@ async function runRedecideStaleClients(pool, {
     stageChanged: 0,
     referredUpdated: 0,
     credited: 0,
+    // ⚠ A TALLY, NOT A LIST, AND NOT ONE LINE PER CLIENT. The run is bounded at 200 clients and the
+    // reasons are a handful, so { reason: count } is what a reader can act on. Client ids are
+    // deliberately absent — they are data about real people and the aggregate answers the question.
+    creditReasons: {},
     failed: [],
     elapsedMs: null,
   };
@@ -273,6 +278,10 @@ async function runRedecideStaleClients(pool, {
       // ── NOTIFY AFTER THE LOCK, ONLY ON A NEW CREDIT (7d) ────────────────────
       // `redecideOne` has returned, so its transaction is committed and its lock released. Gated on
       // `credited`, which is true only when a conversion row was INSERTED — a duplicate sends none.
+      // ⚠ TALLIED FOR EVERY OUTCOME, CREDITED OR NOT — that is the half that was invisible. A client
+      // refused for the same reason on every run is the thing worth seeing, and before this it left no
+      // trace at all.
+      tallyCreditOutcome(summary.creditReasons, out.creditOutcome);
       if (out.creditOutcome && out.creditOutcome.credited) {
         summary.credited += 1;
         await notifyReferralCredit(pool, { ...out.creditOutcome, contractorId, req: null });

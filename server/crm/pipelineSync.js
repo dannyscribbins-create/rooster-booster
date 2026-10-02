@@ -26,6 +26,7 @@ const { withClientLock } = require('../utils/clientLock');
 // `referredStatus`, which do and are required lazily for exactly that reason).
 const { creditReferralFromFacts } = require('../utils/referralCredit');
 const { notifyReferralCredit } = require('../utils/referralNotify');
+const { tallyCreditOutcome, formatCreditTally } = require('../utils/creditReasonTally');
 const { fetchFullClient, CUSTOM_FIELDS_VALUE_ONLY } = require('../utils/jobberClientFetch');
 // ⚠ SAFE AS A TOP-LEVEL REQUIRE, unlike `referredStatus`/`attributionDecide` above: this module
 // requires only `fieldMapping`, which requires nothing from here, so there is no cycle.
@@ -228,7 +229,11 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
       ? await resolveReferralSourceField(pool, contractorId)
       : { fieldId: null, entity: null, label: DEFAULT_REFERRER_FIELD_LABEL, legacy: true });
   const referredBy = getReferredByValue(client, sourceField);
-  if (!referredBy) return; // not a referred client — do nothing
+  // ⚠ THE RETURN VALUE IS NEW AND IS PURELY FOR THE RUN-LEVEL TALLY (credit visibility). Every caller
+  // ignored this function's return before, so adding one breaks nothing — and a null here means "the
+  // credit was never attempted", which the tally deliberately does NOT count as a refusal. Counting a
+  // non-referred client as a refusal would inflate every tally with clients the engine never saw.
+  if (!referredBy) return { creditOutcome: null }; // not a referred client — do nothing
 
   const clientName  = `${client.firstName || ''} ${client.lastName || ''}`.trim();
   const createdAt   = client.createdAt ? new Date(client.createdAt) : null;
@@ -982,6 +987,11 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
     await logError({ req: null, error: brMatchErr });
     console.error('[pipelineSync] booking request match check failed:', brMatchErr.message);
   }
+
+  // ⚠ REPORTED SO A RUN CAN AGGREGATE IT (credit visibility). Returned at the very end rather than
+  // beside the credit, because everything between them — the notifications, the tags, the booking
+  // match — must still run; an early return here would silently retire them.
+  return { creditOutcome };
 }
 
 // ── FULL SYNC ─────────────────────────────────────────────────────────────────
@@ -1080,10 +1090,22 @@ async function runFullSync(contractorId) {
   // Resolved ONCE for the whole run, not per client — see the note in syncSingleClient.
   const referralSourceField = await resolveReferralSourceField(pool, contractorId);
   let referredCount = 0;
+  // ⚠ ONE TALLY FOR THE WHOLE RUN, NOT ONE LINE PER CLIENT. This loop iterates every client the
+  // contractor has (~19,600 on the live tenant), so a per-client credit line would bury the summary it
+  // exists to surface. The tally is O(distinct reasons), which is a handful.
+  const creditReasons = {};
   for (const client of allClients) {
     const referredBy = getReferredByValue(client, referralSourceField);
     if (referredBy) referredCount++;
-    await syncSingleClient(contractorId, client, referralStartDate, allClients, token, { referralSourceField });
+    const out = await syncSingleClient(contractorId, client, referralStartDate, allClients, token, { referralSourceField });
+    tallyCreditOutcome(creditReasons, out?.creditOutcome);
+  }
+  // ⚠ SKIPPED ENTIRELY WHEN NO CLIENT REACHED THE CREDIT, because an empty "credit outcomes:" line
+  // reads as "the credit ran and found nothing" — a different and false claim.
+  const fullSyncCreditLine = formatCreditTally(creditReasons);
+  if (fullSyncCreditLine) {
+    // diagnostic log — intentional
+    console.log(`[pipelineSync] ${contractorId}: credit outcomes — ${fullSyncCreditLine}`);
   }
 
   // Mark initial sync complete
@@ -1162,6 +1184,11 @@ async function runIncrementalSync(contractorId) {
   // (i.e. before the first page of a new chunk).
   let lastKnownCost = null;
   let throttleRetriesForWindow = 0;
+
+  // ⚠ DECLARED OUTSIDE THE CHUNK LOOP SO THE RUN PRINTS ONE LINE, NOT ONE PER CHUNK. An incremental
+  // sync can walk up to 30 days in several chunks; tallying per chunk would turn "one aggregated line
+  // per run" into up to MAX_CHUNKS_PER_CYCLE lines, which is the thing this commit exists to avoid.
+  const chunkCreditReasons = {};
 
   while (chunkStart < now && chunksDone < MAX_CHUNKS_PER_CYCLE) {
     const chunkEnd  = new Date(Math.min(chunkStart.getTime() + chunkSizeMs, now.getTime()));
@@ -1242,7 +1269,11 @@ async function runIncrementalSync(contractorId) {
       // Resolved ONCE per chunk rather than per client — see the note in syncSingleClient.
       const referralSourceField = await resolveReferralSourceField(pool, contractorId);
       for (const client of allClients) {
-        await syncSingleClient(contractorId, client, referralStartDate, allClients, token, { referralSourceField });
+        const out = await syncSingleClient(contractorId, client, referralStartDate, allClients, token, { referralSourceField });
+        // ⚠ ACCUMULATED ACROSS CHUNKS, NOT PER CHUNK. `chunkCreditReasons` is declared outside the
+        // chunk loop, so a sync that walks 30 days in several chunks prints ONE line rather than one per
+        // chunk — which is the same "one aggregated line per run" rule one level out.
+        tallyCreditOutcome(chunkCreditReasons, out?.creditOutcome);
       }
 
       await pool.query(
@@ -1289,6 +1320,15 @@ async function runIncrementalSync(contractorId) {
     console.log(`[pipelineSync] Incremental sync for ${contractorId} hit max chunks per cycle (${MAX_CHUNKS_PER_CYCLE}), still ${Math.round((now - chunkStart) / 3600000)}h behind — will resume next cycle`);
   } else {
     console.log(`[pipelineSync] Incremental sync for ${contractorId} fully caught up`);
+  }
+
+  // ⚠ ONE AGGREGATED LINE FOR THE WHOLE RUN, PRINTED AFTER THE LAST CHUNK. Skipped when no client
+  // reached the credit — an empty "credit outcomes:" line reads as "the credit ran and found nothing",
+  // which is a different and false claim.
+  const incrementalCreditLine = formatCreditTally(chunkCreditReasons);
+  if (incrementalCreditLine) {
+    // diagnostic log — intentional
+    console.log(`[pipelineSync] ${contractorId}: credit outcomes — ${incrementalCreditLine}`);
   }
 }
 

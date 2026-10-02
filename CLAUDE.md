@@ -433,8 +433,57 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2478 server tests across 416 suites, and 1410 React tests across 86 files** (measured 2026-10-02 by the N4 C2 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2478 · suites 416 · pass 2478 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE C2 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2491 server tests across 420 suites, and 1410 React tests across 86 files** (measured 2026-10-02 by the credit-visibility commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2491 · suites 420 · pass 2491 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CREDIT-VISIBILITY COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2478 → 2491 is **+13**, one new file (`creditVisibility.test.js`); suites 416 → 420 is that
+  file's **four** describes — one top-level and three nested. React did not move and was re-measured —
+  **no `src/` file was touched at all**. **All four predicted before the run and matched.** Counted with
+  an anchored `^\s*it\(` (13); every loop was checked for POSITION — one in `beforeEach`, the rest inside
+  `it()` bodies — so **none wraps a case**.
+  ⚠ **THE COMMIT'S SUBJECT: THE CREDIT WAS INVISIBLE IN PRODUCTION LOGS, IN BOTH DIRECTIONS, AND C1
+  SHIPPED THE COUNTER WITHOUT THE LOG LINE.** `runRedecideStaleClients` has maintained `summary.credited`
+  since C1 and `formatSummary()` prints a `CREDITED` row — **but the cron does not call `formatSummary`**;
+  it builds its own line, and the counter was never added there. So a credit made by the catch-up left no
+  log evidence at all. ⚠ **AND NEITHER DID ITS ABSENCE:** `creditReferralFromFacts` RETURNS a reason that
+  no caller logged, so a client persistently refused was indistinguishable from a client nobody looked
+  at. **That is the silent-gate shape on the money path, in the observability layer rather than the
+  logic** — and it is why the 2026-10-02 live check had to be answered from the database rather than the
+  logs. **A live check that cannot see its subject is weak evidence however green it looks.**
+  ⚠ **ONE AGGREGATED LINE PER RUN, NEVER ONE PER CLIENT, AND IT IS COUNTED RATHER THAN INTENDED.** The
+  catch-up is bounded at 200 clients and the full sync iterates ~19,600, so per-client logging would bury
+  the summary it exists to surface. Two cases count the LINES, and a positional fence requires
+  `formatCreditTally` to sit outside any per-client loop.
+  ⚠ **`syncSingleClient` NOW RETURNS `{ creditOutcome }`, WHICH IS THE CONTRACT THE BULK LOOPS TALLY
+  FROM.** It returned `undefined` before, so there was nothing to aggregate. Every caller ignored the
+  return, so adding one breaks nothing — and a null means "the credit was never attempted", which the
+  tally deliberately does NOT count as a refusal. **Counting a non-referred client as a refusal would
+  inflate every tally with clients the engine never saw.**
+  ⚠ **CLIENT IDS ARE DELIBERATELY ABSENT FROM THE LINE, AND A CASE ASSERTS IT.** They are data about real
+  people, and the aggregate answers the question: *"14 hit `referrer_not_found`"* is actionable, while one
+  id invites chasing one row and missing that it is thirty.
+  ⚠ **EIGHT GUARD-PROOFS, EVERY REVERT PROVEN BYTE-IDENTICAL BY sha256.** Widths: (1) the cron line stops
+  saying `credited` → **2**; (2) a credited client stops being counted → **4**; (3) the tally records
+  nothing → **7**; (4) a NULL outcome IS counted → **2**; (5) the catch-up stops tallying → **6**; (6) the
+  SYNC stops tallying → **1**; (7) a zero `credited` is dropped from the line → **1**; (8) the aggregated
+  line is printed inside a per-client loop → **2**. (1) and (2) are the pair Danny named.
+  ⚠ **AND TWO CAME BACK WIDTH 0 FIRST, BOTH REAL FINDINGS RATHER THAN FORMALITIES.**
+  **(a)** Removing the `outcome.credited ?` branch changed nothing — because a success's `reason` is
+  ALREADY the literal `'credited'`, so reading the reason alone reaches the same key. The branch is
+  **redundant today and is kept deliberately**, because it reads the field that MEANS "a row was
+  inserted" rather than depending on one reason string happening to spell it; the measurement is recorded
+  beside it so nobody "tidies" it on the strength of the very evidence that makes tidying look safe.
+  **(b)** Removing a tally call from the SYNC changed nothing — the suite drove only the catch-up, **and**
+  the sync has TWO bulk loops (`runFullSync` and `runIncrementalSync`) so an `includes()` check stayed
+  green with one removed. Closed with a COUNT requiring both, plus two behavioural cases on the new
+  return contract. ⚠ **An `includes()` where the real property is "all of them" is the same shape as a
+  count that cannot see a loop.**
+  ⚠ **AND TWO INJECTIONS HAD TO BE REWRITTEN BECAUSE THEIR REPLACEMENT CONTAINED THEIR OWN ANCHOR** —
+  the overlapping-anchor problem this file records from `db.js`. The landed-check refused rather than
+  reporting a wrong width, which is the behaviour to want. **A wrapping injection is almost always this
+  mistake; change the condition instead of wrapping the line.**
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE C2 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.*
+  It read **2478 / 416 / 1410 / 86**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE C2 COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2468 → 2478 is **+10**, one new file (`syncLockPartition.test.js`); suites 414 → 416 is that
   file's **two** describes. React did not move and was re-measured — **no `src/` file was touched at
   all**. **All four predicted before the run and matched.** Counted with an anchored `^\s*it\(` (10);

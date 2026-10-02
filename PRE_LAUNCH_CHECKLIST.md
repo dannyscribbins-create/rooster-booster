@@ -14813,6 +14813,37 @@ this section for the measurement and for what is still open.
       ⚠ **Do not "fix" the NULL by having the identity upsert write the column** without deciding that
       question — it would make two writers of one column whose ordering is the whole subject.
 
+- [x] ✅ **CLOSED 2026-10-02 BY THE CREDIT-VISIBILITY COMMIT (built, NOT PUSHED).** The cron's summary
+      line now prints `credited N`, and both the catch-up and the two bulk sync loops print **ONE
+      aggregated line** of credit outcomes per run — `credit outcomes — credited 0, referrer_not_found
+      14, invoice_not_paid 3` — never one line per client.
+      **HOW:** `server/utils/creditReasonTally.js` holds `tallyCreditOutcome` and `formatCreditTally`;
+      `syncSingleClient` now RETURNS `{ creditOutcome }` so a run can aggregate what it previously
+      discarded; `runRedecideStaleClients` carries `summary.creditReasons`.
+      ⚠ **`credited` IS FORCED FIRST AND A ZERO IS STATED EXPLICITLY.** Leaving a zero out makes its
+      absence ambiguous between "nobody was credited" and "this line does not report credits" — and the
+      second reading is exactly what made the pre-fix cron line useless.
+      ⚠ **CLIENT IDS ARE DELIBERATELY ABSENT.** They are data about real people, and the aggregate
+      answers the question: "14 hit `referrer_not_found`" is actionable, one id invites chasing one row
+      and missing that it is thirty. A case asserts no id appears in the line.
+      ⚠ **A NULL OUTCOME IS NOT COUNTED AS A REFUSAL** — a client the credit never attempted (not
+      referred, or no contractor) would otherwise inflate every tally with clients the engine never saw.
+      ⚠ **EIGHT GUARD-PROOFS, widths 2 · 4 · 7 · 2 · 6 · 1 · 1 · 2**, every revert byte-identical by
+      sha256. Two of them are Danny's named pair: the cron line omitting `credited` → **2**, and a
+      credited client not being counted → **4**.
+      ⚠ **CITATION ROT THIS COMMIT CAUSED, MEASURED AND NOT REPAIRED — 35 `LIKELY ROTTED`**, the same
+      population as C2's because it edits `pipelineSync.js` again: 11 `PRE_LAUNCH_CHECKLIST.md` · **10
+      `docs/GROUND_TRUTH_2026-08-21.md` (WHICH MUST NOT BE SHIFTED — a dated snapshot that quotes
+      verbatim what it cites)** · 3 `CDL_3c_PHASE05_RULINGS.md` · 2 each `CLAUDE_REGISTRY.md` and
+      `CLAUDE.md` · 1 each in four more. **Not repaired by adding the delta**, per the rule.
+      ⚠ **AND TWO CAME BACK WIDTH 0 FIRST, BOTH REAL FINDINGS.** (a) Removing the `outcome.credited ?`
+      branch changed nothing, because a success's `reason` is ALREADY the literal `'credited'` — the
+      branch is redundant today and is **kept deliberately**, so a reword of that string cannot silently
+      move successes into a refusal bucket; the measurement is recorded beside it so nobody "tidies" it.
+      (b) Removing a tally call from the SYNC changed nothing, because the suite drove only the catch-up
+      **and** the sync has TWO bulk loops so an `includes()` check stayed green. Closed with a COUNT
+      (both loops must tally) plus two behavioural cases on `syncSingleClient`'s new return contract.
+
 - [ ] **🔴 THE CATCH-UP'S CREDIT IS INVISIBLE IN PRODUCTION LOGS, AND C1 SHIPPED THE COUNTER WITHOUT
       THE LOG LINE.** Found 2026-10-02 while trying to show the credit path executing on live traffic.
       `runRedecideStaleClients` maintains `summary.credited` and `formatSummary()` prints a
