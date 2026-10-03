@@ -526,7 +526,23 @@ export default function CashOut({ loading, userName, userEmail, bankStatus, setT
                     onMouseEnter={e => { e.currentTarget.style.background = RECESS; e.currentTarget.style.borderColor = SECONDARY; }}
                     onMouseLeave={e => { e.currentTarget.style.background = SURFACE; e.currentTarget.style.borderColor = elevationVar('border'); }}
                   >
-                    {v === balance ? "Max" : `$${v}`}
+                    {/* ⚠ `serverBalance`, AND IT READ `balance` UNTIL 2026-10-03 — AN IDENTIFIER THAT HAS
+                        NOT EXISTED SINCE COMMIT (3b) REMOVED THE PROP. In module scope an undeclared
+                        free variable THROWS, so this line raised `ReferenceError: balance is not
+                        defined` and the error boundary blanked the whole Cash Out tab.
+                        ⚠ IT WAS LATENT, NOT DORMANT BY DESIGN: the enclosing `.map` runs only when a
+                        preset survives `v > 0 && v <= serverBalance`, which needs a POSITIVE balance.
+                        Measured in production the day it was found — 6 live users, 5 at zero, 1
+                        negative, **0 positive** — so the only thing preventing the crash was that
+                        nobody had earned yet, and the first referrer to earn anything would have hit
+                        it on the money screen. **A safety argument resting on nobody having succeeded
+                        yet is a coincidence, not a guard.**
+                        ⚠ AND NO TEST COULD SEE IT, FOR A REASON WORTH KNOWING: seven files mount this
+                        component and every fixture used `available: -500` or `0`, because the whole
+                        payout-audit arc was about the over-paid account. **Every fixture seeded the
+                        one state that skips this branch.** `cashOutPositiveBalance.test.jsx` is the
+                        missing fixture. */}
+                    {v === serverBalance ? "Max" : `$${v}`}
                   </button>
                 ))}
               </div>

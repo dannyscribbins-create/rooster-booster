@@ -433,8 +433,59 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2596 server tests across 442 suites, and 1434 React tests across 88 files** (measured 2026-10-03 by the RUNNER-PRELOAD commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2596 · suites 442 · pass 2596 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE RUNNER-PRELOAD COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2596 server tests across 442 suites, and 1438 React tests across 89 files** (measured 2026-10-03 by the CASH-OUT ReferenceError commit (cleanup A), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2596 · suites 442 · pass 2596 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CASH-OUT ReferenceError COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  React 1434 → 1438 is **+4**, one new file (`cashOutPositiveBalance.test.jsx`), and 88 → 89 is that
+  file. **Server did not move — no `server/` file was touched at all** — and was re-measured. **All
+  four predicted before the run and matched.** Counted with an anchored `^\s*it\(` (4), every `it(`
+  at exactly two spaces and **zero** at four or more; the file's loops sit in its two helper bodies
+  or inside `it()` bodies, so none wraps a case.
+  ⚠ **NO PHANTOM, ASKED BEFORE THE RUN.** `src/components/referrer/` is **not** one of
+  `adminBranding.test.jsx`'s four walked roots, the new file is a `.test.` file (which that walker
+  skips anyway), and the only other `src/` change is an EDIT to an existing file. ⚠ **AND THE THREE
+  BALANCE FENCES WERE CHECKED RATHER THAN ASSUMED**: all three of `balanceRenderSites.test.jsx`'s
+  walks skip `.test.` files, so the new suite's own `'/api/cashout/balance'` string cannot trip the
+  "only the shared hook may fetch the endpoint" fence.
+  ⚠ **THE COMMIT'S SUBJECT: A LATENT `ReferenceError` ON THE MONEY SCREEN, AND "LATENT" IS LOAD-BEARING
+  RATHER THAN REASSURING.** `CashOutTab.jsx` rendered `{v === balance ? "Max" : …}` on the amount
+  step's preset buttons, and **`balance` has not existed since payout-audit (3b) removed the prop** —
+  the array beside it was migrated to `serverBalance` and this one comparison was left behind. In
+  module scope an undeclared free variable THROWS, so the error boundary blanked the whole Cash Out
+  tab. The enclosing `.map` runs only when a preset survives `v > 0 && v <= serverBalance`, so it
+  needs a POSITIVE balance — and measured read-only on production that day: **6 live users, 5 at zero,
+  1 negative, 0 positive.** ⚠ **So the only thing preventing a blank money screen was that no referrer
+  had earned anything yet. The first one to earn would have hit it** — *a safety argument resting on
+  nobody having succeeded yet is a coincidence, not a guard.*
+  ⚠ **SEVEN FILES MOUNT THAT COMPONENT AND NOT ONE COULD SEE IT, FOR A REASON WORTH COPYING.** Every
+  fixture used `available: -500` or `0`, because the whole payout-audit arc was about the over-paid
+  account and the clamp — **so every fixture seeded the one state that skips the branch.** Those
+  fixtures were not wrong; they were all on the safe side of a single predicate. This is *"seed the
+  state FURTHEST from the function's default"* with the default being an empty array.
+  ⚠ **AND THE THREE PAYOUT-AUDIT FENCES WERE STRUCTURALLY BLIND, WHICH IS NOT A FENCE FAILURE.**
+  (3b) forbids a client-side `reduce(` beside `payout`; (3e) forbids `data.balance`/`detail.balance`
+  anywhere in `src/` and forbids a `balance={…}` prop pass. **This is a BARE IDENTIFIER READ of a
+  removed prop** — not a calculation, not a prop pass, not a `data.` read — so no needle could match
+  it. *A check can only see the defect it was built to look for, and the gap is where the next one
+  lives.*
+  ⚠ **IT WAS FOUND BY A PROBE FOR THE *NEXT* COMMIT, NOT BY READING THIS FILE.** Enabling ESLint's
+  `no-undef` out-of-tree reports **exactly 1** violation across `src/` once the needed globals are
+  declared — this line. ⚠ **With NO globals declared it reports 3274 across 37 identifiers, 36 of them
+  legitimate globals**, so the signal was one line inside that noise: **the rule has to ship WITH its
+  globals or it reports nothing usable**, which is why cleanup B is a config commit rather than a
+  switch.
+  ⚠ **ONE GUARD-PROOF, AND ITS WIDTH IS THE EXPLANATION FOR THE FIXTURE GAP.** Restoring the exact
+  pre-fix expression reds **3 of the 4** new cases and the test output contains the production string
+  `ReferenceError: balance is not defined`; reverted byte-identical by sha256. **The fourth is the
+  paired negative** — a non-positive balance renders no presets, so the expression is never evaluated
+  and it correctly stays green. That is the same mechanism that kept seven test files silent, observed
+  as a width rather than argued.
+  ⚠ **AND THE CASES PIN THE FIX, NOT MERELY THE ABSENCE OF THE CRASH.** *"It did not throw"* would
+  pass against `v === 0`, against `false`, or against the label being dropped. The fixtures use **700**
+  (so 500 survives, 1000 is dropped, and 700 is Max) and **exactly 500** (which collides with the
+  first hard-coded preset, exercising the `new Set` dedup and the Max label together).
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE RUNNER-PRELOAD COMMIT ITSELF, BECAUSE IT
+  SHIPS TESTS.* It read **2596 / 442 / 1434 / 88**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE RUNNER-PRELOAD COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2580 → 2596 is **+16 = 6 + 10**: six in `runnerPreload.test.js` and ten in
   `localDatabaseGuard.test.js`; suites 436 → 442 is those two files' **three** top-level describes
   each. React did not move — **no `src/` file was touched at all** — and was re-measured. **All four

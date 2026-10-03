@@ -3465,6 +3465,36 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       else loads and the suite depends on its message, and `seedLocalStack.js`'s already works. Rewriting
       either to route through the shared helper risks a live interlock for a tidiness gain. Consolidating the
       three is filed as its own job.
+- [x] **⚠ A LATENT `ReferenceError` ON THE CASH OUT SCREEN — FIXED 2026-10-03 (post-N4 cleanup A).**
+      `src/components/referrer/CashOutTab.jsx` rendered `{v === balance ? "Max" : …}` on the amount
+      step's preset buttons. **`balance` has not existed since payout-audit commit (3b) removed the
+      prop** — the array beside it was migrated to `serverBalance` and this one comparison was left
+      behind. In module scope an undeclared free variable THROWS, so the line raised
+      `ReferenceError: balance is not defined` and the error boundary blanked the entire Cash Out tab.
+      ⚠ **LATENT, NOT SAFE, AND THE DISTINCTION IS THE WHOLE ENTRY.** The enclosing `.map` runs only
+      when a preset survives `v > 0 && v <= serverBalance`, so it needs a POSITIVE balance. Measured
+      read-only on production the day it was found — **6 live users: 5 at zero, 1 negative, 0
+      positive** — so nobody could reach it, and **the only thing preventing a blank money screen was
+      that no referrer had earned anything yet.** The first one to earn would have hit it.
+      ⚠ **SEVEN TEST FILES MOUNT THAT COMPONENT AND NONE COULD SEE IT.** Every fixture used
+      `available: -500` or `0`, because the whole payout-audit arc was about the over-paid account and
+      the clamp — **so every fixture seeded the one state that skips the branch.** Those fixtures were
+      not wrong; they were all on the safe side of one predicate. `cashOutPositiveBalance.test.jsx` is
+      the missing one, and its paired negative records why the others missed it.
+      ⚠ **AND THE THREE PAYOUT-AUDIT FENCES WERE STRUCTURALLY BLIND TO IT.** (3b) forbids a
+      client-side `reduce(` beside `payout`; (3e) forbids `data.balance`/`detail.balance` anywhere in
+      `src/` and forbids a `balance={…}` prop pass. **This is a BARE IDENTIFIER READ of a removed
+      prop** — not a calculation, not a prop pass, not a `data.` read — so none of the three needles
+      could match it. *A check can only see the defect it was built to look for.*
+      ⚠ **IT WAS FOUND BY ENABLING ESLint's `no-undef`, WHICH IS THE NEXT COMMIT (B).** Measured: with
+      the needed globals declared, `no-undef` reports **exactly 1** violation across `src/` — this one.
+      With no globals declared it reports 3274 across 37 identifiers, 36 of which are legitimate
+      globals; **the signal was one line in that noise**, which is why the rule has to ship with its
+      globals rather than as a bare switch.
+      ⚠ **GUARD-PROOF: restoring `v === balance` reds 3 of the 4 new cases and the test output
+      contains the production string `ReferenceError: balance is not defined`.** The fourth is the
+      paired negative, which correctly stays green because a non-positive balance never evaluates the
+      expression — that width IS the explanation for the fixture gap.
 - [ ] **Three copies of the localhost database check — consolidate, or decide not to.**
       `server/test/setup.js`, `scripts/seedLocalStack.js` and `server/utils/requireLocalDatabase.js` each spell
       the same rule: the host must be `localhost` or `127.0.0.1`. The third was added 2026-10-03 and the other
