@@ -1055,10 +1055,17 @@ export default function CRMSettings() {
   // would have fixed the crash and left two definitions of "what this CRM is called" that can drift —
   // which is the defect class this repo keeps paying for. Both cards read this one.
   //
-  // ⚠ AND `npm run lint` CANNOT CATCH THIS, BY DESIGN. The ESLint config is react-hooks rules only
-  // (CLAUDE.md: never add a recommended preset), so `no-undef` is not in the gate — a clean lint
-  // shipped a ReferenceError. What catches it is the MOUNT test added alongside this fix:
-  // `src/components/admin/CRMSettings.test.jsx`.
+  // ⚠ THIS SAID `npm run lint` CANNOT CATCH THIS, BY DESIGN — TRUE WHEN WRITTEN, FALSE SINCE
+  // 2026-10-03. The config was react-hooks rules only, so `no-undef` was not in the gate and a clean
+  // lint shipped a ReferenceError. **`no-undef` is now in the gate** (cleanup B), so this exact
+  // defect — an identifier declared in a different function — would fail `npm run lint` before any
+  // test ran. It took a second instance of the class to earn that rule: the same shape blanked the
+  // Cash Out screen.
+  // ⚠ THE MOUNT TEST IS STILL WHAT CATCHES THE REST OF THE CLASS, AND THAT IS WHY IT STAYS.
+  // `no-undef` sees only UNDECLARED identifiers. A render-path crash from a null dereference, a bad
+  // property read, or a thrown TypeError is invisible to it and visible only to
+  // `src/components/admin/CRMSettings.test.jsx`. **The lint rule narrowed the gap; it did not close
+  // it.**
   const crmDisplayName = status?.crmType
     ? (CRM_LABEL[status.crmType] || status.crmType)
     : null;

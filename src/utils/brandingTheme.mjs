@@ -10,9 +10,14 @@
 // under src/, and CRA turned warnings into errors whenever CI was set — so
 // `CI=true npm run build` failed outright. Neither half of that survives the
 // Vite migration (2026-08-04): ESLint is not part of the build at all any more,
-// and `eslint.config.mjs` enables ONLY the two react-hooks rules with no
-// recommended preset, so nothing raises the rule. Restoring the line here would
-// not break anything today.
+// and `eslint.config.mjs` enables three narrow rules with no recommended preset —
+// the two react-hooks rules and `no-undef` (added 2026-10-03) — none of which is
+// the `strict` rule, so nothing raises it. Restoring the line here would not
+// break anything today.
+// ⚠ THE PREMISE WAS CORRECTED, NOT THE CONCLUSION. This read "enables ONLY the two
+// react-hooks rules", which stopped being true when `no-undef` was added; the
+// conclusion is unchanged, because `no-undef` has nothing to do with `'use strict'`.
+// Said explicitly so the next reader does not have to re-derive it from the rule list.
 //
 // IT STAYS OUT ANYWAY. The mirrored files in this repo all follow the same
 // server-has-it / src-does-not arrangement, and one rule across all of them

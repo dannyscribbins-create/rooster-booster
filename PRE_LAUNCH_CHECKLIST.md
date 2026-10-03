@@ -1431,6 +1431,14 @@ mode proves no harm was done; it proves nothing about whether the logic is right
       Confirmed by running `no-undef` alone against the file out-of-tree: it reports the three
       offending references exactly. **Whether to add `no-undef` narrowly is a ruling, not a
       tidy-up** — the standing rule forbids the preset, and this is a single rule from it.
+      ⚠ **SUPERSEDED 2026-10-03: THE RULING WAS MADE AND `no-undef` IS IN THE GATE (cleanup B).** The
+      paragraph above is kept as the record of why the CRM Settings crash shipped; it is no longer true
+      of today. ⚠ **It took a SECOND instance of the class to earn the rule** — `CashOutTab.jsx` reading
+      `balance`, a prop removed by payout-audit (3b), which would have blanked the Cash Out screen for
+      the first referrer to earn anything. That one was found BY the out-of-tree probe this entry
+      describes running. **The mount-test half of this item is NOT closed by the rule**: `no-undef` sees
+      only undeclared identifiers, so a null dereference or a thrown TypeError in a render path is still
+      invisible to it and still needs the component mounted.
       ⚠ **THE ONLY THING THAT CATCHES AN OUT-OF-SCOPE IDENTIFIER IN A RENDER PATH IS RENDERING IT**,
       which is CLAUDE.md's *"any file a sweep touches needs at least one render test, however
       trivial"* — with the sweep being an edit. `CRMSettings.jsx` now has one; these nineteen do not.
@@ -3495,6 +3503,35 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       contains the production string `ReferenceError: balance is not defined`.** The fourth is the
       paired negative, which correctly stays green because a non-positive balance never evaluates the
       expression — that width IS the explanation for the fixture gap.
+- [x] **⚠ ESLint `no-undef` IS IN THE GATE — ADDED 2026-10-03 (post-N4 cleanup B).**
+      One rule, no preset, globals declared by hand in `eslint.config.mjs` (Danny's ruling 4: no new
+      dependency — the `globals` package is not installed and this is a job a few lines can do).
+      `npm run lint` is the FIRST step of `npm test`, chained with `&&`, so a violation blocks the gate
+      before either suite runs.
+      ⚠ **IT CLOSES THE CLASS THAT SHIPPED TWICE.** The CRM Settings page was blanked by
+      `crmDisplayName` declared in a different function; the Cash Out screen was latently blanked by
+      `balance`, a prop removed by payout-audit (3b). **Both were clean under `npm run lint`.** The
+      second one is what earned the ruling, and it was found BY the out-of-tree probe the first one's
+      entry describes running.
+      ⚠ **THE RULE IS USELESS WITHOUT ITS GLOBALS, MEASURED: 3274 violations across 37 identifiers with
+      none declared, and 36 of those identifiers are legitimate browser/Vitest/Node globals.** Exactly
+      one was a real defect. The rule and its globals are therefore one change — shipped as a bare
+      switch it reports nothing usable and gets turned off.
+      ⚠ **A HAND-MAINTAINED LIST IS ACCEPTABLE HERE ONLY BECAUSE IT FAILS LOUDLY.** This repo's
+      recorded failure is the hand-maintained FILES list that reported clean while missing files. A
+      missing GLOBAL fails the other way — flagging legitimate code on the first run. **Measured:
+      removing one global (`document`) produces 315 false positives immediately.**
+      ⚠ **AND IT GIVES A RESIDENT RULE ITS FIRST MECHANISM:** *"Frontend env vars are
+      `import.meta.env.VITE_*`, never `process.env.REACT_APP_*"*. `process` is deliberately not
+      declared for production `src/` files, so a `process.env` read there is now a lint error; test
+      files keep it. Measured at 0 such reads in non-test `src/`, so it starts green.
+      ⚠ **AND THE `.mjs` BLIND SPOT IS CLOSED:** five `.mjs` files under `src/` are production code and
+      `eslint src` could not see them, because the only glob named `{js,jsx}`. Measured 0 violations
+      before including them. The react-hooks glob is left byte-identical.
+      ⚠ **WHAT IT DOES NOT CLOSE, SAID SO NOBODY OVERREADS IT: `no-undef` SEES ONLY UNDECLARED
+      IDENTIFIERS.** A render-path crash from a null dereference, a bad property read or a thrown
+      TypeError is invisible to it. **The mount-test item for the 18 never-mounted admin components is
+      NOT closed by this commit** — it is the half a static rule cannot reach.
 - [ ] **Three copies of the localhost database check — consolidate, or decide not to.**
       `server/test/setup.js`, `scripts/seedLocalStack.js` and `server/utils/requireLocalDatabase.js` each spell
       the same rule: the host must be `localhost` or `127.0.0.1`. The third was added 2026-10-03 and the other

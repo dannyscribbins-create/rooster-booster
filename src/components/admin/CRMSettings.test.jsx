@@ -8,10 +8,15 @@
 // `isConnected && !tokenError`, the error boundary blanked the ENTIRE page on every visit, surviving
 // refresh. Logged in production 2026-10-01 16:58:43 UTC.
 //
-// ⚠ `npm run lint` COULD NOT CATCH IT, BY DESIGN, AND THAT IS THE POINT OF THIS FILE. The ESLint
-// config is react-hooks rules only — CLAUDE.md says never add a recommended preset — so `no-undef`
-// is not in the gate. A clean lint shipped a ReferenceError. The only thing that catches an
-// out-of-scope identifier in a render path is RENDERING IT.
+// ⚠ `npm run lint` COULD NOT CATCH IT, BY DESIGN — TRUE WHEN THIS WAS WRITTEN, AND SUPERSEDED
+// 2026-10-03. The config was react-hooks rules only, so `no-undef` was not in the gate and a clean
+// lint shipped a ReferenceError. **`no-undef` is now in the gate** (cleanup B), and it would catch
+// this exact defect before any test ran.
+// ⚠ THE FILE'S REASON FOR EXISTING IS NARROWER NOW, AND IT IS STILL REAL. `no-undef` sees only
+// UNDECLARED identifiers. A render-path crash from a null dereference, a bad property read or a
+// thrown TypeError is invisible to it, and the only thing that catches those is RENDERING the
+// component. **The lint rule narrowed the gap; it did not close it** — so this suite is not
+// redundant, it is the half a static rule cannot reach.
 //
 // ⚠ AND THE GAP WAS NAMED IN THE COMMIT THAT FELL INTO IT. Commit B's own report said "no React test
 // mounts CRMSettings" — stated as a reassurance that the React count would not move, and it was

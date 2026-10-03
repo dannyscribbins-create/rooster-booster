@@ -96,11 +96,11 @@ node server.js     # start step
 npm run build      # production Vite build → dist/
 
 # Quality
-npm run lint       # ESLint over src/ — react-hooks rules only
+npm run lint       # ESLint over src/ — react-hooks rules + no-undef
 npm test           # lint + server suite + React suite (the single pre-push gate)
 ```
 
-The frontend builds with **Vite**, not create-react-app. **Frontend env vars are `import.meta.env.VITE_*`, never `process.env.REACT_APP_*`.** `npm run lint` is narrow by design — react-hooks rules only; **never add a recommended preset.**
+The frontend builds with **Vite**, not create-react-app. **Frontend env vars are `import.meta.env.VITE_*`, never `process.env.REACT_APP_*`.** `npm run lint` is narrow by design — the two react-hooks rules plus `no-undef`; **never add a recommended preset.** ⚠ **`no-undef` enforces the env-var rule immediately above this sentence**: `process` is deliberately not declared as a global for production `src/` files, so a `process.env` read there is a lint error. Test files may read it.
 
 > The build/lint history and the reasons — Vercel's `vercel.json` config, why the preset is excluded, `.npmrc`'s `legacy-peer-deps` — moved to `docs/ARCHITECTURE.md` in ABR 6A commit 2. See **The Vite migration — build and lint configuration** there.
 
@@ -424,7 +424,11 @@ alternative looks attractive again to anyone who sees only the outcome.
 ## Testing
 
 - `npm test` runs the lint step and BOTH suites, and is the single pre-push gate:
-  - `npm run lint` — ESLint over `src/`, react-hooks rules only (see Commands above).
+  - `npm run lint` — ESLint over `src/`, **three narrow rules**: the two react-hooks rules and
+    `no-undef` (see Commands above). ⚠ **`no-undef` was added 2026-10-03 as a SINGLE rule, which is
+    not the forbidden act of adding a preset** — measured cost zero, against hundreds for a preset.
+    It ships with its globals declared by hand in `eslint.config.mjs`; **with no globals it reports
+    3274 violations of which exactly one was real**, so the rule and its globals are one change.
   - `npm run test:server` — `node:test` over `server/test/*.test.js` with `--test-concurrency=1` (the concurrency flag is load-bearing: Node 24 runs test files in parallel by default and the suites share one database).
   - `npm run test:react` — **Vitest** + jsdom over `src/**/*.test.{js,jsx}` via `vitest run` (the `run` subcommand is what makes it exit instead of entering watch mode; `npm run test:react:watch` is the interactive one).
   - The three are chained with `&&`, lint → server → react, so a red React test blocks a push exactly like a red server test. Consequence to know: if an earlier step fails, the later ones do not run that invocation.
@@ -433,8 +437,77 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2596 server tests across 442 suites, and 1438 React tests across 89 files** (measured 2026-10-03 by the CASH-OUT ReferenceError commit (cleanup A), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2596 · suites 442 · pass 2596 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CASH-OUT ReferenceError COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2596 server tests across 442 suites, and 1472 React tests across 90 files** (measured 2026-10-03 by the `no-undef` commit (cleanup B), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2596 · suites 442 · pass 2596 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE `no-undef` COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  React 1438 → 1472 is **+34**, one new file (`src/eslintNoUndef.test.js`), and 89 → 90 is that file.
+  **Server did not move — no `server/` file was touched at all** — and was re-measured. **All four
+  predicted before the run and matched.**
+  ⚠ **34 FROM 10 `it(` LINES, AND THE GAP IS WHY THE COUNT IS COUNTED RATHER THAN READ.** An anchored
+  `^\s*it\(` reports **10**, and **exactly one sits at indent 4** — inside a `for` over a 25-entry
+  sample of browser globals, asserted per expression BY NAME. So 9 × 1 + 1 × 25 = **34**. Reading "10
+  lines" as 10 cases would have been low by 24, the direction that looks identical to a suite that
+  partly failed to register.
+  ⚠ **NO PHANTOM, ASKED BEFORE THE RUN.** The new file sits directly under `src/`, which is not one of
+  `adminBranding.test.jsx`'s four walked roots, and it is a `.test.` file that walker skips anyway. The
+  commit DOES edit files in two walked roots (`src/utils/brandingTheme.mjs`, `src/components/admin/CRMSettings.jsx`)
+  — but that sweep emits one case per **FILE**, and both already existed.
+  ⚠ **THE COMMIT'S SUBJECT: `no-undef` IS IN THE GATE, AND IT IS A SINGLE RULE RATHER THAN A PRESET.**
+  `npm run lint` is the FIRST step of `npm test`, chained with `&&`, so a violation blocks the gate
+  before either suite runs. The standing rule here forbids a recommended PRESET; this is one rule with
+  a **measured cost of zero**, against a preset's measured cost of hundreds.
+  ⚠ **IT COULD NOT HAVE SHIPPED AS A BARE SWITCH, AND THAT IS THE NUMBER WORTH KEEPING.** With no
+  globals declared it reports **3274 violations across 37 identifiers — and 36 of those identifiers are
+  legitimate browser, Vitest or Node globals.** Exactly ONE was a real defect. **The signal was one
+  line inside that noise**, so the rule and its globals are one change or the rule is switched off
+  within a week.
+  ⚠ **THE GLOBALS ARE DECLARED BY HAND, RULED BY DANNY, AND THE USUAL OBJECTION DOES NOT APPLY.** The
+  `globals` package is not installed and this file forbids a dependency for a job a few lines can do.
+  ⚠ **A hand-maintained list normally goes stale SILENTLY — this one cannot.** The recorded failure is
+  the hand-maintained FILES list that reported clean while missing files; a missing GLOBAL fails in the
+  opposite direction, flagging legitimate code loudly on the first run. **Measured: removing ONE global
+  (`document`) produces 315 false positives immediately.** That asymmetry is the whole argument.
+  ⚠ **AND IT GIVES A RESIDENT RULE ITS FIRST MECHANISM.** *"Frontend env vars are
+  `import.meta.env.VITE_*`, never `process.env.REACT_APP_*`"* was prose that nothing checked. `process`
+  is deliberately **not** declared for production `src/` files, so a `process.env` read there is now a
+  lint error; test files keep it, because several legitimately read it. **Measured at 0 such reads in
+  non-test `src/` before shipping**, so it starts green rather than needing a cleanup.
+  ⚠ **THE `.mjs` GAP IS CLOSED TOO, AND IT WAS MEASURED BEFORE BEING CLOSED.** Five `.mjs` files under
+  `src/` are production code — `themeTokens.mjs` computes the six render tokens, `brandingTheme.mjs`
+  holds the platform defaults — and `eslint src` could not see them because the only glob named
+  `{js,jsx}`. **0 violations**, so including them is free. ⚠ The react-hooks glob is left
+  **byte-identical** so this commit cannot change what that rule sees.
+  ⚠ **SIX GUARD-PROOFS, EVERY REVERT BYTE-IDENTICAL BY sha256 ACROSS TWO WATCHED FILES.** (1) Danny's
+  named proof — an undefined identifier reintroduced (`v === balance` restored) → **`npm run lint`
+  exits 1 and NAMES it**: `545:28 error 'balance' is not defined no-undef`. ⚠ **Observed through the
+  gate's own lint step rather than through a test**, because that is the thing that has to catch it.
+  (2) the rule switched OFF → **5**; (3) a needed global removed → **exit 1 with 315 false positives on
+  legitimate code**; (4) the Vitest globals granted to production files → **exactly 1**; (5) `process`
+  granted to production files → **exactly 1**; (6) `.mjs` dropped from the glob → **exactly 1**.
+  ⚠ **(2) PREDICTED 4 AND MEASURED 5, AND THE PREDICTION WAS THE WRONG ONE.** I counted the cases that
+  assert a violation EXISTS and missed one: there are five — the undefined-identifier case, the
+  config-says-`error` case, the Vitest-in-production paired negative, the `process.env`-in-production
+  case, and the `.mjs` case. **Nothing was wrong with the fence; the arithmetic was mine.**
+  ⚠ **THE SUITE IMPORTS `eslint.config.mjs` RATHER THAN RESTATING IT.** A retyped copy carrying the
+  rule would pass while the shipped config had it switched off — this repo's `$3` lesson, where a suite
+  drove a retyped SQL statement and production could have been broken with every case green. Proof (2)
+  is what demonstrates the import is load-bearing.
+  ⚠ **AND IT CARRIES A PAIRED NEGATIVE FOR THE DIRECTION THAT KILLS A RULE.** 25 cases assert that real
+  browser globals are SPARED. Without them, a config that declared nothing would satisfy "it catches an
+  undefined identifier" while flagging 3274 lines of legitimate code — **too strong and too weak are
+  different failures, and a clean lint is evidence against only one of them.**
+  ⚠ **EIGHT COPIES OF AN INVERTED CLAIM WERE CORRECTED, AND THE CALL DIFFERED BY COPY.** *"The ESLint
+  config is react-hooks rules only, so `no-undef` is not in the gate"* appeared in eight places. **Two
+  are RECORDS of why the CRM Settings crash shipped** (here and on `PRE_LAUNCH_CHECKLIST.md`) and were
+  marked SUPERSEDED with their wording intact, because renumbering a record destroys the evidence.
+  **Two were LIVE claims that actively misinstruct** — `CRMSettings.jsx` and its test said lint *cannot*
+  catch a `ReferenceError` — and were corrected to past tense, **while keeping the half that is still
+  true: `no-undef` sees only UNDECLARED identifiers, so a null dereference or a thrown TypeError in a
+  render path still needs the component mounted.** ⚠ **AND ONE WAS A PREMISE CORRECTION WITH THE
+  CONCLUSION UNCHANGED:** `brandingTheme.mjs` argued from "only the two rules" that nothing raises the
+  `strict` rule — the premise moved, the conclusion did not, and saying so beats silently rewriting it.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CASH-OUT ReferenceError COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2596 / 442 / 1438 / 89**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE CASH-OUT ReferenceError COMMIT, BECAUSE IT SHIPS TESTS.**
   React 1434 → 1438 is **+4**, one new file (`cashOutPositiveBalance.test.jsx`), and 88 → 89 is that
   file. **Server did not move — no `server/` file was touched at all** — and was re-measured. **All
   four predicted before the run and matched.** Counted with an anchored `^\s*it\(` (4), every `it(`
@@ -1201,6 +1274,11 @@ alternative looks attractive again to anyone who sees only the outcome.
   The ESLint config is react-hooks rules only and this file says never add a recommended preset, so
   `no-undef` is not in the gate. Confirmed by running `no-undef` alone out-of-tree: it names the three
   references exactly. **Whether to add that single rule is a ruling, not a tidy-up.**
+  ⚠ **SUPERSEDED 2026-10-03 — THE RULING WAS MADE AND `no-undef` IS NOW IN THE GATE (cleanup B).** The
+  paragraph above is kept as the record of why that crash shipped, and it is no longer true of today:
+  a clean lint can no longer ship an undefined identifier in `src/`. **It took a second instance to
+  earn the ruling** — the same class blanked the Cash Out screen (`CashOutTab.jsx` reading `balance`),
+  and that one was found BY the out-of-tree probe this paragraph describes running.
   ⚠ **AND THE GAP WAS NAMED IN THE COMMIT THAT FELL INTO IT.** Commit B's own report said *"no React
   test mounts `CRMSettings`"* — offered as the reason the React count would not move, and
   simultaneously the reason the crash could ship. **A noticed absence is not a covered one.** This is
