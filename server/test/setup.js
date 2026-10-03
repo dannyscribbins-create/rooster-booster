@@ -39,7 +39,11 @@ if (_hostname !== 'localhost' && _hostname !== '127.0.0.1') {
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP B2 — RESEND SAFETY INTERLOCK (7d-0). NO TEST MAY REACH RESEND'S NETWORK.
 //
-// ⚠ THE EXPOSURE WAS REAL AND MEASURED, NOT HYPOTHETICAL. `.env.test` defines only DATABASE_URL,
+// ⚠ THE EXPOSURE WAS REAL AND MEASURED, NOT HYPOTHETICAL — AND THE MECHANISM DESCRIBED BELOW IS NOW
+// CLOSED AT ITS SOURCE (2026-10-03). The narrative is kept because it is the record of what was true,
+// and because `db.js` is no longer the file it describes: it routes through `server/utils/loadEnv.js`,
+// which hands a test process `.env.test` and never the real file. Read the paragraph as history.
+// `.env.test` defines only DATABASE_URL,
 // NODE_ENV and ENCRYPTION_KEY — no Resend key. But `server/db.js` calls `require('dotenv').config()`,
 // so the moment a test transitively requires ANY mailing module, `.env` is loaded and
 // `RESEND_API_KEY` becomes **the real 36-character `re_…` key**. Measured: unset after this file
@@ -84,10 +88,24 @@ if (_hostname !== 'localhost' && _hostname !== '127.0.0.1') {
 // *"TEST-ENVIRONMENT LIVE-FIRE HAZARD — `RESEND_API_KEY` leaks into the test process"*, naming the
 // mechanism and the consequence — *"sends REAL email to `admin1@roofmiles.com` on every run"* — with a
 // second instance recorded for the Jobber key. It is not a discovery here; what is new is the
-// measurement and a structural guard instead of a per-suite mitigation. ⚠ **That entry forbids the
-// root fix in a feature session — `setup.js` not loading `.env` at all — and this is deliberately NOT
-// that change.** Only `RESEND_API_KEY` is pinned; every other credential in `.env` still leaks, and
-// that half of the entry stays open.
+// measurement and a structural guard instead of a per-suite mitigation.
+//
+// ⚠ SUPERSEDED 2026-10-03 BY THE TEST-ENVIRONMENT ROOT FIX, AND THE OLD WORDING IS QUOTED BECAUSE IT
+// NOW INVERTS RATHER THAN MERELY DATING. It read: *"That entry forbids the root fix in a feature
+// session — `setup.js` not loading `.env` at all — and this is deliberately NOT that change. Only
+// `RESEND_API_KEY` is pinned; every other credential in `.env` still leaks, and that half of the entry
+// stays open."* **No credential leaks any more**, so a reader acting on that sentence would fence
+// something already fenced — or, worse, conclude the leak is still the explanation for a failure.
+//
+// ⚠ AND IT NAMED THE WRONG FILE, WHICH IS WHY THE ROOT FIX READ AS A BIGGER JOB THAN IT WAS. *"`setup.js`
+// not loading `.env`"* describes work in a file that never did: **line 7 loads `.env.test` and nothing
+// else**, and the paragraph directly above this one had `server/db.js` right all along. The leak was
+// `db.js`'s cwd-relative `require('dotenv').config()`, now `server/utils/loadEnv.js`.
+//
+// ⚠ THIS FILE'S PINS STILL MATTER AND MUST NOT BE REMOVED AS REDUNDANT. `loadEnv()` substitutes test
+// stubs only where a variable is UNSET, so these assignments still win — and guards (2) and (3) below
+// are what make an accidental send FAIL A TEST. **A stub key only makes the provider refuse; it does
+// not make the suite notice.** The two mechanisms answer different questions.
 //
 // INDEPENDENT GUARDS, because one that fails silently is worth little:
 //

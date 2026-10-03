@@ -433,7 +433,110 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2567 server tests across 432 suites, and 1434 React tests across 88 files** (measured 2026-10-03 by the SECURITY DEPENDENCY commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2567 · suites 432 · pass 2567 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2580 server tests across 436 suites, and 1434 React tests across 88 files** (measured 2026-10-03 by the TEST-ENVIRONMENT ROOT FIX commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2580 · suites 436 · pass 2580 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE TEST-ENVIRONMENT ROOT FIX COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2567 → 2580 is **+13**, one new file (`envCanary.test.js`); suites 432 → 436 is that file's
+  **four** top-level describes. React did not move — **no `src/` file was touched at all** — and was
+  re-measured. **All four predicted before the run and matched.** Counted with an anchored `^\s*it\(`
+  (13), and every `it(` line was checked for POSITION rather than counted: **all 13 sit at exactly two
+  spaces and zero at four or more**, so no loop and no nested describe wraps a case; the file's loops
+  sit in helper bodies (`keyNamesOf`, `serverFiles`, `withNoSignals`, `namesCarryingTheirRealValue`,
+  `realPairs`) or inside `it()` bodies.
+  ⚠ **THE GATE WAS RUN TWICE AND THE SECOND RUN IS THE ONE CITED.** `server/test/setup.js` was edited
+  **64 seconds into the first run** (comment-only, verified by mtime against the log's creation time),
+  and `setup.js` is required by most suites — so suites starting after that loaded a different file.
+  Both runs read `EXIT=0` and the same seven numbers. **A comment cannot change a count, and "it cannot
+  have changed" is a prediction, not a measurement**, which is this block's own rule.
+  ⚠ **THE COMMIT'S SUBJECT: A TEST PROCESS NEVER LOADS THE REAL `.env` — AND CLOSING THE LEAK MADE 171
+  TESTS DISAPPEAR, WHICH IS THE MEASUREMENT THAT JUSTIFIES THE WHOLE COMMIT.** `server/db.js` opened
+  with a bare `require('dotenv').config()`; dotenv resolves `.env` from the **cwd**, which in a test run
+  is the repo root, and virtually everything requires `db.js`. The first green-seeking run of the fix
+  came back **2396 / 417 against a baseline of 2567 / 432** — six suites could not be **imported**,
+  because `server/middleware/errorLogger.js` builds `new Resend(process.env.RESEND_API_KEY)` at module
+  scope and Resend's constructor **throws** on a falsy key. **They did not fail; they vanished, in
+  file-sized jumps** — the module-load signature this file names. So 171 tests and 15 suites were
+  loading only because a real production credential was in the process.
+  ⚠ **SAID NARROWLY, BECAUSE THE OVERREACH IS THE TEMPTING WRITE-UP: NO SEND WAS DRIVEN.** Checked
+  rather than assumed — `errorLogger.test.js` imports only the pure `buildAlertSubject`, and the single
+  `resend` string in `campaignEmailEscaping.test.js` is a filename in a list. The exposure was **a live
+  client constructed with a real key in six suites that have no interlock**, not mail going out.
+  ⚠ **AND I REPORTED THE LEAK AS FOUR VARIABLES FIRST, WHICH WAS THE FLATTERING HALF OF A TRUE
+  MEASUREMENT.** It was measured *through* `setup.js`, which pins `JOBBER_CLIENT_SECRET` and
+  `RESEND_API_KEY` itself — so those two read as "pinned, not leaked". That is true of a suite which
+  requires `setup.js` and **false as a statement about the suite**: for the **17 files that never
+  require it** the leaked set is all **six** exclusive names, both credentials included. The number was
+  right about the wrong population.
+  ⚠ **AND THE CHECKLIST ENTRY NAMED THE WRONG FILE FOR FIVE WEEKS, WHICH IS WHY A ONE-LINE FIX READ AS
+  A NAMED BUILD.** It opened *"`server/test/setup.js` loads `.env` alongside `.env.test`"* and forbade
+  the root fix as *"`setup.js` not loading `.env` at all"*. **`setup.js:7` loads `.env.test` and nothing
+  else** — and `setup.js`'s own STEP B2 comment had `db.js` right all along. **A misattributed cause
+  makes a cheap fix look expensive**, and nothing about a confidently-worded entry invites re-deriving
+  it. Corrected in place with the old wording quoted, in both files.
+  ⚠ **`NODE_ENV === 'test'` WAS REJECTED BECAUSE IT FAILS OPEN, AND THAT IS MEASURED.** `test:server`
+  carries no `cross-env`, so `NODE_ENV` is undefined in a fresh child and only becomes `'test'` once a
+  suite requires `./setup` — which **17 suites never do**. The guard keys on `NODE_TEST_CONTEXT` (set
+  by the runner in every child before any repo file loads), OR `VITEST`, OR `NODE_ENV` — **OR-ed so it
+  fails CLOSED**, since a false positive refuses the real `.env` while a false negative hands a test a
+  live credential, and those are not symmetric.
+  ⚠ **THE STUBS LIVE IN COMMITTED CODE AND NOT IN `.env.test`, WHICH IS LOAD-BEARING RATHER THAN
+  TIDY.** That file is **gitignored**, so the obvious fix would have worked on this machine and left a
+  fresh clone or CI with six unloadable suites — **a commit that cannot reproduce its own green.**
+  `loadEnv()` substitutes deliberately-unusable values (the Resend stub does not begin `re_`) **only
+  where a variable is unset**, so `setup.js`'s pins, the shell and Railway all still win and the 7d-0
+  interlock is untouched.
+  ⚠ **DESIGNING A GUARD-PROOF FOUND A HOLE IN MY OWN FENCE BEFORE IT SHIPPED.** The dotenv-caller fence
+  and its non-vacuity floor each carried **their own copy** of the needle, so pointing the fence's copy
+  at nothing would have left the floor matching its separate copy and **both cases green** — *"a floor
+  built from the NEEDLE's shape rather than the DEFECT's shape only confirms the needle matches
+  itself"*. Extracted to one constant; proof (5) now reds exactly 1.
+  ⚠ **AND TWO ASSERTIONS HAD NO OBSERVER AT ALL, BOTH FOUND BY ASKING WHAT WOULD FAIL.** Measured: **no
+  file under `src/` requires any `server/` module**, so the `VITEST` arm is unreachable in a real run —
+  it is KEPT (it must already be closed the day that changes) and is now driven on synthetic input. And
+  nothing asserted `isTestProcess()` is ever **false**, so `return true` would have passed the entire
+  file while **production loaded `.env.test`**. Proof (7) writes exactly that and reds 2.
+  ⚠ **ONE CASE WOULD HAVE LEAKED THE REAL `.env` INTO THE CANARY'S OWN PROCESS.** Proving that a signal-
+  less process chooses the real file by CALLING `loadEnv()` would have loaded it and reddened the leak
+  assertion two describes later. `chosenEnvFile()` is a pure separation of the decision from the load —
+  **an observation that changes the thing observed was not available to this test.**
+  ⚠ **AND THE STUBS FORCED THE CANARY'S CENTRAL ASSERTION TO GET STRONGER.** It asserted the exclusive
+  names were **ABSENT** — correct until `loadEnv()` began substituting stubs, at which point three are
+  legitimately present and the assertion would have failed **against a working guard**. **Presence was
+  never the property; provenance is.** It compares VALUES against the real file and reports only NAMES,
+  which a name check could never do: a name check cannot tell a stub from a live key.
+  ⚠ **SEVEN GUARD-PROOFS, EVERY WIDTH PREDICTED BEFORE THE RUN AND EVERY ONE MATCHED, every revert an
+  inverse patch in a `finally` proven byte-identical by sha256 across four watched files, anchors
+  checked unique in BOTH directions, empty-string replacements refused outright, and every injection
+  confirmed landed before its result was believed.** (1) the exact pre-fix state → **5**; (2) the
+  rejected `NODE_ENV`-only design → **6**; (3) the path resolved from the cwd → **3**, and it reds BOTH
+  halves of the canary, which is the pair the file argues for; (4) a `server/scripts` file calling
+  dotenv directly → **exactly 1**; (5) the fence's needle pointed at nothing → **exactly 1**, the floor;
+  (6) the `VITEST` arm dropped → **exactly 1**; (7) the guard always on → **2**.
+  ⚠ **AND THIS FILE'S OWN CITATION RULE CAUGHT ME BREAKING IT, IN THE EXACT FILE IT NAMES.** My first
+  writing explained the fix in a **7-line comment block at `server/db.js:3`** — the top of the file —
+  and `citecheck --changed-files` reported **137 LIKELY ROTTED, every one `+7 line(s) inserted`.**
+  *Adding a comment block is a citation-rotting edit*, and the same rule says to keep `db.js`
+  insertions near the END because the highest citation into it is around `:1672`. **I put mine at line
+  3.** Collapsed to a single line — `require('./utils/loadEnv').loadEnv();` replacing the single line
+  that was there — the net line delta is **0** and the count fell to **15**. ⚠ **122 citations saved by
+  writing one line instead of nine, and the explanation lost nothing: it already lived in full in
+  `loadEnv.js`.** The 15 that remain are the known `CLAUDE.md` / `PRE_LAUNCH_CHECKLIST.md` family
+  (10 · 3 · 1 · 1) and are **reported, not repaired by adding the delta** — and
+  `docs/GROUND_TRUTH_2026-08-21.md`'s one must never be renumbered at all.
+  ⚠ **AND ROUTING THE FOUR OPERATOR SCRIPTS LEFT FOUR DEAD `path` IMPORTS, REMOVED IN THE SAME
+  COMMIT.** Each had `const path = require('path')` solely to build the dotenv path. ⚠ **Not inert to
+  the gate, which is why it was checked rather than assumed**: nine suites reference these scripts and
+  `assignmentPreview.test.js` SPAWNS the real `previewRebuild.js`, so the gate had to be stopped and
+  re-run rather than reasoned about.
+  ⚠ **AND ONE LINE OF MY OWN HARNESS OUTPUT WAS A PROBE LOOKING IN THE WRONG PLACE, REPORTED RATHER
+  THAN QUIETLY DROPPED.** It printed `refusal observed in output: False` for the 7d-0 interlock under
+  injection (1), which reads as the interlock failing. `resendInterlock.test.js` exercises the interlock
+  machinery and **does not itself emit the `ABORTING` line** — those come from other suites. Its
+  **16/16 green under both the fix and the injection** is the evidence Danny asked for; the `False` was
+  my needle, not a finding.
+  ⚠ **AND THE WRAPPER REPORTED exit 0 WHILE THE FIRST RUN'S LOG READ `EXIT=1`** — another instance of
+  that disagreement, and the reason the red run was noticed at all.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE SECURITY DEPENDENCY COMMIT ITSELF.* It
+  read **2567 / 432 / 1434 / 88**.
   ⚠ **THE HEAD FOR THIS FIGURE IS THE SECURITY DEPENDENCY COMMIT ITSELF, AND NOT ONE OF THE FOUR
   NUMBERS MOVED — WHICH IS NOT STALENESS.** That commit ships no test, so the figure is unchanged;
   but it changes `package-lock.json` and therefore the installed `multer`, which is something the

@@ -1,5 +1,10 @@
 'use strict';
-require('dotenv').config();
+// ⚠ THIS WAS A BARE `dotenv.config()` AND IT IS THE RISKIEST OF THE FIVE, because its own name
+// says it runs in a test context. A bare call resolves `.env` from the CURRENT WORKING DIRECTORY,
+// so running it from the repo root under a test signal loaded real credentials. Routed through
+// the shared loader, which picks `.env.test` for a test process and the real file otherwise.
+const { loadEnv } = require('../utils/loadEnv');
+loadEnv();
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 

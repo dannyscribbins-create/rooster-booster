@@ -3313,7 +3313,10 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       ⚠ **AND IT IS A NAMED BUILD BECAUSE SEVERAL SUITES DEPEND ON THE PRESENT BEHAVIOUR**, which is
       what makes it unsafe inside a feature session: the fix has to enumerate what each suite is
       actually reading from `.env` and supply a test-only value, rather than simply stopping the load.
-- [ ] **⚠ TEST-ENVIRONMENT LIVE-FIRE HAZARD — `RESEND_API_KEY` leaks into the test process.**
+- [x] **⚠ TEST-ENVIRONMENT LIVE-FIRE HAZARD — `RESEND_API_KEY` leaks into the test process.**
+      ⚠ **CLOSED 2026-10-03 BY THE TEST-ENVIRONMENT ROOT FIX. READ THE CLOSURE NOTE AT THE END OF THIS
+      ENTRY BEFORE ACTING ON ANY SENTENCE IN IT — several of them now INVERT**, and one misnamed the
+      file that held the defect for the entry's whole life.
       `server/test/setup.js` loads `.env` alongside `.env.test`, so the **real** Resend key is
       present even though `.env.test` never sets it. **Any test exercising a path that calls
       Resend sends REAL email to `admin1@roofmiles.com` on every run — and looks like a passing
@@ -3366,6 +3369,59 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       their caller swallows a send failure.** That asymmetry is why this survived: the mail was
       being sent by the suites nobody had reason to suspect. A per-file refusal line is printed
       at exit now, so a silent block cannot pass for an absent one.
+      ⚠ **CLOSURE, 2026-10-03 — AND THIS ENTRY NAMED THE WRONG FILE FROM THE DAY IT WAS WRITTEN.** It
+      opens *"`server/test/setup.js` loads `.env` alongside `.env.test`"*, and it does not: **`setup.js:7`
+      loads `.env.test` and nothing else.** The leak was `server/db.js`'s bare, cwd-relative
+      `require('dotenv').config()` — which `setup.js`'s own STEP B2 comment had identified correctly all
+      along. **So the root fix this entry forbade — *"`setup.js` not loading `.env` at all"* — described work
+      in a file that never had the defect**, which is why it read as a large, risky job for five weeks. It
+      was one line. ⚠ *A misattributed cause makes a cheap fix look expensive, and nothing about a
+      confidently-worded entry invites re-deriving it.*
+      ⚠ **THE FIX: `server/utils/loadEnv.js` is now the ONE env-loading decision point.** A test process is
+      recognised by `NODE_TEST_CONTEXT` (set by `node --test` in every child before any repo file loads),
+      `VITEST`, or `NODE_ENV === 'test'` — OR-ed, so the guard **fails CLOSED** — and loads `.env.test`;
+      everything else loads `.env`. The path resolves from `__dirname`, never the cwd. `db.js` and all five
+      `server/scripts/` dotenv callers route through it, and a fence in `server/test/envCanary.test.js`
+      fails on any new direct `require('dotenv')` under `server/`.
+      ⚠ **`NODE_ENV === 'test'` ALONE WAS REJECTED, MEASURED RATHER THAN ARGUED.** `test:server` carries no
+      `cross-env`, so `NODE_ENV` is undefined in a fresh child and only becomes `'test'` once a suite
+      requires `./setup` — and **17 suites never require it.** A NODE_ENV-keyed guard would therefore be
+      absent exactly for the files that were exposed. Guard-proof (2) writes that design and reds **6**.
+      ⚠ **THE MEASUREMENT THAT JUSTIFIES THE COMMIT, AND IT IS BIGGER THAN THE ENTRY PREDICTED: CLOSING THE
+      LEAK TOOK THE GATE FROM 2567 TESTS / 432 SUITES TO 2396 / 417.** `server/middleware/errorLogger.js`
+      constructs `new Resend(process.env.RESEND_API_KEY)` at module scope and Resend's constructor **throws**
+      on a falsy key, so six suites — `campaignEmailEscaping`, `captureFetchContract`, `emailUrlSafety`,
+      `errorLogger`, `landingSocialFooter`, `landingStepCopy` — **could not be imported at all.** They did not
+      fail; they vanished, in file-sized jumps. **171 tests and 15 suites were loading only because a real
+      production Resend key was present in the test process.** Ten-plus server modules construct a Resend
+      client at module scope, so this was never specific to those six.
+      ⚠ **SAID NARROWLY, BECAUSE THE OVERREACH IS TEMPTING: NO SEND WAS DRIVEN BY THEM.** Checked — none of
+      the six drives a Resend call (`errorLogger.test.js` imports only the pure `buildAlertSubject`; the one
+      `resend` string in `campaignEmailEscaping.test.js` is a filename in a list). The exposure was **a live
+      client constructed with a real key in six suites that have no interlock**, not mail going out.
+      ⚠ **AND I FIRST REPORTED THE LEAK AS FOUR VARIABLES, WHICH WAS THE FLATTERING HALF.** It was measured
+      *through* `setup.js`, which pins `JOBBER_CLIENT_SECRET` and `RESEND_API_KEY` itself — true of a suite
+      that requires `setup.js`, false as a statement about the suite. **For the 17 files that never require
+      it the leaked set is all SIX exclusive names, both credentials included.**
+      ⚠ **THE STUBS ARE IN COMMITTED CODE, NOT IN `.env.test`, AND THAT IS LOAD-BEARING.** `.env.test` is
+      **gitignored**, so putting the key there would fix one machine and leave a fresh clone or CI with six
+      unloadable suites — a commit that cannot reproduce its own green. `loadEnv()` substitutes
+      deliberately-unusable values (the Resend stub does not begin `re_`) **only where a variable is unset**,
+      so `setup.js`'s pins, the shell and Railway all still win, and the 7d-0 interlock is untouched.
+- [ ] **The 7d-0 Resend interlock is unreachable for the 17 suites that never require `./setup`.**
+      The interlock's three guards live in `server/test/setup.js`, so a suite that does not require it gets
+      **none of them**. Before 2026-10-03 those suites held the **real** Resend key; they now hold an
+      unusable stub, so an accidental send is refused by the provider instead of delivered — **a strictly
+      better failure, and still not the right one.** ⚠ **A stub makes the provider refuse; the interlock is
+      what makes the TEST FAIL.** Those are different questions, and a refused send that nothing asserts on
+      still passes. Fix: install the interlock from somewhere every test process reaches regardless of
+      require order — the same argument that moved the env decision out of `setup.js`.
+- [ ] **`server/scripts/seedTestTeamMember.js` loads PRODUCTION credentials when run by hand.**
+      Pre-existing and **unchanged** by the 2026-10-03 root fix, which is why it is filed rather than
+      quietly altered. Run from a terminal it carries no test signal, so `loadEnv()` correctly gives it the
+      real `.env` — and a script whose name says *test* then points at the production database. The other
+      four operator scripts in that folder are meant to, so this is not a blanket problem. Decide whether
+      this one should refuse to run without an explicit `--prod` flag.
 - [ ] **The MVP comment above both `CLIENT_*` handlers was INVERTED, not merely stale.**
       It claimed the webhook payload *"may not include full nested quotes/jobs/invoices data"*
       when in fact it includes **no client object at all**. **A wrong comment defending a wrong

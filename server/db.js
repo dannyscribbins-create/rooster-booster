@@ -1,6 +1,6 @@
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
-require('dotenv').config();
+require('./utils/loadEnv').loadEnv(); // was a bare dotenv.config(); see that file for why
 const addReferrerBankColumns = require('./migrations/add_referrer_bank_columns');
 const addNotificationEmailColumns = require('./migrations/add_notification_email_columns');
 const addDecisionBSchema = require('./migrations/add_decision_b_schema');

@@ -30,8 +30,13 @@
 // without editing either contract — the same reasoning previewRebuild.js records.
 process.env.DOTENV_CONFIG_QUIET = 'true';
 
-const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '..', '..', '.env') });
+// ⚠ ROUTED THROUGH THE SHARED LOADER (test-env root fix). It resolved the SAME repo-root
+// `.env` by an explicit path, so behaviour for an operator run is unchanged — but the decision
+// about WHICH file a process may read now lives in exactly one place, and a run that happens to
+// carry a test signal reads `.env.test` instead of real credentials. `DOTENV_CONFIG_QUIET` above
+// still applies: dotenv reads it itself, whoever calls it.
+const { loadEnv } = require('../utils/loadEnv');
+loadEnv();
 
 const { pool } = require('../db');
 const { getFreshContractorAccessToken } = require('../crm/jobber');
