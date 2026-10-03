@@ -1039,7 +1039,65 @@ mode proves no harm was done; it proves nothing about whether the logic is right
         producing real capture-cost figures after the push is the last confirmation, and it is
         Danny's stated condition.
 
-      - [ ] **A DEPENDENCY COMMIT, SCHEDULED AFTER 7d — `npm audit fix` FOR THREE FINDINGS, REPORTED
+      - [x] ✅ **DONE 2026-10-03 (built, NOT PUSHED) — THE SECURITY DEPENDENCY COMMIT. `npm audit`
+        TOTALS ARE NOW ZERO AND ALL THREE PACKAGES CLEAR INDIVIDUALLY.** Measured from
+        `package-lock.json` and each package's own installed `package.json`, never `npm ls`.
+        · `brace-expansion` **5.0.9 → 5.0.12** (dev only; needs ≥5.0.12)
+        · `ip-address` **10.4.0 → 10.7.3** (runtime; advisory range was `<=10.7.0`)
+        · `multer` **2.3.0 → 2.4.0** (runtime, DIRECT; advisory range was `2.2.0 - 2.3.0`, fix ≥2.4.0)
+        ⚠ **`package.json` IS BYTE-IDENTICAL — EVERY FIX LANDED INSIDE THE EXISTING CARET RANGES.**
+        `^2.3.0` admits 2.4.0, `express-rate-limit`'s `^10.2.0` admits 10.7.3, `minimatch`'s `^5.0.8`
+        admits 5.0.12. **So no declared range moved and `express-rate-limit` did NOT need bumping** —
+        the minimal change, verified by diffing the manifest rather than assumed.
+        ⚠ **SIX RUNTIME PACKAGES WERE ALSO REMOVED, AND THAT IS REPORTED RATHER THAN GLOSSED:**
+        `buffer-from` · `concat-stream` · `readable-stream` · `string_decoder` · `typedarray` ·
+        `util-deprecate`. **multer 2.4.0 drops `concat-stream`**, and the other five were
+        `concat-stream`'s own subtree — proven from the lock's dependency graph before AND after, where
+        every one of the six now has NO dependent. Verified gone from `node_modules` too, not just from
+        the lock. 471 → 465 lock entries.
+        ⚠ **THE multer ADVISORY'S MECHANISM NEVER APPLIED HERE, AND SAYING SO IS NOT A REASON TO SKIP
+        THE BUMP.** GHSA-3pph-fpjx-jg34 is *"orphaned DISK writes on aborted uploads"*, and the release
+        note is *"wait for the flush descriptor before unlinking on aborted uploads"*. **Both multer
+        instances in this codebase use `multer.memoryStorage()`** (`campaigns.js`'s `upload` and
+        `admin/index.js`'s `logoUpload`), so multer never writes to disk on either path and the
+        exposure was structurally nil. **This commit is hygiene and future-proofing, not a live
+        repair** — claiming otherwise would be taking credit for a hole that was not open.
+        ⚠ **NO BREAKING CHANGES, CHECKED AGAINST HOW THIS CODE ACTUALLY USES IT RATHER THAN IN GENERAL.**
+        2.4.0's release notes document none, and everything new is additive (`streamHandler`, a `flush`
+        option for DISK storage, exposed busboy options, function-valued limits, `diskStorage` with no
+        options). The behaviour changes were each checked against this code: *files exactly at
+        `limits.parts` now allowed* — **no `parts` limit is set anywhere**; *`maxCount` slots reserved
+        before an async `fileFilter` yields* — **no `fileFilter` exists and only `.single()` is used**,
+        never `.array()`; *decoded filename reported on `LIMIT_FILE_SIZE`* — the one place that reads a
+        multer error reads **`err.code`, not the message**, so a message change cannot reach it.
+        ⚠ **THE ONE CHANGE THAT COULD HAVE MATTERED IS *"escaped field names now properly decoded"*,
+        BECAUSE THAT IS THE SAME PARSING `fieldArrayIndexLimit` OPERATES ON** — the control this repo
+        set deliberately, which the version bump does not turn on. **It still holds:
+        `multerFieldArrayIndex.test.js` is 13/13 green against 2.4.0.**
+        ⚠ **AND THAT GREEN IS REAL EVIDENCE RATHER THAN A STUBBED ONE, WHICH IS THE QUESTION THIS ENTRY
+        ITSELF RAISED.** It warned that the suite stubs `multer` as it stubs `axios`, so a green gate
+        might exercise very little. **Checked: that suite drives the `branding/logo` route over REAL
+        HTTP against the REAL library.** ⚠ **Its own stated limit stands** — the CAMPAIGNS instance is
+        covered STRUCTURALLY (both are asserted to declare the option) and only the logo route is
+        covered behaviourally. So the claim is: real-HTTP proof on one instance, source proof on the
+        other, and that split is unchanged by this bump.
+        ⚠ **THE `ip-address` QUESTION THIS ENTRY LEFT OPEN IS NOW ANSWERED: NOTHING IN THIS CODEBASE
+        USES IT DIRECTLY.** `grep` over `server/` and `src/` finds no `require('ip-address')`, no
+        `Address4`, no `Address6`. It arrives only through `express-rate-limit` (`^10.2.0`). So whether
+        this code performs an allowlist check on untrusted input — the thing the entry said was NOT
+        established — is answered: **it performs none of its own**, and whatever
+        `express-rate-limit` does with it is now on a patched version.
+        ⚠ **GATE: `tests 2567 · suites 432 · pass 2567 · fail 0 · cancelled 0 · skipped 0 · todo 0`,
+        React 1434 across 88 files, `EXIT=0` from the log. NOT ONE OF THE FOUR NUMBERS MOVED** — this
+        commit ships no test — **and all four were re-measured rather than carried**, because a
+        dependency bump is the instrument and "nothing can have changed" is a prediction.
+        ⚠ **`npm outdated` SHOWS ~19 PACKAGES BEHIND AND NONE WAS TOUCHED, DELIBERATELY.** The audit
+        fix resolved every finding inside the existing ranges, so bumping anything else would be scope
+        this commit does not own. Recorded so the list is not mistaken for something this commit
+        cleared.
+
+      - [x] **⚠ SUPERSEDED — the entry below is the original scheduling, kept as the record of what was
+        found before it and how.** — **A DEPENDENCY COMMIT, SCHEDULED AFTER 7d — `npm audit fix` FOR THREE FINDINGS, REPORTED
         BEFORE PUSHING LIKE THE axios COMMIT.** Ruled by Danny 2026-10-01. **Not now**: it is a
         dependency change in the middle of a money-path arc, and the axios entry directly above is the
         precedent for how one gets done — measured from the manifests, contract-tested where a green
@@ -11571,6 +11629,25 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       key — so frontend errors from *every* future contractor will share one lineage under a tenant
       that does not exist. **Fix by ROUTING the real contractor in, not by changing the literal to
       `accent-roofing-dev`**, which would be a hardcoded right answer for exactly one tenant.
+      ⚠ **AND THE SAME CLEANUP COMMIT CARRIES ITS MIRROR IMAGE, FILED 2026-10-03 BY DANNY ON THE 7c-3
+      REPORT: `logError` CALLS THAT PASS NO `contractorId` AT ALL WRITE ROWS WITH `contractor_id` NULL,
+      WHICH ARE INVISIBLE TO EVERY TENANT-SCOPED QUERY.** The entry above is a row filed under the
+      WRONG tenant; this is a row filed under NO tenant, and the two are the same defect in opposite
+      directions — **pass the contractor through, in both.**
+      ⚠ **THE WORKED EXAMPLE, FOUND WHILE BUILDING 7c-3's GUARD-PROOF RATHER THAN BY LOOKING FOR IT.**
+      `deriveAndSaveTags`'s catch calls `logError({ req: null, error: err, source: 'deriveAndSaveTags(<id>)' })`
+      with no contractor. That catch is the one that swallows a TypeError which **stops every tag for
+      every client** — so the single trace of a defect that silently disables tagging across a whole
+      tenant cannot be found by asking about the affected tenant. A test had to match on the source
+      string alone to see it at all.
+      ⚠ **MEASURED ON PRODUCTION 2026-10-03: `source LIKE 'deriveAndSaveTags%'` returns 0 rows, 0 of
+      them with a contractor.** So this is LATENT rather than active — it has never fired — and that is
+      stated so nobody reads the entry as a live incident. The exposure is the *next* time it does.
+      ⚠ **THE FIX IS THE SAME SHAPE AS THE ONE ABOVE AND MUST NOT BE A LITERAL.** Thread the
+      contractor the caller already holds into the `logError` call; do not default it, and do not
+      reach for the phantom id. **The scope is every `logError` with no contractor on a path that
+      HAS one** — enumerate them from the callers rather than from this example, because a list built
+      from one worked case is the hand-maintained-list failure this file records.
       ✅ **RULED 2026-10-01 (Danny, ruling 4) — SCHEDULED IN THE CLEANUP COMMIT RIGHT AFTER N4:
       `POST /api/log-client-error` READS THE SESSION'S CONTRACTOR WHEN ONE EXISTS**, so frontend errors
       stop being filed under the phantom id. ⚠ **The route is unauthenticated by design** — a crashed

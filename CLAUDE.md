@@ -433,8 +433,23 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2567 server tests across 432 suites, and 1434 React tests across 88 files** (measured 2026-10-03 by the 7c-3 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2567 · suites 432 · pass 2567 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE 7c-3 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2567 server tests across 432 suites, and 1434 React tests across 88 files** (measured 2026-10-03 by the SECURITY DEPENDENCY commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2567 · suites 432 · pass 2567 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE SECURITY DEPENDENCY COMMIT ITSELF, AND NOT ONE OF THE FOUR
+  NUMBERS MOVED — WHICH IS NOT STALENESS.** That commit ships no test, so the figure is unchanged;
+  but it changes `package-lock.json` and therefore the installed `multer`, which is something the
+  gate CAN observe, so the tree genuinely differs from 7c-3 and the figure had to be re-measured
+  against it rather than carried. All four were read by name off this run's own log. ⚠ **This is NOT
+  the docs-only case where the parent is the honest citation** — the dependency change is in the
+  gate's reach, so this commit is the revision at which the figure was re-established.
+  ⚠ **AND THE RE-MEASUREMENT WAS THE POINT, BECAUSE A DEPENDENCY BUMP IS THE INSTRUMENT.** multer is
+  a direct dependency and 2.4.0 changes field-name decoding — the same parsing the
+  `fieldArrayIndexLimit` control operates on. A green count is what shows the 13-case
+  `multerFieldArrayIndex.test.js` suite still holds against the new version; predicting "nothing can
+  have changed" would have been a prediction, not a measurement.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE 7c-3 COMMIT ITSELF, BECAUSE IT SHIPS
+  TESTS.* It read **2567 / 432 / 1434 / 88** — the same four numbers, measured at the commit that
+  created them.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE 7c-3 COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2542 → 2567 is **+25**, one new file (`defaultSchedule.test.js`); suites 428 → 432 is that
   file's **four** top-level describes. React 1423 → 1434 is **+11**, one new file
   (`defaultScheduleControl.test.jsx`), and 87 → 88 is that file. **All four predicted before the run
