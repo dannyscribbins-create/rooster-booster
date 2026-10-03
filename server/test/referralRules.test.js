@@ -36,6 +36,19 @@ let pool;
 before(async () => { pool = await initTestDb(); });
 after(async () => { await pool.end(); });
 
+// ⚠ HOISTED TO FILE SCOPE BY 7c-3, BECAUSE BOTH describes NOW NEED IT. It lived inside the 7c-0
+// block, and the three cases in the FIRST describe that used to rely on the retired hard-coded
+// label now have to say which field they mean — so the helper had to be reachable from both. Moved
+// verbatim; nothing about it changed.
+async function mapCategoryFieldTo(label) {
+  await pool.query(
+    `INSERT INTO contractor_settings (contractor_id, contractor_field_mappings)
+     VALUES ($1, $2::jsonb)
+     ON CONFLICT (contractor_id) DO UPDATE SET contractor_field_mappings = $2::jsonb`,
+    ['accent-roofing', JSON.stringify({ work_category: label })]
+  );
+}
+
 describe('evaluateReferral — referral rules engine', () => {
   let userId, scheduleId;
 
@@ -82,6 +95,12 @@ describe('evaluateReferral — referral rules engine', () => {
 
   // ── TEST 2.1 ──────────────────────────────────────────────────────────────────
   it('qualified referral: returns correct shape with bonusAmount, referrerId, jobberClientId', async () => {
+    // ⚠ THE MAPPING IS EXPLICIT SINCE 7c-3, AND IT IS A FIXTURE REPAIR RATHER THAN A BEHAVIOUR
+    // CHANGE. This case relied on the retired hard-coded label to find the category; its SUBJECT is
+    // the payout shape, not label resolution, so it now says which field it means — which is the
+    // state a configured contractor is actually in. Without this the case would fail on
+    // no_job_type_found, measuring the wrong thing.
+    await mapCategoryFieldTo('Job Type');
     const result = await evaluateReferral('accent-roofing', makeInvoice(), 'Test Referrer');
 
     assert.equal(result.qualified, true, `expected qualified:true — got: ${JSON.stringify(result)}`);
@@ -94,6 +113,12 @@ describe('evaluateReferral — referral rules engine', () => {
 
   // ── TEST 2.2 ──────────────────────────────────────────────────────────────────
   it('dupe path: pre-existing conversion row → qualified:false, reason:conversion_already_recorded', async () => {
+    // ⚠ THE MAPPING IS EXPLICIT SINCE 7c-3, AND IT IS A FIXTURE REPAIR RATHER THAN A BEHAVIOUR
+    // CHANGE. This case relied on the retired hard-coded label to find the category; its SUBJECT is
+    // the payout shape, not label resolution, so it now says which field it means — which is the
+    // state a configured contractor is actually in. Without this the case would fail on
+    // no_job_type_found, measuring the wrong thing.
+    await mapCategoryFieldTo('Job Type');
     await pool.query(
       `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, bonus_amount)
        VALUES ($1, 'accent-roofing', 'jc-rules-001', 250)`,
@@ -129,6 +154,12 @@ describe('evaluateReferral — referral rules engine', () => {
 
   // ── TEST 2.4 ──────────────────────────────────────────────────────────────────
   it('evaluateReferral is read-only: dupe returns qualified:false and leaves paid_count unchanged', async () => {
+    // ⚠ THE MAPPING IS EXPLICIT SINCE 7c-3, AND IT IS A FIXTURE REPAIR RATHER THAN A BEHAVIOUR
+    // CHANGE. This case relied on the retired hard-coded label to find the category; its SUBJECT is
+    // the payout shape, not label resolution, so it now says which field it means — which is the
+    // state a configured contractor is actually in. Without this the case would fail on
+    // no_job_type_found, measuring the wrong thing.
+    await mapCategoryFieldTo('Job Type');
     // Pre-seed a conversion so evaluateReferral short-circuits at Step 8.
     await pool.query(
       `INSERT INTO referral_conversions (user_id, contractor_id, jobber_client_id, bonus_amount)
@@ -198,15 +229,6 @@ describe('7c-0 — evaluateReferral reads the contractor mapping and matches for
   }
 
   /** Point the contractor's work_category mapping at a field label. */
-  async function mapCategoryFieldTo(label) {
-    await pool.query(
-      `INSERT INTO contractor_settings (contractor_id, contractor_field_mappings)
-       VALUES ($1, $2::jsonb)
-       ON CONFLICT (contractor_id) DO UPDATE SET contractor_field_mappings = $2::jsonb`,
-      ['accent-roofing', JSON.stringify({ work_category: label })]
-    );
-  }
-
   /** An invoice whose single job carries one custom field. */
   function invoiceWithField(label, value) {
     return makeInvoice({
@@ -242,16 +264,34 @@ describe('7c-0 — evaluateReferral reads the contractor mapping and matches for
     assert.equal(result.reason, 'no_job_type_found');
   });
 
-  it('with NO mapping configured it still resolves "Job Type", matching deriveJobberTags', async () => {
-    // ⚠ THE FALLBACK IS DELIBERATE AND THIS CASE IS WHY IT STAYS. deriveJobberTags has the identical
-    // fallback, and the two readers must agree: an unmapped contractor's tags and their payouts have
-    // to resolve the same field. Deleting it would look like a cleanup and would stop every unmapped
-    // contractor qualifying.
-    await scheduleKeyedOn('Roof Replacement');
-    const result = await evaluateReferral('accent-roofing',
-      invoiceWithField('Job Type', 'Roof Replacement'), 'Test Referrer');
-    assert.equal(result.qualified, true, `got: ${JSON.stringify(result)}`);
-  });
+  // ⚠ INVERTED BY DANNY'S 7c-3 RULING, NOT BY A BUG, AND THE OLD ASSERTION IS QUOTED RATHER THAN
+  // DELETED. This case used to read *"with NO mapping configured it still resolves 'Job Type',
+  // matching deriveJobberTags"* and asserted `result.qualified === true`, with the comment:
+  // *"THE FALLBACK IS DELIBERATE AND THIS CASE IS WHY IT STAYS. deriveJobberTags has the identical
+  // fallback, and the two readers must agree: an unmapped contractor's tags and their payouts have
+  // to resolve the same field. Deleting it would look like a cleanup and would stop every unmapped
+  // contractor qualifying."*
+  //
+  // ⚠ THAT WAS CORRECT ABOUT AGREEMENT AND IS NOW SUPERSEDED ON THE MECHANISM. Both readers retire
+  // the literal TOGETHER in 7c-3, so they still agree — they now agree on *"no category field is
+  // mapped"* — and an unmapped contractor falls to the DEFAULT SCHEDULE rather than guessing at a
+  // label. **The old behaviour was not a defect; a ruling replaced it.** And the guess was never
+  // safe: on the live tenant THREE configurations are named "Job Type" across three entities with
+  // different option lists, so the literal identified whichever one a label scan reached first.
+  it('with NO mapping configured the literal is NOT consulted — the default schedule decides',
+    async () => {
+      await scheduleKeyedOn('Roof Replacement');
+      const result = await evaluateReferral('accent-roofing',
+        invoiceWithField('Job Type', 'Roof Replacement'), 'Test Referrer');
+      assert.equal(
+        result.qualified, false,
+        `the value on the record must not be read at all without a mapping: ${JSON.stringify(result)}`
+      );
+      assert.equal(
+        result.reason, 'no_job_type_found',
+        'and with no default configured, nothing is paid — the other half of the ruling'
+      );
+    });
 
   // ⚠ GUARD-PROOF (i)'s SUBJECT, AND THE FIXTURE IS THE REAL PRODUCTION SHAPE. Jobber stores two of
   // Accent's nineteen options with a TRAILING SPACE. The schedule key and the record's value can

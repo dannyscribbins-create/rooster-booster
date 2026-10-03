@@ -36,6 +36,14 @@ function sortByCreatedAtDesc(arr) {
 // Find a custom field by label (case-insensitive), return valueDropdown or valueText.
 function getCustomFieldValue(fields, label) {
   if (!Array.isArray(fields)) return null;
+  // ⚠ A NULL LABEL IS NOW REACHABLE AND WOULD HAVE STOPPED ALL TAGGING SILENTLY (7c-3). Retiring
+  // the 'Job Type' fallback below makes `workCategoryLabel` null for an unmapped contractor, and
+  // `null.toLowerCase()` throws a TypeError that `deriveAndSaveTags`' own try/catch SWALLOWS — so
+  // EVERY tag for EVERY client would quietly disappear behind one error_log row. That is the exact
+  // failure 7c-1 records for the same function, arriving from the opposite direction.
+  // ⚠ RETURNING null IS THE RIGHT ANSWER, NOT A DEFENSIVE SHRUG: no field is mapped, so there is no
+  // value to read, so no tag is written. The tag's ABSENCE is the truthful outcome.
+  if (!label) return null;
   const field = fields.find(f => f.label && f.label.toLowerCase() === label.toLowerCase());
   if (!field) return null;
   return field.valueDropdown || field.valueText || null;
@@ -73,7 +81,16 @@ async function deriveAndSaveTags(pool, contractorId, jobberClientId, clientData,
       const entry = parseMappingEntry(contractorFieldMappings[key]);
       return (entry && entry.label) || fallback;
     };
-    const workCategoryLabel  = mappedLabel('work_category',     'Job Type');
+    // ⚠ RETIRED BY 7c-3, IN THE SAME COMMIT AS `evaluateReferral`'s — BOTH OR NEITHER.
+    // The old comment in the engine kept this literal because the two readers MUST agree for an
+    // unmapped contractor, or their tags and their payouts diverge. That argument was about
+    // AGREEMENT, not about the literal: both now resolve null, both now mean "no category field is
+    // mapped", and the engine falls to the contractor's DEFAULT SCHEDULE. ⚠ Retiring one alone is
+    // precisely the regression that comment warned about, so a fence asserts neither site has it.
+    // ⚠ THE OTHER FOUR KEEP THEIR FALLBACKS. Danny's ruling is about the payout CATEGORY; a
+    // material-type or insurance tag resolving by a conventional label pays nobody, and changing
+    // them would be scope this ruling does not cover.
+    const workCategoryLabel  = mappedLabel('work_category',     null);
     const materialTypeLabel  = mappedLabel('material_type',     'Material Type');
     const assignedRepLabel   = mappedLabel('assigned_rep',      'Sales Representative');
     const jobSourceLabel     = mappedLabel('job_source',        'Source');

@@ -2727,11 +2727,21 @@ router.get('/api/admin/schedules', requirePermission('finance_settings'), async 
         : [],
     }));
 
+    // ⚠ 7c-3 — THE CURRENT DEFAULT, FROM THE SAME SETTINGS TABLE. `null` is "No bonus", which is the
+    // state every contractor starts in by Danny's ruling — so the screen can render it as a real,
+    // chosen option rather than as an empty control. "No default is set" and "the default is No
+    // bonus" are the same thing and must read that way.
+    const defaultRow = await pool.query(
+      'SELECT default_schedule_id FROM contractor_settings WHERE contractor_id = $1',
+      [contractorId]
+    );
+
     res.json({
       schedules: schedulesWithGuard,
       all_labels,
       unassigned_labels,
       options_known,
+      default_schedule_id: defaultRow.rows[0]?.default_schedule_id ?? null,
       // ⚠ A DESCRIPTION, NOT AN IDENTITY (7c-1). "Job Type (Job)" so a warning can name the field
       // unambiguously when the contractor has three of that name. It comes from the RESOLVED row, so
       // it reports the field actually in use rather than the string someone typed into the mapping.
@@ -2922,6 +2932,61 @@ router.patch('/api/admin/schedules/:id/toggle', requirePermission('finance_setti
   } catch (err) {
     await logError({ req, error: err });
     res.status(500).json({ error: 'Failed to toggle schedule' });
+  }
+});
+
+// ── 7c-3: THE DEFAULT SCHEDULE ───────────────────────────────────────────────
+//
+// Danny's ruling: the default applies when a job's category value is blank, absent at every stage,
+// or not mapped to any schedule. It starts as "No bonus" and only the contractor may change it.
+//
+// ⚠ `null` IS A LEGITIMATE VALUE, NOT A MISSING ONE — it means "No bonus". So the body must
+// distinguish "set it to No bonus" from "you forgot to send a value", which is why the key must be
+// PRESENT and explicitly null rather than merely absent. Collapsing the two would let a malformed
+// request silently switch a paying contractor to No bonus.
+//
+// ⚠ AND THE OWNERSHIP CHECK IS THE MONEY GUARD. The FK alone permits pointing at ANOTHER
+// contractor's schedule — it constrains existence, not tenancy — and that row would then decide
+// payouts for every unmapped job on this tenant. The schedule is verified to belong to the caller
+// before it is stored, and a fence pins that predicate.
+router.patch('/api/admin/schedules/default', requirePermission('finance_settings.manage'), async (req, res) => {
+  const adminSession = await verifyAdminSession(req, res);
+  if (!adminSession) return;
+  const { contractorId } = adminSession;
+
+  if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'default_schedule_id')) {
+    return res.status(400).json({ error: 'default_schedule_id is required (null for No bonus)' });
+  }
+  const raw = req.body.default_schedule_id;
+  if (raw !== null && !Number.isInteger(raw)) {
+    return res.status(400).json({ error: 'default_schedule_id must be an integer or null' });
+  }
+
+  try {
+    if (raw !== null) {
+      // ⚠ OWNED BY THIS CONTRACTOR, AND ACTIVE. A retired schedule as the default would pay on the
+      // fallback path while the settings screen showed it as inactive — a state nothing on the
+      // surface would explain.
+      const owned = await pool.query(
+        'SELECT id FROM referral_schedules WHERE id = $1 AND contractor_id = $2 AND is_active = true',
+        [raw, contractorId]
+      );
+      if (owned.rowCount === 0) {
+        return res.status(404).json({ error: 'Schedule not found' });
+      }
+    }
+
+    const result = await pool.query(
+      `UPDATE contractor_settings SET default_schedule_id = $1, updated_at = NOW()
+        WHERE contractor_id = $2
+        RETURNING default_schedule_id`,
+      [raw, contractorId]
+    );
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Contractor settings not found' });
+    res.json({ default_schedule_id: result.rows[0].default_schedule_id });
+  } catch (err) {
+    await logError({ req, error: err });
+    res.status(500).json({ error: 'Failed to set the default schedule' });
   }
 });
 

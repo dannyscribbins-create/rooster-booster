@@ -148,7 +148,13 @@ describe('admin route enforcement coverage', () => {
   // only from the Flagged queue. Gated on `rep_assignment`, like its flagged sibling,
   // which is unchanged. The walk reported exactly 140 before this line changed; no route
   // was removed.
-  const EXPECTED_ADMIN_ROUTE_COUNT = 140; // measured 2026-09-22, the correction path
+  // ⚠ 140 → 141 ON 2026-10-03, DELIBERATELY. One route was ADDED:
+  // PATCH /api/admin/schedules/default — 7c-3's control for the DEFAULT schedule, so a
+  // contractor can choose which of their schedules applies when a job's category value is
+  // blank, absent, or not mapped to any schedule. Gated on `finance_settings.manage`, the
+  // same permission as the sibling schedule writes, which are unchanged. The walk reported
+  // exactly 141 before this line changed; no route was removed.
+  const EXPECTED_ADMIN_ROUTE_COUNT = 141; // measured 2026-10-03, 7c-3's default schedule
   it('router walk: /api/admin/* route count matches the recorded number exactly', () => {
     assert.equal(
       adminRoutes.length,

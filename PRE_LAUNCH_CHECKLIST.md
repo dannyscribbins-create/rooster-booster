@@ -15285,9 +15285,121 @@ source and, where stated, against a read-only production `SELECT` whose text is 
       repaired by adding the delta, per the rule. `tablecheck` BROKEN 0; `citecheck --role-only` holds at
       **844**, unchanged from the delivery-claim commit, so this commit added no line citations.
 
-- [x] **N4 COMMIT 9 — THE BACKWARDS-MOVE NOTE, AND `pipeline_cache.stage_high_water`. BUILT
-      2026-10-03, NOT PUSHED. ⚠ IT CONTAINS DDL, SO RULING 4 BINDS: Danny must click Run Backup Now
-      and confirm BEFORE any push.**
+- [x] **7c-3 — THE DEFAULT SCHEDULE. BUILT 2026-10-03, NOT PUSHED. ⚠ IT CONTAINS DDL
+      (`contractor_settings.default_schedule_id` + an FK), SO RULING 4 BINDS: Danny must back up and
+      confirm BEFORE any push.**
+      **Danny's ruling:** each contractor has a DEFAULT schedule used when a job's category value is
+      blank, absent at every stage, or not mapped to any schedule. **It starts as "No bonus" until
+      the contractor chooses one of their schedules in the Referral Program settings. Unmapped and
+      blank values never silently pay on a schedule nobody chose.**
+      ⚠ **NULL IS "NO BONUS", SO THERE IS NO BACKFILL AND NO COLUMN DEFAULT.** Every contractor
+      starts in the ruled state by construction — the same reasoning as commit 9's mark. A
+      `DEFAULT` of any schedule id would be the platform choosing for them, which the ruling forbids.
+      ⚠ **IT LIVES ON `contractor_settings`, NOT AS `is_default` ON `referral_schedules`, AND THE
+      OTHER SHAPE CANNOT EXPRESS THE CONSTRAINT.** A boolean per schedule lets TWO rows be true, so
+      "the default" would be whichever one a query returned first — the non-unique-key defect this
+      repo has already paid for in a LEFT JOIN and in a label lookup. One nullable column per
+      contractor has exactly one value or none.
+      ⚠ **`ON DELETE SET NULL` IS LOAD-BEARING**: deleting the default schedule reverts to "No
+      bonus" rather than leaving a dangling id that reads as configured and matches nothing.
+      ⚠ **AND THE FK IS NOT TENANT-SAFE — IT CONSTRAINS EXISTENCE, NOT OWNERSHIP.** It permits
+      pointing at another contractor's schedule, which would then decide every unmapped job on this
+      tenant. Two independent guards: the PATCH handler proves ownership before storing, and the
+      reader's JOIN carries its own `s.contractor_id = cs.contractor_id`. Both are guard-proofed
+      (widths 1 and 1).
+      ⚠ **THE HARD-CODED 'Job Type' FALLBACK IS RETIRED IN BOTH READERS TOGETHER, AND THE OLD
+      COMMENT'S REASON FOR KEEPING IT IS WHY.** 7c-0 kept it arguing that `evaluateReferral` and
+      `deriveJobberTags` must resolve the SAME field for an unmapped contractor or their tags and
+      their payouts diverge. **That was an argument about AGREEMENT, not about the literal** — both
+      now resolve null, both mean "no category field is mapped", and the default decides. Retiring
+      one alone is the regression that comment warned about, so a fence asserts neither carries it
+      and **each half alone reds that fence (widths 2 and 2)**.
+      ⚠ **AND THE GUESS WAS NEVER SAFE: on the live tenant THREE configurations are named "Job Type"
+      across three entities with different option lists**, so the literal identified whichever one a
+      label scan reached first. 7c-1 closed that for a MAPPED contractor and left an unmapped one
+      still guessing.
+      ⚠ **RETIRING IT CREATED A STATE THAT HAD NEVER OCCURRED, AND ONE CONSUMER WOULD HAVE BROKEN
+      SILENTLY.** `getCustomFieldValue` called `label.toLowerCase()`; a null label throws a
+      TypeError that `deriveAndSaveTags` CATCHES — so **every tag for every client would vanish
+      behind one `error_log` row.** Guarded, with the guard pinned by a source fence AND a
+      behavioural case (width 2 together).
+      ⚠ **AND A REAL OBSERVABILITY FINDING FELL OUT OF BUILDING THAT CASE, FILED RATHER THAN
+      WORKED AROUND SILENTLY: the tag deriver's swallow calls `logError` with NO `contractorId`, so
+      its row lands with `contractor_id` NULL — invisible to every tenant-scoped query.** The one
+      trace of a defect that stops all tagging cannot be found by asking about the affected
+      contractor. Not fixed here (it is not 7c-3's subject); the test matches on the source alone.
+      ⚠ **TWELVE GUARD-PROOFS, widths 2 · 1 · 2 · 2 · 2 · 1 · 1 · 1 · 1 · 1 · 1 · 1.** All four
+      Danny named fire: an unmapped value paying on a schedule instead of the default → **2**; the
+      "No bonus" default crediting anyway → **1**; the literal restored in either site → **2** each;
+      and the settings control has an 11-case mount test.
+      ⚠ **THREE INJECTIONS WERE REFUSED AS DELETIONS AND ONE MEASURED 0 — BOTH CLASSES WORTH
+      KEEPING.** Removing a line leaves the replacement already present, so the REVERSE anchor is
+      not unique; each now NEUTRALISES its clause instead. And the "default overrides a match"
+      injection changed nothing because **the default is never even LOADED on a matched path** — a
+      structural property stronger than the test asserts. Re-written as a two-part injection
+      (load eagerly AND prefer) it reds 1.
+      ⚠ **AND ONE BEHAVIOURAL CASE TOOK FOUR ATTEMPTS, EACH FAILURE A FINDING ABOUT MY OWN FIXTURE:**
+      the job had no custom fields so the predicate never ran; then tags written BEFORE the category
+      read survived the throw so `tags.length > 0` was the wrong observable; then the log row's NULL
+      contractor made it invisible to a scoped query. **A fixture that cannot reach the
+      discriminating value is not a test of it.**
+      ⚠ **ONE EXISTING CASE WAS INVERTED BY THE RULING, WITH THE OLD ASSERTION QUOTED IN PLACE.**
+      `referralRules.test.js`'s *"with NO mapping configured it still resolves 'Job Type'"* asserted
+      `qualified === true` and its comment said the fallback *"is deliberate and this case is why it
+      stays"*. **The old behaviour was not a defect; a ruling replaced it.** Three further cases in
+      that file relied on the fallback to find the category at all; their SUBJECTS are the payout
+      shape and the dupe path, so each now states its mapping explicitly — a fixture repair, and the
+      helper was hoisted to file scope verbatim to reach them.
+      ⚠ **THE ADMIN ROUTE COUNT MOVED 140 → 141, DELIBERATELY**, for
+      `PATCH /api/admin/schedules/default`, gated on `finance_settings.manage` like its siblings. A
+      case also pins that no bare `PATCH /api/admin/schedules/:id` exists, because one would capture
+      the literal `default` path and silently break the control.
+
+- [x] ✅ **N4 IS COMPLETE — 2026-10-03, recorded by Danny's instruction on the commit-9
+      verification. THIS IS THE ARC'S CLOSURE LINE, and it is here because closing an entry is the
+      half `CLAUDE.md` records every tracking mechanism as missing:** the Admin Brand Retirement
+      entry read *"IN PROGRESS"* for about thirty commits after its arc finished, in the document the
+      deferral rule exists to protect. **Every N4 commit is built, pushed and verified on
+      production.** Detail stays in each commit's own entry below and in `N4_STATUS_DESIGN.md` §11.
+      ⚠ **`N4_STATUS_DESIGN.md` IS UNTRACKED — git has never seen it — so this line is the canonical
+      record and that one is the design document's own note.** Said plainly because this repo has
+      twice recovered a deferral from an untracked file by luck.
+      **The arc, in shipping order:** 1 the one-status fence · 2 the derivable-client predicate ·
+      3 capture-then-decide in the sync · 4 the referred-only capture backfill · 5 the
+      financed-payment capture · 6 the conversion-writer extraction · 7a the card showing the
+      credited bonus · 7b the referrer status from saved facts · 7c-0/1/2 the category field by
+      configuration id · 7d-0 the Resend interlock · the capture/decision split · the catch-up
+      schedule · C1 the credit from saved facts · C2 the sync's lock partition · credit visibility ·
+      the identity-row reorder (ruling 3) · the invoice-paid delivery claim · 8 the import as an
+      explicit SEED · 9 the backwards-move note.
+      ⚠ **WHAT N4 DID NOT CLOSE, so "complete" is not overread.** 7c-3 (the DEFAULT schedule) was
+      ruled after the arc and is its own commit. The legacy `work_category` string-form removal, the
+      19 untested admin components, the `setup.js` credential leak beyond Resend, and the accumulated
+      `LIKELY ROTTED` citations all remain open on this checklist under their own entries.
+
+- [x] **N4 COMMIT 9 — THE BACKWARDS-MOVE NOTE, AND `pipeline_cache.stage_high_water`. BUILT AND
+      PUSHED 2026-10-03 (`902c806`). ⚠ IT CONTAINED DDL AND RULING 4 WAS OBSERVED: Danny took the
+      Railway Postgres backup AND clicked Run Backup Now, and confirmed, BEFORE the push.**
+      ⚠ **VERIFIED ON PRODUCTION after the deploy** (`b0b48153-96df-4a7e-9367-5efec5cc2aba`,
+      SUCCESS, `/health` 200). Boot log: **`[stage_high_water] initialised 17 row(s) to their
+      current stage`**, no migration failure, and the 33-line window is the whole stream for that
+      deployment. Read-only: the column is `VARCHAR(50)`, **nullable, no default**, as designed;
+      `pipeline_cache` holds **20 rows, 17 marked, 3 NULL** (the `app_user` placeholders, correctly
+      unmarked); **every mark equals its row's own status**; no mark is an unrankable value;
+      `referral_conversions` unchanged at 2 rows / $500.00; **no `error_log` rows since the deploy**
+      (newest overall is 2026-10-01 18:49Z, which is what dates that window).
+      ⚠ **CARDS THAT WOULD SHOW THE NOTE RIGHT NOW: ZERO** — the day-one property, decided by
+      IMPORTING the production predicate rather than retyping the comparison, because a hand-written
+      check would have answered a question about my SQL instead of about the shipped rule.
+      ⚠ **AND ONE BRANCH THE LIVE DATA DID NOT EXERCISE, SAID RATHER THAN GLOSSED: there are no
+      `not_sold` rows in `pipeline_cache`, so the migration's `not_sold → lead` normalisation was a
+      NO-OP on production.** It is covered by a test, not by this verification. A reader who took the
+      live run as proof of that branch would be wrong.
+      ⚠ **AND A DISCREPANCY WITH `N4_STATUS_DESIGN.md` §10.5, RESOLVED IN FAVOUR OF THE LATER
+      WORDING.** That section records the note as *"muted body text"*; commit 9's instruction said
+      *"normal text colour"*, and it ships at FULL OPACITY. Muting is a colour change in effect, and
+      `paletteDashboard.test.jsx` pins the muted idiom at exactly fourteen sites so a fifteenth has
+      to be argued for. **The copy is unchanged and exact.**
       Danny's ruling: a referrer whose card moves BACKWARDS sees a subtle note reading exactly
       **"This job is no longer active."** — normal text colour, small, not an alert. A rep always
       sees the plain truth with no note.

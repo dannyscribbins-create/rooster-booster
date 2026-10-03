@@ -433,8 +433,74 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2542 server tests across 428 suites, and 1423 React tests across 87 files** (measured 2026-10-03 by the N4 commit 9 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2542 · suites 428 · pass 2542 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 9 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2567 server tests across 432 suites, and 1434 React tests across 88 files** (measured 2026-10-03 by the 7c-3 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2567 · suites 432 · pass 2567 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE 7c-3 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2542 → 2567 is **+25**, one new file (`defaultSchedule.test.js`); suites 428 → 432 is that
+  file's **four** top-level describes. React 1423 → 1434 is **+11**, one new file
+  (`defaultScheduleControl.test.jsx`), and 87 → 88 is that file. **All four predicted before the run
+  and matched.** ⚠ **NO PHANTOM, ASKED BEFORE THE RUN:** the new React file lives in
+  `src/components/admin` — which **IS** one of `adminBranding.test.jsx`'s four walked roots — but
+  that walker skips `.test.` files, and `ReferralProgramSettings.jsx` is an EXISTING file, so the
+  sweep emits no extra case. Counted with an anchored `^\s*it\(` (25 and 11), every `it(` at exactly
+  two spaces and **zero** at four or more.
+  ⚠ **FOUR EXISTING SUITES WERE CHANGED AND CONTRIBUTE 0 BETWEEN THEM** — `referralRules.test.js`
+  (one case INVERTED, three fixtures repaired, one helper hoisted),
+  `adminRouteCoverage.test.js` (one constant), plus the two the fence pass touched. A count that
+  moves by exactly one file's worth while six files changed is the expected shape.
+  ⚠ **THE COMMIT'S SUBJECT: DANNY'S DEFAULT-SCHEDULE RULING.** A contractor's DEFAULT schedule
+  applies when a job's category value is blank, absent at every stage, or not mapped to any
+  schedule. **It starts as "No bonus" — NULL — so there is no backfill and no column default, and
+  every contractor begins in the ruled state by construction.** Unmapped and blank values never
+  silently pay on a schedule nobody chose.
+  ⚠ **THE FK CONSTRAINS EXISTENCE, NOT OWNERSHIP, AND THAT IS THE MONEY GUARD.** It permits pointing
+  at another contractor's schedule, which would then decide every unmapped job on this tenant. Two
+  independent guards: the PATCH handler proves ownership before storing, and the reader's JOIN
+  carries its own `s.contractor_id = cs.contractor_id`. Each is guard-proofed separately.
+  ⚠ **THE HARD-CODED 'Job Type' FALLBACK IS RETIRED IN BOTH READERS TOGETHER, AND THE OLD COMMENT'S
+  REASON FOR KEEPING IT IS EXACTLY WHY.** 7c-0 kept it arguing the two readers must resolve the SAME
+  field for an unmapped contractor or their tags and their payouts diverge. **That was an argument
+  about AGREEMENT, not about the literal** — both now resolve null, both mean "no category field is
+  mapped", and the default decides. **Each half alone reds the fence (2 and 2)**, which is what
+  "both or neither" means operationally.
+  ⚠ **RETIRING IT CREATED A STATE THAT HAD NEVER OCCURRED, AND ONE CONSUMER WOULD HAVE BROKEN
+  SILENTLY — the enumerate-every-consumer rule paying for itself.** `getCustomFieldValue` called
+  `label.toLowerCase()`; a null label throws a TypeError that `deriveAndSaveTags` CATCHES, so every
+  tag for every client would vanish behind one `error_log` row.
+  ⚠ **AND A REAL OBSERVABILITY FINDING FELL OUT OF PROVING THAT: the swallow calls `logError` with
+  NO `contractorId`, so its row lands with `contractor_id` NULL and is invisible to every
+  tenant-scoped query.** The one trace of a defect that stops all tagging cannot be found by asking
+  about the affected contractor. Filed, not fixed — it is not this commit's subject.
+  ⚠ **ONE BEHAVIOURAL CASE TOOK FOUR ATTEMPTS AND EVERY FAILURE WAS A FINDING ABOUT MY OWN FIXTURE.**
+  The job had no custom fields, so `.find()` never ran the predicate and the null was never
+  dereferenced; then tags written BEFORE the category read survived the throw, so `tags.length > 0`
+  could not see it; then the log row's NULL contractor hid it from a scoped query. **A fixture that
+  cannot reach the discriminating value is not a test of it**, and reading the code rather than
+  re-running the guess is what ended it.
+  ⚠ **TWELVE GUARD-PROOFS, widths 2 · 1 · 2 · 2 · 2 · 1 · 1 · 1 · 1 · 1 · 1 · 1.** All four Danny
+  named fire. ⚠ **THREE WERE REFUSED AS DELETIONS** — removing a line leaves the replacement already
+  present, so the REVERSE anchor is not unique; each now NEUTRALISES its clause instead.
+  ⚠ **AND ONE MEASURED 0 FOR A STRUCTURAL REASON STRONGER THAN THE TEST ASSERTS: the default cannot
+  override a match because it is never even LOADED on a matched path** — `getDefaultSchedule` is
+  called only inside the two refusal branches. Re-written as a two-part injection (load eagerly AND
+  prefer) it reds 1, and is reported as two-part because breaking either half alone changes nothing.
+  ⚠ **ONE EXISTING CASE WAS INVERTED BY THE RULING, WITH THE OLD ASSERTION QUOTED IN PLACE.**
+  *"with NO mapping configured it still resolves 'Job Type'"* asserted `qualified === true`, and its
+  comment said the fallback *"is deliberate and this case is why it stays"*. **Not a defect — a
+  ruling replaced the mechanism.** Three sibling cases relied on the fallback to find the category
+  at all; their subjects are the payout shape and the dupe path, so each states its mapping now.
+  ⚠ **THE GATE WENT RED FIRST AT `fail 1`, AND IT WAS THE 6c RESET-COVERAGE FENCE WORKING ON A REAL
+  ARRIVAL.** The new suite UPDATEd two columns of `contractor_settings` in `beforeEach` — a reset in
+  spirit, invisible to a scanner reading DELETEs, and one that would have let any OTHER column leak
+  between cases. Cleared and re-seeded per test in FK order; **`KNOWN_GAPS` was NOT widened**, as
+  the fence's own message instructs. ⚠ **Unlike the `cron_job_locks` case this file records, the
+  prescribed fix DID fit here** — these rows are contractor-scoped and the suite owns its tenants.
+  ⚠ **THE ADMIN ROUTE COUNT MOVED 140 → 141, DELIBERATELY**, for the one new route. A case also pins
+  that no bare `PATCH /api/admin/schedules/:id` exists, since one would capture the literal
+  `default` path and silently break the control.
+  ⚠ **AND THE WRAPPER REPORTED exit 0 WHILE THE LOG'S OWN `EXIT=` LINE READ 1** — another instance.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 9 COMMIT ITSELF, BECAUSE IT
+  SHIPS TESTS.* It read **2542 / 428 / 1423 / 87**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE N4 COMMIT 9 COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2508 → 2542 is **+34 = 33 + 1**: thirty-three in one new file (`stageHighWater.test.js`) and
   **one APPENDED** to `oneStatusDerivation.test.js` (18 → 19). Suites 423 → 428 is the new file's
   **five** top-level describes only — the appended case landed in a describe that already existed.

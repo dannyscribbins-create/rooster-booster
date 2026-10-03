@@ -178,6 +178,11 @@ export default function ReferralProgramSettings() {
   // ⚠ THE CATEGORY FIELD'S LABEL, ONLY SO A WARNING CAN NAME IT (7c-0). It is display text,
   // never an identity: the mapping is being moved onto entity + CRM id in 7c-1.
   const [categoryFieldLabel, setCategoryFieldLabel] = useState(null);
+  // 7c-3 — the DEFAULT schedule. `null` is "No bonus", which is the state every contractor starts
+  // in by Danny's ruling, so it is a real chosen option rather than an empty control.
+  const [defaultScheduleId, setDefaultScheduleId] = useState(null);
+  const [savingDefault, setSavingDefault]         = useState(false);
+  const [defaultError, setDefaultError]           = useState(null);
   const [loading, setLoading]                 = useState(true);
   const [drawerOpen, setDrawerOpen]           = useState(false);
   const [editingSchedule, setEditingSchedule] = useState(null); // null = create mode
@@ -190,6 +195,7 @@ export default function ReferralProgramSettings() {
       if (!res.ok) throw new Error('Failed to load');
       const data = await res.json();
       setSchedules(data.schedules || []);
+      setDefaultScheduleId(data.default_schedule_id ?? null);
       setAllLabels(data.all_labels || []);
       setUnassignedLabels(data.unassigned_labels || []);
       setCategoryFieldLabel(data.category_field_label || null);
@@ -223,6 +229,36 @@ export default function ReferralProgramSettings() {
       }
     } catch {
       setSchedules(prev => prev.map(s => s.id === id ? { ...s, is_active: !newActive } : s));
+    }
+  }
+
+  // ── 7c-3 — CHOOSE THE DEFAULT SCHEDULE ──────────────────────────────────────
+  // ⚠ NOT OPTIMISTIC, UNLIKE THE TOGGLE ABOVE, AND THAT IS DELIBERATE. This control decides what
+  // an unmapped or blank category PAYS. Showing a change that did not persist would tell a
+  // contractor their fallback is one schedule while the engine uses another — so the value only
+  // moves once the server has confirmed it, and a failure says so instead of reverting quietly.
+  async function handleDefaultChange(nextValue) {
+    setSavingDefault(true);
+    setDefaultError(null);
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/admin/schedules/default`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getAdminToken()}`,
+        },
+        body: JSON.stringify({ default_schedule_id: nextValue }),
+      });
+      if (!res.ok) {
+        setDefaultError('Could not save the default. Nothing was changed.');
+        return;
+      }
+      const data = await res.json();
+      setDefaultScheduleId(data.default_schedule_id ?? null);
+    } catch {
+      setDefaultError('Could not save the default. Nothing was changed.');
+    } finally {
+      setSavingDefault(false);
     }
   }
 
@@ -344,6 +380,71 @@ export default function ReferralProgramSettings() {
       {loading && (
         <div style={{ padding: '60px 0', textAlign: 'center', color: AD.textSecondary, fontFamily: AD.fontSans, fontSize: 14 }}>
           Loading schedules…
+        </div>
+      )}
+
+      {/* ── 7c-3 — THE DEFAULT SCHEDULE ──────────────────────────────────────
+          Danny's ruling: each contractor has a DEFAULT schedule used when a job's category value
+          is blank, absent at every stage, or not mapped to any schedule. It starts as "No bonus"
+          until the contractor picks one. Unmapped and blank values never silently pay on a
+          schedule nobody chose.
+          ⚠ RENDERED EVEN WITH NO SCHEDULES YET, because "No bonus" is a real answer and the
+          contractor should be able to see what happens today before they build anything. The
+          select simply has one option until they add a schedule.
+          ⚠ THE COPY NAMES ALL THREE TRIGGERS EXPLICITLY. "When a job has no category" would cover
+          only one of them, and the unmapped case is the one that actually surprises people — a new
+          option added in Jobber and never assigned. */}
+      {!loading && (
+        <div
+          data-default-schedule-card
+          style={{
+            marginBottom: 24, padding: '16px 18px', borderRadius: AD.radiusLg,
+            background: AD.bgCard, border: `1px solid ${AD.border}`,
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 600, color: AD.textPrimary, fontFamily: AD.fontSans }}>
+            Default schedule
+          </div>
+          <p style={{ margin: '6px 0 12px', fontSize: 13, lineHeight: 1.5, color: AD.textSecondary, fontFamily: AD.fontSans }}>
+            Used when a job&rsquo;s category is blank, missing, or set to an option you
+            haven&rsquo;t assigned to any schedule. Leave it on <strong>No bonus</strong> and those
+            jobs earn nothing.
+          </p>
+          <label
+            htmlFor="default-schedule-select"
+            style={{ display: 'block', fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: AD.textTertiary, fontFamily: AD.fontSans, marginBottom: 6 }}
+          >
+            Applies when nothing matches
+          </label>
+          <select
+            id="default-schedule-select"
+            value={defaultScheduleId === null ? '' : String(defaultScheduleId)}
+            disabled={savingDefault}
+            onChange={e => handleDefaultChange(e.target.value === '' ? null : parseInt(e.target.value, 10))}
+            style={{
+              padding: '8px 10px', fontSize: 14, borderRadius: AD.radiusMd,
+              border: `1px solid ${AD.border}`, background: AD.bgCard,
+              color: AD.textPrimary, fontFamily: AD.fontSans, minWidth: 260,
+            }}
+          >
+            <option value="">No bonus</option>
+            {activeSchedules.map(s => (
+              <option key={s.id} value={String(s.id)}>{s.name}</option>
+            ))}
+          </select>
+          {savingDefault && (
+            <span style={{ marginLeft: 10, fontSize: 12, color: AD.textTertiary, fontFamily: AD.fontSans }}>
+              Saving…
+            </span>
+          )}
+          {defaultError && (
+            <p style={{ margin: '8px 0 0', fontSize: 12, color: AD.red2Text, fontFamily: AD.fontSans }}>
+              {defaultError}
+            </p>
+          )}
+          {/* ⚠ ONLY ACTIVE SCHEDULES ARE OFFERED, matching the server's own check. A retired
+              schedule as the default would pay on the fallback path while this screen showed it as
+              inactive — a state nothing on the surface would explain. */}
         </div>
       )}
 

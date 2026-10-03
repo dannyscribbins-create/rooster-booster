@@ -3192,6 +3192,45 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     console.log(`[stage_high_water] initialised ${highWaterInit.rowCount} row(s) to their current stage`);
   }
 
+  // ── 7c-3 — THE DEFAULT SCHEDULE ──────────────────────────────────────────────────────────────
+  //
+  // Danny's ruling: each contractor has a DEFAULT schedule, used when a job's category value is
+  // blank, absent at every stage, or not mapped to any schedule. **It starts as "No bonus" until
+  // the contractor picks one of their own schedules.** Unmapped and blank values must never
+  // silently pay on a schedule nobody chose.
+  //
+  // ⚠ NULL IS "NO BONUS", AND THAT IS WHY THERE IS NO BACKFILL AND NO DEFAULT VALUE. Every
+  // contractor starts in the state the ruling specifies, by construction — the same reasoning as
+  // commit 9's mark. A `DEFAULT` of any schedule id would be the platform choosing for them, which
+  // is the exact thing the ruling forbids.
+  //
+  // ⚠ IT LIVES ON `contractor_settings` RATHER THAN AS `is_default` ON `referral_schedules`, AND
+  // THE REASON IS THAT THE OTHER SHAPE CANNOT EXPRESS THE CONSTRAINT. A boolean per schedule lets
+  // TWO rows be true at once, so "the default" would be whichever one a query happened to return
+  // first — the same non-unique-key defect this repo has already paid for in a LEFT JOIN and in a
+  // label lookup. One nullable column per contractor has exactly one value or none.
+  //
+  // ⚠ `ON DELETE SET NULL` IS LOAD-BEARING: deleting the schedule that is the default reverts the
+  // contractor to "No bonus" rather than leaving a dangling id that reads as a configured default
+  // and silently matches nothing. ⚠ **The FK does NOT make it tenant-safe** — it permits pointing at
+  // another contractor's schedule — so the PATCH handler verifies ownership and a fence pins that.
+  await pool.query(`ALTER TABLE contractor_settings
+    ADD COLUMN IF NOT EXISTS default_schedule_id INTEGER`);
+  // The `pg_constraint` pre-check pattern this file's own rules prescribe for a new constraint, so a
+  // re-run is a no-op rather than a 42710/42P07 on the backing index.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'contractor_settings_default_schedule_fk'
+      ) THEN
+        ALTER TABLE contractor_settings
+          ADD CONSTRAINT contractor_settings_default_schedule_fk
+          FOREIGN KEY (default_schedule_id) REFERENCES referral_schedules(id) ON DELETE SET NULL;
+      END IF;
+    END $$;
+  `);
+
   await backfillAssignedAt(pool);
   await applyAssignedAtNotNull(pool);
 

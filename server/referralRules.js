@@ -29,6 +29,8 @@ const { logError } = require('./middleware/errorLogger');
 // ⚠ A mapping value may be the legacy label string or the 7c-1 { field_id, entity, label }
 // object; one parser for both.
 const { parseMappingEntry } = require('./utils/fieldMapping');
+// ⚠ 7c-3 — the contractor's DEFAULT schedule, read in one place. NULL means "No bonus".
+const { getDefaultSchedule } = require('./utils/defaultSchedule');
 
 // ── MAIN EXPORT ───────────────────────────────────────────────────────────────
 // contractorId: string — e.g. 'accent-roofing'
@@ -242,12 +244,23 @@ async function evaluateReferral(contractorId, invoiceData, referredBy, opts = {}
   // stopped qualifying for any payout schedule, because this function alone could no longer find
   // the field. Nothing surfaced it — `no_job_type_found` writes no row and raises no alert.
   //
-  // ⚠ THE `|| 'Job Type'` FALLBACK IS KEPT DELIBERATELY, AND IT IS NOT THE DEFECT BEING FIXED.
-  // `deriveJobberTags.js` has the identical fallback, and the two readers MUST agree: a contractor
-  // with no mapping configured must resolve the same field on both paths or their tags and their
-  // payouts would disagree. Removing it here would make every unmapped contractor stop qualifying
-  // — a regression dressed as a cleanup. The defect was IGNORING the mapping, not having a default.
-  let workCategoryLabel = 'Job Type';
+  // ⚠ THE `|| 'Job Type'` FALLBACK IS RETIRED BY 7c-3, AND THE REASON THE OLD COMMENT GAVE FOR
+  // KEEPING IT IS WHY IT HAD TO GO IN BOTH SITES AT ONCE. It read: *"`deriveJobberTags.js` has the
+  // identical fallback, and the two readers MUST agree: a contractor with no mapping configured must
+  // resolve the same field on both paths or their tags and their payouts would disagree. Removing it
+  // here would make every unmapped contractor stop qualifying — a regression dressed as a cleanup."*
+  // **That was correct, and it is an argument about AGREEMENT, not about the literal.** Both sites
+  // retire it together, so the two readers still agree — they now agree on "no category field is
+  // mapped", and an unmapped contractor falls to the DEFAULT SCHEDULE instead of guessing at a label
+  // Jobber may not even have. ⚠ A fence asserts NEITHER site carries the literal, because retiring
+  // one alone is the regression that comment warned about.
+  //
+  // ⚠ AND THE REASON GUESSING WAS WRONG IS MEASURED, NOT ASSUMED. On the live tenant THREE
+  // configurations are named "Job Type" across three entities with different option lists, so the
+  // literal never identified a field unambiguously; it identified whichever one a label scan reached
+  // first. 7c-1 removed that ambiguity for a MAPPED contractor and left an unmapped one still
+  // guessing. Danny's ruling closes it: no mapping means the default schedule applies.
+  let workCategoryLabel = null;
   try {
     const mappingResult = await pool.query(
       'SELECT contractor_field_mappings FROM contractor_settings WHERE contractor_id = $1',
@@ -258,15 +271,16 @@ async function evaluateReferral(contractorId, invoiceData, referredBy, opts = {}
     // returns `no_job_type_found` for EVERY referral. The migration that introduced the new shape
     // would have broken the money path this function's 7c-0 change had just repaired.
     workCategoryLabel = parseMappingEntry(mappingResult.rows[0]?.contractor_field_mappings?.work_category)?.label
-      || 'Job Type';
+      || null;
   } catch (mappingErr) {
-    // ⚠ FALL BACK, NEVER ABORT. A settings read failing must not turn into an unpaid referral; the
-    // default is the same one deriveJobberTags uses, so the behaviour degrades to the pre-7c-0 path
-    // rather than to nothing. Logged so the degradation is visible instead of assumed.
+    // ⚠ DEGRADE TO THE DEFAULT SCHEDULE, NEVER ABORT (7c-3). A settings read failing must not turn
+    // into an unpaid referral, and it must not turn into a GUESS either: the label stays null, the
+    // category scan finds nothing, and the contractor's own default decides. Logged so the
+    // degradation is visible rather than assumed.
     await logError({
       req: null,
       contractorId,
-      error: new Error(`[evaluateReferral] could not read work_category mapping, falling back to 'Job Type': ${mappingErr.message}`),
+      error: new Error(`[evaluateReferral] could not read work_category mapping; the default schedule applies: ${mappingErr.message}`),
       source: 'evaluateReferral — field mapping',
       alert: false,
     });
@@ -276,7 +290,12 @@ async function evaluateReferral(contractorId, invoiceData, referredBy, opts = {}
   // Merging would let the label scan contribute a value the configuration-linked resolver deliberately
   // rejected — which is the ambiguity 7c-1 exists to remove, reintroduced through the back door.
   const jobTypeValues = suppliedCategoryValues !== null ? [...suppliedCategoryValues] : [];
-  for (const job of (suppliedCategoryValues !== null ? [] : allJobs)) {
+  // ⚠ AND THE SCAN IS SKIPPED ENTIRELY WHEN NO FIELD IS MAPPED (7c-3), rather than left to match
+  // nothing. With `workCategoryLabel` null the comparison below could never succeed, so the loop is
+  // a no-op either way — but saying so explicitly is what stops a later reader "repairing" the null
+  // by reintroducing a literal to give the scan something to look for.
+  const scanJobs = (suppliedCategoryValues !== null || workCategoryLabel === null) ? [] : allJobs;
+  for (const job of scanJobs) {
     const fields = job.customFields || [];
     // ⚠ CASE-INSENSITIVE ON THE LABEL, MATCHING deriveJobberTags' getCustomFieldValue. The two read
     // the same field off the same record and disagreed: that one folds case, this one used `===`.
@@ -292,8 +311,19 @@ async function evaluateReferral(contractorId, invoiceData, referredBy, opts = {}
     }
   }
 
+  // ── 7c-3 — BLANK OR ABSENT AT EVERY STAGE: THE DEFAULT SCHEDULE DECIDES ──────────────────────
+  //
+  // ⚠ THE REFUSAL REASON IS UNCHANGED WHEN THERE IS NO DEFAULT, AND THAT IS DELIBERATE RATHER THAN
+  // LAZY. `no_job_type_found` is still exactly true of that outcome, every existing caller and the
+  // credit tally already group by it, and inventing a new string would have renamed a reason while
+  // changing a behaviour — two things in one diff, and the rename would be the half nobody noticed.
+  // What changes is that a contractor WITH a default now qualifies on it instead of being refused.
+  let defaultSchedule = null;
   if (jobTypeValues.length === 0) {
-    return { qualified: false, reason: 'no_job_type_found' };
+    defaultSchedule = await getDefaultSchedule(pool, contractorId);
+    if (!defaultSchedule) {
+      return { qualified: false, reason: 'no_job_type_found' };
+    }
   }
 
   // Load all active schedules and their job type mappings for this contractor
@@ -315,6 +345,9 @@ async function evaluateReferral(contractorId, invoiceData, referredBy, opts = {}
     [contractorId]
   );
 
+  // ⚠ WHEN THE DEFAULT ALREADY DECIDED, THE MATCHING PASSES ARE SKIPPED RATHER THAN RUN AGAINST AN
+  // EMPTY VALUE LIST. Running them would be harmless today and is exactly the kind of dead branch a
+  // later edit turns into a second decision point.
   // Priority: Schedule A (Full Roof) wins over Schedule B (Repair) if both match.
   // Implementation: try each job type value against schedules in DB order.
   // Full Roof labels are seeded first so they appear first in results.
@@ -350,8 +383,26 @@ async function evaluateReferral(contractorId, invoiceData, referredBy, opts = {}
     }
   }
 
+  // ── 7c-3 — AN UNMAPPED VALUE: THE DEFAULT SCHEDULE DECIDES ───────────────────────────────────
+  //
+  // ⚠ THIS IS THE CASE DANNY'S RULING NAMES MOST DIRECTLY — a real category value that no schedule
+  // claims. Before 7c-3 it was refused outright, so a contractor who added a new option in Jobber
+  // and forgot to assign it stopped paying on those jobs silently. ⚠ **AND THE RULING'S OTHER HALF
+  // IS WHAT THE null BRANCH ENFORCES: an unmapped value must never pay on a schedule nobody chose.**
+  // With no default, the refusal and its reason are exactly what they were.
   if (!winningSchedule) {
-    return { qualified: false, reason: 'no_matching_schedule_for_job_type' };
+    defaultSchedule = defaultSchedule || await getDefaultSchedule(pool, contractorId);
+    if (!defaultSchedule) {
+      return { qualified: false, reason: 'no_matching_schedule_for_job_type' };
+    }
+  }
+
+  // ⚠ ASSIGNED AFTER BOTH GATES, SO ONE VARIABLE CARRIES THE DECISION INTO STEP 7 ONWARDS. The
+  // default's row is shaped like a matched schedule's — same column list, enforced by a fence — so
+  // the threshold check, the payout model and the invoice window are the SAME code on both paths.
+  // A parallel branch for the default would be a second copy of the payout arithmetic.
+  if (!winningSchedule) {
+    winningSchedule = defaultSchedule;
   }
 
   // ── STEP 7 — Qualifying Threshold Check ──────────────────────────────────────
