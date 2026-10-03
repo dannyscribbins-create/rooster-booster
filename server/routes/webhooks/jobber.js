@@ -1361,6 +1361,69 @@ router.post('/jobber/invoice-paid', async (req, res) => {
         return;
       }
 
+      // ── (b) CLAIM THE DELIVERY (Danny, ruled 2026-10-01, built after C2) ─────────────
+      //
+      // ⚠ THIS DOOR WAS THE ONLY ONE THAT CLAIMED NOTHING, AND THAT IS HOW THE C1 LAUNCH-GATE CAME TO
+      // BE ANSWERED FROM LOGS RATHER THAN FROM THE DATABASE. `claimWebhookDelivery` had exactly two
+      // call sites — the request and stage handlers — so `jobber_webhook_events` returned **0 rows for
+      // `topic ILIKE '%INVOICE%'` across 5,379 events since 2026-09-18**. ⚠ A zero from a table that
+      // structurally cannot hold the row is not an observation, and it was checked only because the
+      // figure looked too clean.
+      //
+      // ⚠ WHAT THIS CHANGES AND WHAT IT DOES NOT, STATED PLAINLY SO NOBODY OVERREADS IT:
+      //   · IT ADDS a durable record that this door ran, and it makes a duplicate delivery skip HERE —
+      //     before the engagement-settings read, before the invoice fetch, before the client fetch,
+      //     before the capture, before the decision and before the credit. Measured cost of the old
+      //     behaviour: a duplicate re-ran TWO Jobber round trips and a full re-capture.
+      //   · IT DOES NOT make this door exactly-once, and it is NOT what stands between us and a double
+      //     payout. The money idempotence is `referral_conversions`' UNIQUE(user_id, jobber_client_id)
+      //     plus `evaluateReferral`'s STEP 8; the email is gated on a row being INSERTED. Both are
+      //     unchanged. CLAUDE.md records that the worst case of a redelivery is a duplicate EMAIL,
+      //     never a duplicate credit — and that was already prevented.
+      //
+      // ⚠ IT FAILS OPEN BY DESIGN. With no usable `occurred_at` there is no key that separates a
+      // duplicate delivery from a legitimate second event, so `claimWebhookDelivery` returns
+      // `{ claimed: true, keyed: false }` and the work proceeds. **Adding this must not be read as
+      // making the door exactly-once**, which is why the inert case is LOGGED rather than assumed away.
+      //
+      // ⚠ PLACED AFTER THE CHEAP STATUS EXIT, NOT BEFORE IT, AND THE REASON IS THE TABLE'S SIZE. Jobber
+      // sends INVOICE_UPDATE for every status change, each with its own `occurred_at`, so claiming
+      // before the exit would write a row for every draft, sent and awaiting-payment transition this
+      // door deliberately ignores. Only an actionable delivery is recorded.
+      //
+      // ⚠ AND THE TOPIC LITERAL IS THIS DOOR'S OWN. Pointing a new route's literal at an existing
+      // topic is a defect this repo has already measured: the quote-approved commit aimed its key at
+      // `'quote-update'` and a real QUOTE_APPROVED was swallowed under a log line calling it a
+      // duplicate. `'invoice-paid'` shares its key with nothing.
+      const deliveryItemId = payload?.data?.webHookEvent?.itemId;
+      if (deliveryItemId) {
+        const claim = await claimWebhookDelivery(
+          contractorId, 'invoice-paid', deliveryItemId, webhookOccurredAt(payload));
+        if (!claim.claimed) {
+          // diagnostic log — intentional
+          // ⚠ THE TWO SIBLING DOORS' IDENTICAL LINES CARRY NO SUCH MARKER, which is a pre-existing gap
+          // against CLAUDE.md's `console.log` rule rather than something this commit should quietly
+          // sweep up. Marked here so the NEW line complies; the other two are noted, not touched.
+          console.log(`[invoice-paid] duplicate delivery for invoice ${deliveryItemId} — already claimed, skipping`);
+          return;
+        }
+        if (!claim.keyed) {
+          // Recorded once per delivery rather than never: an absent occurred_at makes the dedupe above
+          // inert, which is exactly the silently-disabled mechanism this codebase files under "reports
+          // health it cannot observe".
+          await logError({
+            req: null,
+            contractorId,
+            error: new Error(`[invoice-paid] webhook carried no occurredAt/occuredAt — delivery dedupe inert for invoice ${deliveryItemId}`),
+            source: 'POST /webhooks/jobber/invoice-paid — dedupe key',
+            alert: false,
+          });
+        }
+      }
+      // ⚠ A MISSING itemId IS DELIBERATELY NOT CLAIMED AND NOT HANDLED HERE. STEP 3 below already
+      // detects it, writes an `error_log` row and alerts an admin; duplicating that check would mean
+      // two places deciding what a payload without an invoice id means.
+
       // STEP 2 — Feature flag check (experience flow only)
       // Does NOT exit — referral engine runs unconditionally regardless of this flag.
       const flagResult = await pool.query(

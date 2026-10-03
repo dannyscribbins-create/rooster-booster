@@ -259,8 +259,33 @@ describe('webhook contractor_id resolution — rename safety + fail-closed (all 
     // lookup would find nothing and the handler would bail before this call.
     await waitFor(() => fetchInvoiceCalled, { timeout: 3000 });
 
-    const { rows: errRows } = await pool.query('SELECT * FROM error_log');
-    assert.equal(errRows.length, 0, 'no quarantine/error rows — resolution succeeded cleanly');
+    // ⚠ NARROWED BY A COMMIT, NOT RELAXED TO MAKE SOMETHING PASS — and the distinction is the whole
+    // reason this comment exists. The assertion read:
+    //
+    //     const { rows: errRows } = await pool.query('SELECT * FROM error_log');
+    //     assert.equal(errRows.length, 0, 'no quarantine/error rows — resolution succeeded cleanly');
+    //
+    // ⚠ "error_log IS GLOBALLY EMPTY" WAS A PROXY FOR "RESOLUTION SUCCEEDED", AND THE PROXY STOPPED
+    // HOLDING when the invoice-paid door began claiming its delivery. This payload carries no
+    // `occurredAt`, so `claimWebhookDelivery` fails OPEN and records a `dedupe key` notice — which has
+    // nothing to do with contractor resolution, the subject of this case.
+    // ⚠ THE PROPERTY IS UNCHANGED AND IS NOW ASSERTED DIRECTLY rather than through a proxy: no
+    // quarantine row, no resolution failure. ⚠ AND IT IS STRICTLY STRONGER THAN THE OLD FORM, because
+    // the surviving rows are ENUMERATED BY SOURCE rather than merely counted — so an unrelated error
+    // cannot hide behind the narrowing, which is the usual way a narrowed assertion goes quietly blind.
+    const { rows: errRows } = await pool.query('SELECT source, error_message FROM error_log ORDER BY source');
+    const resolutionRows = errRows.filter((r) => !/dedupe key/.test(r.source || ''));
+    assert.deepEqual(
+      resolutionRows.map((r) => r.source), [],
+      'no quarantine/error rows from RESOLUTION — resolution succeeded cleanly. All rows: '
+      + JSON.stringify(errRows.map((r) => r.source))
+    );
+    // And the one row that IS expected is asserted positively, so "narrowed" cannot become "ignored".
+    assert.equal(
+      errRows.length, 1,
+      'exactly one row, and it is the dedupe-inert notice this payload provokes by carrying no occurredAt'
+    );
+    assert.match(errRows[0].error_message, /dedupe inert/);
   });
 
   it('job-update: engagement_settings + tokens lookups resolve under the resolved contractor id', async () => {

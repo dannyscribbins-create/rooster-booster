@@ -15166,6 +15166,55 @@ source and, where stated, against a read-only production `SELECT` whose text is 
       reason this gate had to be answered from logs rather than from the database.
       ✅ **RULED 2026-10-01 (Danny) — THE INVOICE-PAID ROUTE SHOULD CALL `claimWebhookDelivery`. ITS OWN
       SMALL COMMIT, AFTER C2.**
+      ✅ **DONE 2026-10-03 (built, NOT PUSHED).** The claim sits in the invoice-paid route **after the
+      cheap non-paid status exit and before every other await** — so a duplicate now returns before the
+      engagement-settings read, the invoice fetch, the client fetch, the capture, the decision and the
+      credit. **Measured as the Jobber call count, not the conversion count**: a conversion count of 1
+      was ALREADY true before this commit (the UNIQUE constraint and STEP 8 made it so), so asserting
+      that would pass against the pre-fix code and prove nothing. What changed is that the duplicate no
+      longer does the WORK — previously two Jobber round trips and a full re-capture, discarded.
+      ⚠ **PLACED AFTER THE STATUS EXIT ON PURPOSE, AND A CASE PINS IT.** Jobber sends INVOICE_UPDATE for
+      every status change, each with its own `occurred_at`, so claiming earlier would write a delivery
+      row for every draft, sent and awaiting-payment transition this door deliberately ignores.
+      ⚠ **THE TOPIC LITERAL IS `'invoice-paid'`, SHARED WITH NOTHING, AND THAT IS ASSERTED.** Pointing a
+      new route's key at an existing topic is a defect this repo has measured: the quote-approved commit
+      aimed its literal at `'quote-update'` and a real QUOTE_APPROVED was swallowed under a log line
+      calling it a duplicate.
+      ⚠ **IT STILL FAILS OPEN, AND THE INERT CASE IS LOGGED RATHER THAN SILENT.** With no usable
+      `occurred_at` there is no key separating a duplicate from a legitimate second event, so the work
+      proceeds — swallowing a real event is unrecoverable while processing twice is idempotent by write
+      shape. **Adding this does NOT make the door exactly-once.**
+      ⚠ **AND THE EXISTING `invoicePaidWebhook.test.js` DUPLICATE CASE DOES NOT EXERCISE ANY OF IT** —
+      its payloads carry no `occurredAt`, so the claim fails open there and that case remains a test of
+      the UNIQUE-constraint path. Said plainly rather than left for someone to assume otherwise; all 11
+      of its cases stayed green unchanged.
+      ⚠ **SIX GUARD-PROOFS, widths 1 · 4 · 1 · 3 · 1 · 1**, every revert byte-identical by sha256.
+      Danny's named pair: the duplicate-skip removed → **1** (the capture runs twice), and the claim not
+      made at all → **4** (no delivery row, the pre-commit state).
+      ⚠ **THE GATE WENT RED FIRST, AT `fail 1`, AND IT WAS A PROXY ASSERTION THIS COMMIT INVALIDATED —
+      NOT A DEFECT.** `webhookContractorResolution.test.js`'s invoice-paid case asserted `error_log` was
+      **globally empty** as a proxy for *"resolution succeeded cleanly"*. Its payload carries no
+      `occurredAt`, so the new claim fails OPEN and records a `dedupe key` notice — nothing to do with
+      resolution. **Narrowed to resolution rows with the old assertion quoted in place, and made STRICTLY
+      STRONGER**: the surviving rows are now enumerated BY SOURCE and the expected notice asserted
+      positively, so an unrelated error cannot hide behind the narrowing — which is how a narrowed
+      assertion usually goes quietly blind.
+      ⚠ **AND THE WRAPPER REPORTED exit 0 WHILE THE LOG'S OWN `EXIT=` LINE READ 1.** Another instance of
+      that disagreement; the `EXIT=` written into the log is what counts. On that red run React never ran
+      at all, because the gate chains with `&&`.
+      ⚠ **CITATION ROT THIS COMMIT CAUSED, MEASURED AND NOT REPAIRED — 14 `LIKELY ROTTED`** (7
+      `PRE_LAUNCH_CHECKLIST.md` · 3 `CDL_3c_PHASE05_RULINGS.md` · 1 each `docs/GROUND_TRUTH_2026-08-21.md`
+      and `CLAUDE.md`), from ~60 lines added to `webhooks/jobber.js`. ⚠ **The `GROUND_TRUTH` one must NOT
+      be shifted** — a dated snapshot that quotes verbatim what it cites. Not repaired by adding the
+      delta, per the rule.
+      ⚠ **MEASURED BEFORE ACCEPTING THE FAIL-OPEN PATH, BECAUSE IT COULD HAVE MEANT AN `error_log` ROW PER
+      WEBHOOK: `occurredAt` IS ALWAYS PRESENT IN PRACTICE.** Read-only on production: **6,172 claimed
+      deliveries across six topics** since 2026-09-18 (`request-update` 3362 · `quote-update` 1750 ·
+      `quote-create` 386 · `job-create` 323 · `request-create` 273 · `quote-approved` 78) and **0
+      dedupe-inert notices ever logged**. A delivery row exists only when `occurred_at` was present, so
+      the inert path has never fired. ⚠ **AND THE CAVEAT, SAID RATHER THAN GLOSSED: invoice-paid has no
+      rows yet because it never claimed, so this is strong evidence from a SHARED ENVELOPE, not an
+      observation of `INVOICE_UPDATE` itself** — the same distinction C1's launch gate had to draw.
       ⚠ **TWO BENEFITS, AND THE SECOND IS WORTH LESS THAN IT LOOKS — SAY SO RATHER THAN OVERSELL IT.**
       It gives the door (a) a durable record that it ran, and (b) duplicate suppression. **(b) is NOT
       what stands between us and a double payout:** `referral_conversions`' UNIQUE constraint already

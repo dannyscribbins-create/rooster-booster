@@ -433,8 +433,49 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2499 server tests across 422 suites, and 1410 React tests across 86 files** (measured 2026-10-02 by the identity-row reorder commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2499 · suites 422 · pass 2499 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE IDENTITY-ROW REORDER COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2504 server tests across 423 suites, and 1410 React tests across 86 files** (measured 2026-10-03 by the invoice-paid delivery-claim commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2504 · suites 423 · pass 2504 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE DELIVERY-CLAIM COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2499 → 2504 is **+5**, one new file (`invoicePaidDeliveryClaim.test.js`); suites 422 → 423 is
+  that file's single describe. React did not move and was re-measured — **no `src/` file was touched**.
+  **All four predicted before the run and matched.** Counted with an anchored `^\s*it\(` (5); the file's
+  one loop sits in `beforeEach`.
+  ⚠ **THE INVOICE-PAID DOOR WAS THE ONLY ONE THAT CLAIMED NOTHING, AND THAT IS HOW C1'S LAUNCH-GATE CAME
+  TO BE ANSWERED FROM LOGS RATHER THAN FROM THE DATABASE.** `claimWebhookDelivery` had exactly two call
+  sites, so `jobber_webhook_events` held **0 rows for `topic ILIKE '%INVOICE%'` across 5,379 events**. A
+  zero from a table that structurally cannot hold the row is not an observation, and it was checked only
+  because the figure looked too clean.
+  ⚠ **WHAT IT CHANGES AND WHAT IT DOES NOT, BECAUSE THE SECOND HALF IS EASY TO OVERREAD.** It adds a
+  durable record and makes a duplicate skip EARLY — before the settings read, the invoice fetch, the
+  client fetch, the capture, the decision and the credit. **It does NOT make the door exactly-once and is
+  NOT what prevents a double payout**: that is `referral_conversions`' UNIQUE constraint plus
+  `evaluateReferral`'s STEP 8, with the email gated on a row being INSERTED, all unchanged.
+  ⚠ **THE OBSERVABLE IS THE JOBBER CALL COUNT, NOT THE CONVERSION COUNT, AND THAT DISTINCTION IS THE
+  TEST'S WHOLE VALUE.** A conversion count of 1 after a duplicate was ALREADY true before this commit, so
+  asserting it would pass against the pre-fix code and prove nothing. What changed is that the duplicate
+  no longer does the WORK — previously two Jobber round trips and a full re-capture, discarded.
+  ⚠ **PLACED AFTER THE CHEAP STATUS EXIT, AND A CASE PINS THE PLACEMENT.** Jobber sends INVOICE_UPDATE
+  for every status change, each with its own `occurred_at`, so claiming earlier would write a delivery row
+  for every draft and awaiting-payment transition this door ignores.
+  ⚠ **MEASURED BEFORE ACCEPTING THE FAIL-OPEN PATH, BECAUSE IT COULD HAVE MEANT AN `error_log` ROW PER
+  WEBHOOK:** **6,172 claimed deliveries across six topics** since 2026-09-18 and **0 dedupe-inert notices
+  ever**. A delivery row exists only when `occurred_at` was present, so Jobber does send it and the inert
+  path has never fired. ⚠ **CAVEAT SAID RATHER THAN GLOSSED: invoice-paid has no rows yet, so this is
+  strong evidence from a SHARED ENVELOPE, not an observation of `INVOICE_UPDATE` itself** — the same
+  distinction C1's launch gate had to draw.
+  ⚠ **SIX GUARD-PROOFS, widths 1 · 4 · 1 · 3 · 1 · 1**, every revert byte-identical by sha256.
+  ⚠ **THE GATE WENT RED FIRST AT `fail 1`, AND IT WAS A PROXY ASSERTION THIS COMMIT INVALIDATED RATHER
+  THAN A DEFECT.** `webhookContractorResolution.test.js` asserted `error_log` was **globally empty** as a
+  proxy for *"resolution succeeded cleanly"*; its payload carries no `occurredAt`, so the new claim fails
+  open and records a `dedupe key` notice. **Narrowed with the old assertion quoted in place and made
+  STRICTLY STRONGER** — the surviving rows are enumerated BY SOURCE and the expected notice asserted
+  positively, so an unrelated error cannot hide behind the narrowing, which is how a narrowed assertion
+  usually goes quietly blind.
+  ⚠ **AND THE WRAPPER REPORTED exit 0 WHILE THE LOG'S OWN `EXIT=` LINE READ 1** — another instance of
+  that disagreement. On the red run React never ran at all, because the gate chains with `&&`, so a tail
+  would have shown no React numbers and no reason.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE IDENTITY-ROW REORDER COMMIT ITSELF, BECAUSE
+  IT SHIPS TESTS.* It read **2499 / 422 / 1410 / 86**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE IDENTITY-ROW REORDER COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2491 → 2499 is **+8**, one new file (`identityRowOrder.test.js`); suites 420 → 422 is that
   file's **two** describes. React did not move and was re-measured — **no `src/` file was touched**.
   ⚠ **THE GATE WAS RUN TWICE AND THE SECOND RUN IS THE ONE CITED.** The first read 2498 / 422, against a
