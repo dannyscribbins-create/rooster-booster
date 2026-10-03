@@ -29,6 +29,7 @@
 
 const { decideFromFacts } = require('./attributionDecide');
 const { isDerivableJobberClientId } = require('./derivableClient');
+const { PROGRESS_LADDER, highWaterParams, highWaterRaiseSql } = require('./stageHighWater');
 
 /**
  * The earliest paid invoice's own received date for one client, from saved facts.
@@ -131,9 +132,16 @@ async function deriveReferredStatus(db, { contractorId, jobberClientId } = {}) {
  *
  * ⚠ `paid_at` IS WRITTEN ONCE AND NEVER OVERWRITTEN — the CASE only fills it on the transition INTO
  * 'paid'. It is the source of truth for cadence timing.
+ *
+ * ⚠ AND N4 COMMIT 9 RAISES `stage_high_water` IN THE SAME STATEMENT, WHICH IS DELIBERATE RATHER
+ * THAN CONVENIENT. The mark must move in the same transaction as the status it records, or a
+ * failure between two statements would leave a card claiming a regression against a stage it was
+ * never shown at. It is the same write-once-on-transition shape as `paid_at` one line above, and it
+ * uses the SHARED fragment so the ladder has exactly one definition — see `stageHighWater.js`.
  */
 async function writeReferredStatus(db, { contractorId, jobberClientId } = {}) {
   const ref = await deriveReferredStatus(db, { contractorId, jobberClientId });
+  const hw = highWaterParams(ref.status);
   const { rowCount } = await db.query(
     `UPDATE pipeline_cache
         SET pipeline_status   = $3::text,
@@ -143,9 +151,11 @@ async function writeReferredStatus(db, { contractorId, jobberClientId } = {}) {
               THEN COALESCE($4::timestamptz, paid_at)
               ELSE paid_at
             END,
+            ${highWaterRaiseSql('$5', '$6', '$7', 'stage_high_water')},
             status_derived_at = NOW()
       WHERE contractor_id = $1 AND jobber_client_id = $2`,
-    [contractorId, jobberClientId, ref.status, ref.paidAt]
+    [contractorId, jobberClientId, ref.status, ref.paidAt,
+      hw.rank, hw.mark, PROGRESS_LADDER]
   );
   return { ...ref, rowCount };
 }

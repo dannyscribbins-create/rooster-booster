@@ -28,6 +28,9 @@ const { creditReferralFromFacts } = require('../utils/referralCredit');
 const { notifyReferralCredit } = require('../utils/referralNotify');
 const { tallyCreditOutcome, formatCreditTally } = require('../utils/creditReasonTally');
 const { fetchFullClient, CUSTOM_FIELDS_VALUE_ONLY } = require('../utils/jobberClientFetch');
+// ⚠ N4 commit 9 — the ladder and the raise fragment. This module requires NOTHING, so a top-level
+// require cannot cycle; it is a pure ordering plus one SQL string builder.
+const { PROGRESS_LADDER, highWaterParams, highWaterRaiseSql } = require('../utils/stageHighWater');
 // ⚠ SAFE AS A TOP-LEVEL REQUIRE, unlike `referredStatus`/`attributionDecide` above: this module
 // requires only `fieldMapping`, which requires nothing from here, so there is no cycle.
 const {
@@ -388,7 +391,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
     `INSERT INTO pipeline_cache
        (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status,
         pre_start_date, jobber_created_at, last_synced_at, updated_at, paid_at,
-        status_derived_at)
+        status_derived_at, stage_high_water)
      -- ⚠ COALESCE($5, 'lead') — A NEW ROW WHOSE CAPTURE FAILED GETS THE ENTRY STAGE, NEVER NULL
      -- (Danny's ruling, 2026-09-29). 'lead' is simply TRUE of it: a referral exists. And because it
      -- is the LOWEST stage, the next successful derivation can only move it FORWARD — so no
@@ -396,7 +399,12 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
      -- ⚠ NULL WOULD CRASH THE REFERRER'S CARD: STATUS_CONFIG has no null key and StatusBadge has
      -- no null guard, so an unmapped value throws rather than rendering. Recorded because "write
      -- NULL and let the surface decide" is the obvious alternative and it is not available.
-     VALUES ($1, $2, $3, $4, COALESCE($5, 'lead'), $6, $7, NOW(), NOW(), $8, $9)
+     -- ⚠ THE MARK IS SEEDED SO A NEW ROW CANNOT LOOK BACKWARDS (N4 commit 9). It takes the RESOLVED
+     -- ladder value rather than the raw status, which matters for exactly one stage: a first sighting
+     -- at 'not_sold' seeds 'lead', because the mark must only ever hold a value the ladder can rank.
+     -- Both fall back to 'lead' when the derivation did not run, so the pair cannot disagree.
+     VALUES ($1, $2, $3, $4, COALESCE($5, 'lead'), $6, $7, NOW(), NOW(), $8, $9,
+             COALESCE($11, 'lead'))
      ON CONFLICT (contractor_id, jobber_client_id) DO UPDATE SET
        -- ⚠ THE REFERRAL RECORD IS THE SYNC'S OWN JOB AND IS ALWAYS REFRESHED. These four do not
        -- depend on the derivation at all: the names come from the client payload and
@@ -426,10 +434,24 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
        -- ⚠ THE MARKER. NULL means "never derived from facts". A failed capture keeps whatever was
        -- there, so a row derived last week still reads as derived-as-of-then rather than being
        -- downgraded to unknown.
-       status_derived_at = COALESCE($9::timestamptz, pipeline_cache.status_derived_at)
+       status_derived_at = COALESCE($9::timestamptz, pipeline_cache.status_derived_at),
+       -- ⚠ RAISED, NEVER LOWERED (N4 commit 9), AND THE PROTECTION IS THE COMPARISON RATHER THAN
+       -- THE PARAMETER — WHICH IS A CORRECTION TO WHAT THIS COMMENT FIRST CLAIMED. It said reading
+       -- the EXCLUDED row here "would pull a raised mark back down to 'lead' on every failed
+       -- capture", by analogy with the pipeline_status line above. **A guard-proof measured that at
+       -- width 0 and it is FALSE.** The excluded mark is 'lead' (rank 1) on a failed capture, and
+       -- the raise only fires when the incoming rank is STRICTLY GREATER than the stored one — so
+       -- 1 > 4 is false and a 'paid' mark stands either way. The analogy does not hold because
+       -- pipeline_status is a plain assignment and this is monotonic.
+       -- ⚠ SO WHAT ACTUALLY KEEPS THE MARK SAFE IS THE STRICT > IN THE SHARED FRAGMENT, plus the
+       -- rank of a failed capture being 0. The raw parameter is used for CONSISTENCY with the
+       -- status line beside it, not because it is load-bearing here — said plainly, because the
+       -- next reader would otherwise inherit a protection that is not where the comment points.
+       ${highWaterRaiseSql('$10', '$11', '$12', 'pipeline_cache.stage_high_water')}
      RETURNING created_at`,
     [contractorId, client.id, clientName, referredBy, status,
-     isPreStart, createdAt, paidAt, statusDerivedAt]
+     isPreStart, createdAt, paidAt, statusDerivedAt,
+     highWaterParams(status).rank, highWaterParams(status).mark, PROGRESS_LADDER]
     );
     referralAnchor = upsertResult.rows[0].created_at;
   }

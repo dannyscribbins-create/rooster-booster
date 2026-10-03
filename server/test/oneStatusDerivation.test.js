@@ -201,14 +201,80 @@ function quotedSpans(src) {
  * week — CLAUDE.md's recorded fate of any check that reports plausible findings. The
  * paired negative below proves a SELECT cannot trip it.
  */
+/**
+ * Every column ASSIGNED in any SET list in a span. An upsert has two — the UPDATE's and the
+ * ON CONFLICT DO UPDATE's — so the scan is global rather than first-match.
+ * The tail of each SET stops at WHERE or RETURNING, is split on TOP-LEVEL commas only (so a
+ * function call's arguments cannot be mistaken for another assignment), and each part's target is
+ * the text before its FIRST `=`, with any table qualifier stripped.
+ */
+function setAssignmentTargets(text) {
+  const targets = [];
+  const re = /\bSET\b/gi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    let tail = text.slice(m.index + 3);
+    const stop = /\bWHERE\b|\bRETURNING\b/i.exec(tail);
+    if (stop) tail = tail.slice(0, stop.index);
+    let depth = 0;
+    let cur = '';
+    const parts = [];
+    for (const ch of tail) {
+      if (ch === '(') depth += 1;
+      else if (ch === ')') depth -= 1;
+      if (ch === ',' && depth === 0) { parts.push(cur); cur = ''; continue; }
+      cur += ch;
+    }
+    parts.push(cur);
+    for (const p of parts) {
+      const eq = p.indexOf('=');
+      if (eq < 0) continue;
+      targets.push(p.slice(0, eq).trim().replace(/^[a-z_]+\./i, '').trim());
+    }
+  }
+  return targets;
+}
+
+/** The columns named in an INSERT's column list. */
+function insertColumnList(text) {
+  const m = /INSERT\s+INTO\s+[a-z_]+\s*\(([\s\S]*?)\)/i.exec(text);
+  if (!m) return [];
+  return m[1].split(',').map((s) => s.trim());
+}
+
+/**
+ * Every span that WRITES a displayed status column.
+ *
+ * ⚠ NARROWED IN N4 COMMIT 9 FROM A BARE `includes` TO AN ASSIGNMENT-POSITION TEST, AND THE REASON
+ * IS A FALSE POSITIVE THE FENCE RAISED AGAINST A STATEMENT THAT WRITES A DIFFERENT COLUMN.
+ * Commit 9's migration is `UPDATE pipeline_cache SET stage_high_water = CASE WHEN pipeline_status =
+ * 'not_sold' THEN … END WHERE … pipeline_status IN (…)` — it READS the status in a CASE and a WHERE
+ * and assigns only `stage_high_water`. The old test asked *"does this write statement MENTION the
+ * column?"* while the property is *"does it ASSIGN the column?"*, which is the substring trap one
+ * level in, inside the fence.
+ * ⚠ **NARROWING WAS CHOSEN OVER ALLOW-LISTING DELIBERATELY.** Registering `db.js :: function initDB`
+ * as a permanent WRITER carve-out would have excused a file that does not write the column at all —
+ * and worse, would then excuse a REAL status write added to that same span later. This repo's rule
+ * is reword/narrow, never exempt.
+ * ⚠ **AND IT IS STRICTLY NARROWER, MEASURED RATHER THAN ASSERTED.** Over all of `server/` the old
+ * test flagged 14 spans and this one flags 13; the single difference is that migration, and NO span
+ * is newly flagged. The 13 are every real writer the allow-lists already name.
+ * ⚠ **A COMPARISON INSIDE A `CASE` IN A SET LIST LOOKS EXACTLY LIKE AN ASSIGNMENT**, which is why
+ * the target is the text before the FIRST `=` of each top-level part rather than any `col =` match.
+ * A needle written the obvious way still flagged the migration; that was measured too.
+ */
 function statusWriteSpans() {
   const found = [];
   for (const file of serverFiles()) {
     const src = stripComments(fs.readFileSync(file, 'utf8'));
     for (const span of quotedSpans(src)) {
-      const touchesColumn = span.text.includes(COL_STAGE) || span.text.includes(COL_STATUS);
-      if (!touchesColumn) continue;
       if (!/\bINSERT\s+INTO\b|\bUPDATE\s+[a-z_]+\s+SET\b/i.test(span.text)) continue;
+      const assigned = setAssignmentTargets(span.text);
+      const inserted = insertColumnList(span.text);
+      const writesColumn = [COL_STAGE, COL_STATUS].some(
+        (col) => assigned.includes(col) || inserted.includes(col)
+      );
+      if (!writesColumn) continue;
       found.push({ file: relPath(file), line: span.line, role: enclosingRole(src, span.line) });
     }
   }
@@ -509,6 +575,50 @@ describe('N4 commit 1 — every writer of a displayed status is accounted for', 
         + [...new Set(spans.map(key))].join(' | ')
       );
     }
+  });
+
+  it('DISCRIMINATOR: an UPDATE that READS the column but assigns another is NOT a writer', () => {
+    // ⚠ SYNTHETIC, IN BOTH DIRECTIONS, because this is the exact distinction N4 commit 9 narrowed
+    // the needle onto and a fence whose discriminator is never exercised is a claim. The two
+    // statements differ in ONE thing: which column sits at assignment position.
+    //
+    // ⚠ BUILT BY CONCATENATION so this file does not itself contain a scannable write of the
+    // column — the fence walks `server/` and not `server/test/`, but the same shape has made a
+    // sweep report its own test file before.
+    const COL = 'pipeline' + '_status';
+    const readsOnly = [
+      'UPDATE pipeline_cache',
+      '   SET stage_high_water = CASE WHEN ' + COL + " = 'not_sold' THEN 'lead'",
+      '         ELSE ' + COL + ' END',
+      ' WHERE stage_high_water IS NULL AND ' + COL + " IN ('lead', 'paid')",
+    ].join('\n');
+    const reallyWrites = [
+      'UPDATE pipeline_cache',
+      '   SET ' + COL + " = 'paid', updated_at = NOW()",
+      ' WHERE contractor_id = $1',
+    ].join('\n');
+
+    assert.equal(
+      setAssignmentTargets(readsOnly).includes(COL), false,
+      'a comparison inside a CASE in the SET list is a READ, not an assignment'
+    );
+    assert.equal(
+      setAssignmentTargets(readsOnly).includes('stage_high_water'), true,
+      'harness: the one column this statement DOES assign must be detected, or the negative above '
+      + 'is satisfied by a parse that found nothing at all'
+    );
+    assert.equal(
+      setAssignmentTargets(reallyWrites).includes(COL), true,
+      'a real assignment MUST still be detected — the narrowing must not have opened a hole'
+    );
+
+    // And the INSERT form, which is detected by its column list rather than by a SET target.
+    const insertWrites = 'INSERT INTO pipeline_cache (contractor_id, ' + COL + ') VALUES ($1, $2)';
+    assert.equal(insertColumnList(insertWrites).includes(COL), true,
+      'an INSERT naming the column in its list is a writer');
+    const insertSpares = 'INSERT INTO pipeline_cache (contractor_id, stage_high_water) VALUES ($1, $2)';
+    assert.equal(insertColumnList(insertSpares).includes(COL), false,
+      'and one that does not name it is not');
   });
 
   it('PAIRED NEGATIVE: a SELECT of the column is not flagged', () => {

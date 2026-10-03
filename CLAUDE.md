@@ -433,8 +433,94 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2508 server tests across 423 suites, and 1410 React tests across 86 files** (measured 2026-10-03 by the N4 commit 8 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2508 · suites 423 · pass 2508 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 8 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2542 server tests across 428 suites, and 1423 React tests across 87 files** (measured 2026-10-03 by the N4 commit 9 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2542 · suites 428 · pass 2542 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 9 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2508 → 2542 is **+34 = 33 + 1**: thirty-three in one new file (`stageHighWater.test.js`) and
+  **one APPENDED** to `oneStatusDerivation.test.js` (18 → 19). Suites 423 → 428 is the new file's
+  **five** top-level describes only — the appended case landed in a describe that already existed.
+  React 1410 → 1423 is **+13**, one new file (`stageRegressionNote.test.jsx`), and 86 → 87 is that
+  file. **All four predicted before the run and matched.** ⚠ **NO PHANTOM, ASKED BEFORE THE RUN AND
+  READ RATHER THAN REMEMBERED:** the new non-test `src/` file is
+  `src/components/shared/StageRegressionNote.jsx`, and `src/components/shared` is **not** one of
+  `adminBranding.test.jsx`'s four walked roots (confirmed at its `ROOTS` array). Counted with an
+  anchored `^\s*it\(` — 33 and 13 — with every `it(` at exactly two spaces and **zero** at four or
+  more, so no loop and no nested describe wraps a case.
+  ⚠ **THE COMMIT'S SUBJECT: A BACKWARDS MOVE IS A REAL EVENT AND THE NOTE EXPLAINS IT.** Danny's
+  ruling — a referrer whose card moves backwards sees exactly *"This job is no longer active."*,
+  normal text colour, small, not an alert; a rep always sees the plain truth with no note. 7b
+  deliberately REJECTED a ratchet on the referrer's column, so the stage still moves; what is new is
+  a `stage_high_water` observation column that makes the move legible.
+  ⚠ **AND IT IS AN OBSERVATION, NOT A DECISION: NO MONEY PREDICATE READS IT.** A fence names the
+  five money paths and reads their source, with a non-vacuity case proving the needle can match the
+  one file that legitimately uses the column.
+  ⚠ **INITIALISED TO EACH ROW'S CURRENT STATUS, NEVER RECONSTRUCTED.** Nothing stored says what
+  stage a referral was previously shown at — the facts that would support a higher one are precisely
+  the facts that went away. So the mark is true by construction and the comparison is false on every
+  pre-existing row: **no existing card can show the note until a move is actually observed.** A case
+  drives the REAL migration statement, extracted from `db.js`, over rows seeded at all five stages.
+  ⚠ **MY OWN ARITHMETIC WAS WRONG AND THE COMMENT CLAIMED THE BEHAVIOUR THE CODE DID NOT HAVE.** The
+  design said `not_sold` "ranks 0, tying with lead" — but `lead` is ON the ladder and ranks 1, so
+  `lead → not_sold` came out as a regression and the note fired on a client whose only quote had
+  always been archived, **contradicting Danny's "never on a true lead with no prior progress"
+  directly.** A client that once had a quote has MORE history than a bare lead, never less. Fixed
+  with a named alias. **Two cases caught it; the prose would not have.**
+  ⚠ **AND TWO OF MY CASES ASSERTED A BACKWARDS MOVE THAT NEVER HAPPENED — WHICH IS N4's WHOLE POINT
+  ARRIVING AS A TEST FAILURE.** They drove a 'paid' sync then a 'sold' sync and asserted the stage
+  had fallen. It had not: **the capture is CUMULATIVE**, so the saved invoice facts still said paid.
+  **The sync was right and the fixture was wrong** — a thinner fetch can no longer pull a referrer's
+  stage down. A real regression needs a FACT to disappear, which the repaired cases model with
+  deletes.
+  ⚠ **A GUARD-PROOF MEASURED ONE OF MY OWN COMMENTS FALSE AT WIDTH 0.** It claimed reading the
+  excluded row in the upsert would "pull a raised mark back down", by analogy with the
+  `pipeline_status` line beside it. **The raise is MONOTONIC**, so 1 > 4 is false and a 'paid' mark
+  stands either way; the strict `>` is the protection, not the parameter choice. The comment records
+  the measurement now, and the injection was replaced with one that reaches a discriminating value.
+  ⚠ **AND A FIXTURE THAT COULD NOT DISCRIMINATE, CAUGHT THE SAME WAY.** The failed-capture case
+  first started with the mark already at 'paid', so an injection raising a failed capture TO 'paid'
+  changed nothing and measured 0. Started at 'inspection' it reds 1.
+  ⚠ **THE WRITER FENCE RAISED A FALSE POSITIVE AGAINST THIS COMMIT, AND NARROWING IT WAS THE FIX
+  RATHER THAN ALLOW-LISTING.** `statusWriteSpans`'s `touchesColumn` was a bare `includes`, so an
+  `UPDATE pipeline_cache SET stage_high_water = CASE WHEN pipeline_status = … END` counted as a
+  status WRITER although it only reads the column. **It asked "does this write statement MENTION the
+  column?" while the property is "does it ASSIGN it?"** — the substring trap one level in, inside the
+  fence. ⚠ **Registering `db.js :: function initDB` as a permanent writer carve-out was rejected**:
+  it would excuse a file that does not write the column, and would then excuse a REAL status write
+  added to that span later. ⚠ **AND THE OBVIOUS NARROWING WAS ALSO WRONG** — a `col =` needle still
+  matched, because a comparison inside a `CASE` in a SET list looks exactly like an assignment. The
+  test is now the target of each top-level SET part, plus the INSERT column list.
+  ⚠ **STRICTLY NARROWER, MEASURED RATHER THAN ASSERTED: 14 spans before, 13 after, the single
+  difference being that migration, and NOTHING newly flagged.** Both directions are guard-proofed —
+  restoring the bare `includes` reds **1**, and breaking the assignment test reds **4**.
+  ⚠ **AND THE EXTRACTION SUITE FAILED LOUDLY ON A MOVED TARGET, WHICH IS WHAT IT IS FOR.**
+  `invoicePaidDerivableClient.test.js` reads the `pipeline_cache` UPDATE out of PRODUCTION SOURCE and
+  executes it, so the new high-water parameters broke it — 5 of its 8 cases. **Re-pointed, not
+  deleted**: it resolves the new interpolation with the REAL fragment builder and derives the three
+  new parameters from `highWaterParams`, so the executed text and its bindings still mirror
+  production rather than a retyped copy.
+  ⚠ **ELEVEN GUARD-PROOFS, widths 7 · 1 · 1 · 8 · 6 · 1 · 1 · 2 · 1 · 1 · 4**, every revert an
+  inverse patch in a `finally` proven byte-identical by sha256, anchors unique in BOTH directions,
+  empty replacements refused, each injection confirmed landed. **All four Danny named fire:** `<=`
+  for `<` → **7**; a money path reading the mark → **1**; the migration guessing → **1**; the note
+  rendering unconditionally → **2** on the React mount test.
+  ⚠ **AND ONE INJECTION WAS REFUSED BECAUSE ITS REPLACEMENT CONTAINED ITS OWN ANCHOR** — it wrapped
+  a line instead of changing it, the overlapping-anchor mistake this file records from `db.js`. The
+  landed-check caught it before any result was believed and the `finally` left the file
+  byte-identical.
+  ⚠ **MY OWN PROBE REPORTED 14 vs 14 TWICE AND BOTH READINGS WERE MEANINGLESS**, because a Python
+  `str.replace` in a heredoc silently did nothing and the probe went on measuring the OLD needle
+  against itself. Confirmed by grepping the probe for the new function name — 0. **A harness
+  returning a plausible wrong number is the failure class**, and the heredoc escape trap cost three
+  separate detours in this commit alone.
+  ⚠ **THE BACKTICK RULE, HIT BY THE SESSION QUOTING IT.** Backticks inside a SQL comment inside a
+  template literal in `pipelineSync.js` closed the string — `SyntaxError: missing ) after argument
+  list`, the loud variant and the exact signature this file names. Reworded, never escaped; all six
+  touched files swept for the shape (0 found). ⚠ **And an apostrophe inside a single-quoted test name
+  did it again**, for the same reason the rule says reword rather than escape.
+  ⚠ **AND THE WRAPPER REPORTED exit 0 WHILE THE LOG'S OWN `EXIT=` LINE READ 1** — another instance.
+  On that red run React never ran at all, because the gate chains with `&&`.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 8 COMMIT ITSELF, BECAUSE IT
+  SHIPS TESTS.* It read **2508 / 423 / 1410 / 86**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE N4 COMMIT 8 COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2504 → 2508 is **+4**, all four APPENDED to `oneStatusDerivation.test.js` (14 → 18), so
   **suites hold at 423** — the expected shape when a file grows rather than a file arriving. React did
   not move — **no `src/` file was touched at all** — and was re-measured. **All four predicted before the

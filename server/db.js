@@ -3128,6 +3128,70 @@ await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
     console.log(`[referral-source] migrated ${referralFieldMigration.rowCount} contractor(s) to a picked client field`);
   }
 
+  // ── N4 COMMIT 9 — `pipeline_cache.stage_high_water`, AN OBSERVATION COLUMN ──────────────────
+  //
+  // The highest stage this referral has ever been SHOWN at. Danny's ruling: when the
+  // referrer-visible stage is genuinely lower than this, the card carries a subtle note reading
+  // "This job is no longer active." A rep's surface is untouched and never shows the note.
+  //
+  // ⚠ NULLABLE WITH NO DEFAULT, AND THAT IS THE FAIL-CLOSED CHOICE RATHER THAN AN OVERSIGHT. NULL
+  // ranks 0 in `stageHighWater.js`, so it can never exceed a real stage and therefore can never
+  // produce a note. Three of the four other `pipeline_cache` INSERT sites do not set this column at
+  // all — the `app_user` signup row, the credit's identity row and the job-completed upsert — and a
+  // NULL mark is exactly right for each: nothing is yet known about prior progress. The one path
+  // that DOES know is `syncSingleClient`'s upsert, which seeds it in the same statement as the
+  // status. ⚠ A `DEFAULT 'lead'` would have been the obvious alternative and is WRONG: it would
+  // assert of the credit's freshly-created row that it had been seen at 'lead', which nobody
+  // observed.
+  //
+  // ⚠ AND IT IS NEVER READ BY A MONEY PREDICATE. Eligibility is `evaluateReferral`'s and the ledger
+  // is `referral_conversions`; what a referrer was once shown is a different question from what
+  // they are owed. `stageHighWater.test.js` fences every money path by name.
+  await pool.query(`ALTER TABLE pipeline_cache
+    ADD COLUMN IF NOT EXISTS stage_high_water VARCHAR(50)`);
+
+  // ── THE INITIALISATION, AND IT IS THE CURRENT STAGE RATHER THAN A RECONSTRUCTION ─────────────
+  //
+  // ⚠ DANNY'S INSTRUCTION, AND THE REASON IS THAT THE HISTORY IS NOT RECOVERABLE. Nothing stored
+  // says what stage a referral was previously shown at: the facts that would have supported a
+  // higher one are precisely the facts that went away, and `status_derived_at` records WHEN a
+  // decision was made, never what it was. **So every existing row is initialised to its CURRENT
+  // status, which makes the mark true by construction and the comparison false on day one.** No
+  // existing card can show the note until a move is actually observed from here.
+  //
+  // ⚠ THE ALTERNATIVE WAS REJECTED BY NAME: inferring a past stage from `paid_at IS NOT NULL`, or
+  // from a client's job facts, would be a GUESS presented to a referrer as a statement about their
+  // job. Measured on production before writing this: `paid_at IS NOT NULL AND pipeline_status <>
+  // 'paid'` returns ZERO rows, so that inference would have changed nothing anyway — and a
+  // backfill that happens to be a no-op today is still a backfill nobody could verify tomorrow.
+  //
+  // ⚠ `WHERE stage_high_water IS NULL` MAKES IT A PERMANENT NO-OP AFTER THE FIRST RUN, so a later
+  // boot cannot pull a raised mark back down to the current status — which would erase the very
+  // history the column exists to hold.
+  //
+  // ⚠ ALL FIVE STAGE VALUES ARE INITIALISED AND `app_user` IS NOT — it is not a stage at all, so
+  // those rows stay NULL and can never carry the note.
+  //
+  // ⚠ AND `not_sold` IS NORMALISED TO 'lead', WHICH IS THE ONE PLACE THIS STATEMENT IS NOT A
+  // STRAIGHT COPY. The mark must only ever hold a value the progress ladder can rank, because the
+  // raise ranks the STORED side with `array_position` over that ladder — `not_sold` is a LOST
+  // outcome aliased to `lead`'s rank in `stageHighWater.js`, not a rung. Storing the literal would
+  // leave the mark ranking 0 forever, so the row could never be raised past it. ⚠ The display is
+  // identical either way: both rank 1, so neither shows a note on day one.
+  const highWaterInit = await pool.query(
+    `UPDATE pipeline_cache
+        SET stage_high_water = CASE
+              WHEN pipeline_status = 'not_sold' THEN 'lead'
+              ELSE pipeline_status
+            END
+      WHERE stage_high_water IS NULL
+        AND pipeline_status IN ('lead', 'inspection', 'sold', 'paid', 'not_sold')`
+  );
+  if (highWaterInit.rowCount > 0) {
+    // diagnostic log — intentional
+    console.log(`[stage_high_water] initialised ${highWaterInit.rowCount} row(s) to their current stage`);
+  }
+
   await backfillAssignedAt(pool);
   await applyAssignedAtNotNull(pool);
 

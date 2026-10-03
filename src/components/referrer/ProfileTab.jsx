@@ -12,6 +12,7 @@ import Screen from '../shared/Screen';
 import AvatarCircle from '../shared/AvatarCircle';
 import ContactModal from '../shared/ContactModal';
 import StatusBadge from '../shared/StatusBadge';
+import StageRegressionNote from '../shared/StageRegressionNote';
 import Skeleton from '../shared/Skeleton';
 import BadgeCelebrationPopup from './BadgeCelebrationPopup';
 import ManageAccount from './ManageAccount';
@@ -516,6 +517,7 @@ export default function Profile({ onLogout, pipeline, loading, userName, userEma
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
                           <StatusBadge status={ref.status} />
+                          <StageRegressionNote regressed={ref.stage_regressed} />
                           {ref.status === 'sold' && !ref.pre_start_date && (
                             <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--rm-text, #1C2D4D)', opacity: MUTED, fontFamily: fontVar('body') }}>
                               Pending completion

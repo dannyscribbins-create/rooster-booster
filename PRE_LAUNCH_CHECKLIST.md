@@ -15285,6 +15285,111 @@ source and, where stated, against a read-only production `SELECT` whose text is 
       repaired by adding the delta, per the rule. `tablecheck` BROKEN 0; `citecheck --role-only` holds at
       **844**, unchanged from the delivery-claim commit, so this commit added no line citations.
 
+- [x] **N4 COMMIT 9 — THE BACKWARDS-MOVE NOTE, AND `pipeline_cache.stage_high_water`. BUILT
+      2026-10-03, NOT PUSHED. ⚠ IT CONTAINS DDL, SO RULING 4 BINDS: Danny must click Run Backup Now
+      and confirm BEFORE any push.**
+      Danny's ruling: a referrer whose card moves BACKWARDS sees a subtle note reading exactly
+      **"This job is no longer active."** — normal text colour, small, not an alert. A rep always
+      sees the plain truth with no note.
+      ⚠ **THE COLUMN IS AN OBSERVATION AND NO MONEY PREDICATE READS IT.** Eligibility is
+      `evaluateReferral`'s and the ledger is `referral_conversions`; what a referrer was once SHOWN
+      is a different question from what they are owed. A fence names the five money paths and reads
+      their source, with a non-vacuity case proving the needle can match the file that does use it.
+      ⚠ **INITIALISED TO EACH ROW'S CURRENT STATUS, NEVER TO A RECONSTRUCTION (Danny's
+      instruction).** Nothing stored says what stage a referral was previously shown at — the facts
+      that would support a higher one are precisely the facts that went away, and `status_derived_at`
+      records WHEN a decision was made, never what it was. **So the mark is true by construction and
+      the comparison is false on every pre-existing row: no existing card can show the note until a
+      move is actually observed.** Measured on production first: `paid_at IS NOT NULL AND
+      pipeline_status <> 'paid'` returns **0 rows**, so the obvious inference would have changed
+      nothing anyway — and a backfill that happens to be a no-op today is still one nobody could
+      verify tomorrow.
+      ⚠ **THE WRITERS, AND THE THREE THAT DELIBERATELY DO NOT MAINTAIN IT.** `writeReferredStatus`
+      raises it in the same UPDATE as `pipeline_status` (so the mark cannot drift from the stage it
+      records), and `syncSingleClient`'s upsert seeds it on INSERT and raises it on conflict. Both
+      use ONE shared SQL fragment with the ladder bound as a parameter, so there is no second copy of
+      the ordering. **The `app_user` signup row, the credit's identity row and the job-completed
+      upsert leave it NULL**, which is correct: NULL ranks lowest, so it can neither raise the mark
+      nor produce a note. A `DEFAULT 'lead'` was rejected for asserting of those rows that they had
+      been SEEN at 'lead', which nobody observed.
+      ⚠ **`not_sold` TIES WITH `lead` RATHER THAN SITTING BELOW IT, AND THE FIRST WRITING GOT THIS
+      WRONG.** The design comment claimed not_sold "ranks 0, tying with lead" — but lead is ON the
+      ladder and ranks 1, so `lead → not_sold` came out as a regression and the note fired on a
+      client whose only quote had always been archived, **contradicting Danny's "never on a true
+      lead with no prior progress" directly.** A client that once had a quote has MORE history than
+      a bare lead, never less. Fixed with a named alias; the mark stores only ladder values so the
+      SQL's `array_position` can always rank it. **Two cases caught it; the prose would not have.**
+      ⚠ **THE SERVER SENDS A BOOLEAN AND THE MARK NEVER REACHES THE CLIENT** — CD-7's precedent
+      applied to a second field. Both referrer payload builders compute it through one shared helper,
+      including the stale-cache fallback that N4 commit 7a records as *"the one that would have been
+      missed"*. A fence walks all of `src/` and fails if any client file reads the column.
+      ⚠ **THE NOTE IS ONE SHARED COMPONENT** (`src/components/shared/StageRegressionNote.jsx`)
+      because there are TWO referrer card sites, and a sentence duplicated into both is this repo's
+      N-files-N-corrections shape. **Full opacity rather than the muted idiom, deliberately**: the
+      ruling says NORMAL text colour, and `paletteDashboard.test.jsx` pins the muted-idiom count at
+      fourteen so a new muted container has to be noticed rather than slipped in.
+      ⚠ **NINE GUARD-PROOFS, widths 7 · 1 · 1 · 8 · 6 · 1 · 1 · 2 · 1**, every revert an inverse
+      patch in a `finally` proven byte-identical by sha256, anchors unique in BOTH directions, empty
+      replacements refused, each injection confirmed landed before its result was believed. **All
+      four Danny named fire:** `<=` instead of `<` → **7** (a never-moved card shows the note); a
+      money path reading the mark → **1**; the migration initialising from a guess → **1** (an
+      existing referral shows the note on day one); the note rendering unconditionally → **2** on the
+      React mount test.
+      ⚠ **AND THREE OF MY OWN THINGS WERE WRONG, EACH FOUND BY A RUN RATHER THAN BY READING.**
+      (1) The arithmetic above. (2) **Two cases asserted a backwards move by supplying a SMALLER live
+      client, and the stage did not fall** — the capture is CUMULATIVE, so the saved invoice facts
+      still said 'paid'. **The sync was right and the fixture was wrong, and that is exactly what N4
+      bought**: a thinner fetch can no longer pull a referrer's stage down. A real regression needs a
+      FACT to disappear, which the repaired cases model with deletes. (3) **A guard-proof measured
+      one of my own comments FALSE at width 0**: it claimed reading the excluded row would pull a
+      raised mark down, and the raise is MONOTONIC, so that cannot happen — the strict `>` is the
+      protection, not the parameter choice. The comment now records the measurement, and the
+      injection was replaced with one that reaches a discriminating value.
+      ⚠ **AND A FIXTURE THAT COULD NOT DISCRIMINATE, CAUGHT THE SAME WAY.** The failed-capture case
+      first started with the mark already at 'paid', so an injection raising a failed capture TO
+      'paid' changed nothing and measured 0. Started at 'inspection' it reds 1. **A fixture whose
+      before and after agree cannot tell a protected branch from an unprotected one.**
+      ⚠ **THE BACKTICK RULE, HIT BY THE SESSION QUOTING IT.** Backticks inside a SQL comment inside
+      a template literal in `pipelineSync.js` closed the string — `SyntaxError: missing ) after
+      argument list`, the loud variant and the exact signature `CLAUDE.md` names. Reworded, never
+      escaped, and all six touched files swept for the shape (0 found). ⚠ **And an apostrophe inside
+      a single-quoted test name did it again**, for the same reason the rule says reword, not escape.
+      ⚠ **THE WRITER FENCE RAISED A FALSE POSITIVE AGAINST THIS COMMIT AND WAS NARROWED RATHER THAN
+      CARVED OUT.** `statusWriteSpans`'s column test was a bare `includes`, so an `UPDATE
+      pipeline_cache SET stage_high_water = CASE WHEN pipeline_status = … END` counted as a status
+      WRITER although it only READS the column — the substring trap one level in, inside the fence.
+      Registering `db.js :: function initDB` as a permanent writer was rejected: it would excuse a
+      file that does not write the column, and would then excuse a REAL status write added to that
+      same span later. ⚠ **The obvious narrowing was ALSO wrong** — a `col =` needle still matched,
+      because a comparison inside a CASE in a SET list looks exactly like an assignment. The test is
+      now the assignment TARGET of each top-level SET part plus the INSERT column list.
+      **Measured strictly narrower: 14 spans before, 13 after, the one difference being that
+      migration, nothing newly flagged.** Both directions guard-proofed (widths 1 and 4).
+      ⚠ **AND `invoicePaidDerivableClient.test.js` FAILED LOUDLY ON A MOVED TARGET, WHICH IS WHAT IT
+      IS FOR.** It reads the `pipeline_cache` UPDATE out of PRODUCTION SOURCE and executes it, so the
+      new parameters broke 5 of its 8 cases. **Re-pointed, not deleted**: it resolves the new
+      interpolation with the REAL fragment builder and derives the three new parameters from
+      `highWaterParams`, so the executed text and its bindings still mirror production.
+      ⚠ **THE GATE: `tests 2542 · suites 428 · pass 2542 · fail 0 · cancelled 0 · skipped 0 ·
+      todo 0`, React 1423 across 87 files, `EXIT=0` read from the log's own line.** All four
+      predicted and matched. ⚠ **The first run was RED at `fail 6`** — the two fence catches above —
+      **and the wrapper reported exit 0 while the log read 1**, another instance; React never ran
+      because the gate chains with `&&`.
+      ⚠ **CITATION ROT CAUSED, MEASURED AND NOT REPAIRED — 177 `LIKELY ROTTED`, much the largest of
+      this arc, and the cause is worth knowing: 116 of them target `server/routes/referrer.js`
+      because this commit adds ONE import line near the top of a 3,400-line file.** An import is as
+      citation-rotting as a comment block and there is no placement that avoids it, since imports
+      live above everything. By citing file: 48 `PRE_LAUNCH_CHECKLIST.md` · 32
+      `TENANT_RESOLUTION_REBUILD_SPEC.md` · 20 `CDL_3c_PHASE0_REPORT.md` · **18
+      `docs/GROUND_TRUTH_2026-08-21.md`** · 13 `CDL_3c_PHASE05_RULINGS.md` · 11 `CDL_3b_BUILD_SPEC.md`
+      · 9 `CONTRACTOR2_READINESS_AUDIT.md` · 8 `SECURITY_HARDENING_SPEC.md` · 5 each
+      `MEMBER_RANK_ECONOMY_SPEC.md` and `CLAUDE_REGISTRY.md` · 4 `CLAUDE.md` · 2
+      `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` · 1 each `SINGLETON_CASHOUT_TENANCY_SPEC.md` and
+      `docs/ASSIGNMENT_RULES_LOCKED.md`. ⚠ **The 18 `GROUND_TRUTH` ones must NOT be shifted** — a
+      dated snapshot that quotes verbatim what it cites. Not repaired by adding the delta, per the
+      rule. `tablecheck` BROKEN 0; `citecheck --role-only` holds at **844**, so this commit added no
+      line citations.
+
 - [ ] ⚠ **RULED 2026-10-01 (Danny, ruling 4) — THE BACKUP DECISION IS DANNY'S, NOT CLAUDE'S.** Before
       any push that changes the database **SCHEMA** (DDL), **ask Danny to click Run Backup Now and wait
       for his confirmation.** The sharpened rule is resident in `CLAUDE.md` under *Deployment* — it

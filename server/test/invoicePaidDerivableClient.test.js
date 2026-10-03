@@ -33,6 +33,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { seedContractor } = require('./helpers');
+const {
+  PROGRESS_LADDER, highWaterParams, highWaterRaiseSql,
+} = require('../utils/stageHighWater');
 const { deriveReferredStatus } = require('../utils/referredStatus');
 const { withClientLock } = require('../utils/clientLock');
 
@@ -85,7 +88,31 @@ function productionUpdateSql() {
   assert.match(sql, /UPDATE pipeline_cache/, 'harness: wrong span captured');
   assert.match(sql, /status_derived_at/, 'harness: the span must include the whole statement');
   assert.ok(sql.includes('$4'), 'harness: the span must include every parameter');
-  return sql;
+  // THE N4 COMMIT 9 INTERPOLATION, RESOLVED WITH THE REAL BUILDER.
+  // The statement gained `${highWaterRaiseSql(...)}` for the high-water raise. Reading SOURCE means
+  // that arrives as literal text, which is not valid SQL -- so it is substituted using the
+  // PRODUCTION function rather than a retyped fragment, keeping the executed text identical to what
+  // production sends. A floor asserts the placeholder was there, so a future change that drops the
+  // interpolation is noticed instead of silently leaving this slice unresolved.
+  const placeholder = "${highWaterRaiseSql('$5', '$6', '$7', 'stage_high_water')}";
+  assert.ok(
+    sql.includes(placeholder),
+    'harness: the high-water raise interpolation must still be present in the statement'
+  );
+  const resolved = sql.replace(
+    placeholder, highWaterRaiseSql('$5', '$6', '$7', 'stage_high_water'));
+  assert.ok(!resolved.includes('${'), 'harness: every interpolation must be resolved before executing');
+  return resolved;
+}
+
+/**
+ * The seven parameters the production statement now takes, derived the way production derives them.
+ * ⚠ THE HIGH-WATER THREE COME FROM `highWaterParams`, NOT FROM LITERALS, so these call sites cannot
+ * drift from the writer they are standing in for.
+ */
+function updateParams(contractorId, clientId, status, paidAt) {
+  const hw = highWaterParams(status);
+  return [contractorId, clientId, status, paidAt, hw.rank, hw.mark, PROGRESS_LADDER];
 }
 
 describe('the invoice-paid stage UPDATE runs at all — the 7b parameter-type regression', () => {
@@ -97,7 +124,7 @@ describe('the invoice-paid stage UPDATE runs at all — the 7b parameter-type re
        VALUES ($1, $2, 'Derivable Client', 'Some Referrer', 'sold')`,
       [CID, GID]
     );
-    await pool.query(productionUpdateSql(), [CID, GID, 'paid', new Date('2026-07-04T10:00:00Z')]);
+    await pool.query(productionUpdateSql(), updateParams(CID, GID, 'paid', new Date('2026-07-04T10:00:00Z')));
 
     const { rows } = await pool.query(
       `SELECT pipeline_status, paid_at, status_derived_at FROM pipeline_cache
@@ -113,7 +140,7 @@ describe('the invoice-paid stage UPDATE runs at all — the 7b parameter-type re
     // still has to PREPARE, and that is what was failing. A test that only ever drove referred
     // clients would have missed the population the defect actually hit.
     const other = Buffer.from('gid://Jobber/Client/111222333', 'utf8').toString('base64');
-    await pool.query(productionUpdateSql(), [CID, other, 'paid', null]);
+    await pool.query(productionUpdateSql(), updateParams(CID, other, 'paid', null));
     const { rows } = await pool.query(
       'SELECT COUNT(*) AS n FROM pipeline_cache WHERE contractor_id = $1', [CID]);
     assert.equal(Number(rows[0].n), 0, 'no row is created — this is an UPDATE, never an INSERT');
@@ -125,7 +152,7 @@ describe('the invoice-paid stage UPDATE runs at all — the 7b parameter-type re
     await pool.query(
       `INSERT INTO pipeline_cache (contractor_id, jobber_client_id, client_name, referred_by, pipeline_status)
        VALUES ($1, $2, 'C', 'R', 'lead')`, [CID, GID]);
-    await pool.query(productionUpdateSql(), [CID, GID, 'inspection', null]);
+    await pool.query(productionUpdateSql(), updateParams(CID, GID, 'inspection', null));
     const { rows } = await pool.query(
       `SELECT pipeline_status, paid_at FROM pipeline_cache
         WHERE contractor_id = $1 AND jobber_client_id = $2`, [CID, GID]);
@@ -148,7 +175,7 @@ describe('the invoice-paid stage UPDATE runs at all — the 7b parameter-type re
           await tx.query(
             `INSERT INTO crm_job_facts (contractor_id, jobber_job_id, jobber_client_id)
              VALUES ($1, 'job-rollback', $2)`, [CID, GID]);
-          await tx.query(sql, [CID, GID, 'paid', null]);
+          await tx.query(sql, updateParams(CID, GID, 'paid', null));
           throw new Error('deliberate failure after both writes');
         }),
       /deliberate failure/
@@ -176,7 +203,7 @@ describe('the invoice-paid stage UPDATE runs at all — the 7b parameter-type re
        VALUES ($1, $2, 'C', 'R', 'lead')`, [CID, GID]);
 
     const ref = await deriveReferredStatus(pool, { contractorId: CID, jobberClientId: GID });
-    await pool.query(productionUpdateSql(), [CID, GID, ref.status, ref.paidAt]);
+    await pool.query(productionUpdateSql(), updateParams(CID, GID, ref.status, ref.paidAt));
     const { rows } = await pool.query(
       `SELECT pipeline_status FROM pipeline_cache WHERE contractor_id = $1 AND jobber_client_id = $2`,
       [CID, GID]);

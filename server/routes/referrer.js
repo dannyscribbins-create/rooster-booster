@@ -20,6 +20,7 @@ const { sendAdminNotification, resolveNotificationRecipient } = require('../util
 const { isEmailSuppressed } = require('../utils/emailSuppression');
 const { executeStripeTransfer } = require('../utils/stripeTransfer');
 const { getCashoutBalance } = require('../utils/cashoutBalance');
+const { stageRegressedFromRow } = require('../utils/stageHighWater');
 const { verifyReferrerSession, verifyAnySession } = require('../middleware/auth');
 const { applyTag } = require('../utils/tags');
 const { runContactMatchingPass } = require('../jobs/contactMatchingPass');
@@ -987,7 +988,8 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
     if (referrerName) {
       try {
         const cacheResult = await pool.query(
-          `SELECT jobber_client_id, client_name, pipeline_status, pre_start_date, last_synced_at
+          `SELECT jobber_client_id, client_name, pipeline_status, pre_start_date, last_synced_at,
+                  stage_high_water
            FROM pipeline_cache
            WHERE contractor_id = $1 AND LOWER(referred_by) = LOWER($2)
            ORDER BY jobber_created_at ASC NULLS LAST`,
@@ -1032,7 +1034,10 @@ router.get('/api/pipeline', pipelineLimiter, async (req, res) => {
               if (conversionBonus !== null) totalBalance += conversionBonus;
               paidCount++;
             }
-            return { id: row.jobber_client_id, name: row.client_name || 'Unknown', status, bonusEarned, payout, conversion_bonus: conversionBonus, pre_start_date: isPreStart };
+            // The note's boolean comes from the SHARED helper here too (N4 commit 9). This is the
+            // branch CLAUDE.md names as "the one that would have been missed" -- it runs only when
+            // the adapter has just failed, so a divergence here would be invisible in practice.
+            return { id: row.jobber_client_id, name: row.client_name || 'Unknown', status, bonusEarned, payout, conversion_bonus: conversionBonus, pre_start_date: isPreStart, stage_regressed: stageRegressedFromRow(row) };
           });
           const maxSyncedAt = cacheResult.rows.reduce(
             (max, row) => (row.last_synced_at && (!max || row.last_synced_at > max) ? row.last_synced_at : max),

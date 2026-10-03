@@ -9,6 +9,7 @@ import { formatBalance, showsBalanceNote, BALANCE_ADJUSTMENT_NOTE } from '../../
 import AnimCard from '../shared/AnimCard';
 import Screen from '../shared/Screen';
 import StatusBadge from '../shared/StatusBadge';
+import StageRegressionNote from '../shared/StageRegressionNote';
 import AvatarCircle from '../shared/AvatarCircle';
 import Skeleton from '../shared/Skeleton';
 import ContractorAboutModal from './ContractorAboutModal';
@@ -785,9 +786,12 @@ export default function Dashboard({ setTab, pipeline, loading, pipelineRateLimit
                       }}>
                         {ref.name.split(" ").map(n => n[0]).join("")}
                       </div>
-                      <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)' }}>
-                        {ref.name}
-                      </p>
+                      <div>
+                        <p style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--rm-text, #1C2D4D)' }}>
+                          {ref.name}
+                        </p>
+                        <StageRegressionNote regressed={ref.stage_regressed} />
+                      </div>
                     </div>
                     <StatusBadge status={ref.status} />
                   </div>

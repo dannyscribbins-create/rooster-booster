@@ -3,6 +3,7 @@ const { pool } = require('../db');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../utils/retryHelpers');
 const { logError } = require('../middleware/errorLogger');
+const { stageRegressedFromRow } = require('../utils/stageHighWater');
 
 // ── TOKEN AUTO-REFRESH ────────────────────────────────────────────────────────
 // force=true bypasses the expires_at freshness check and always exchanges the refresh
@@ -140,7 +141,8 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
 
   // Read from pipeline_cache — case-insensitive match on referred_by
   const cacheResult = await pool.query(
-    `SELECT jobber_client_id, client_name, pipeline_status, pre_start_date, last_synced_at
+    `SELECT jobber_client_id, client_name, pipeline_status, pre_start_date, last_synced_at,
+            stage_high_water
      FROM pipeline_cache
      WHERE contractor_id = $1
        AND LOWER(referred_by) = LOWER($2)
@@ -256,6 +258,11 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
       payout,
       conversion_bonus: conversionBonus,
       pre_start_date:   isPreStart,
+      // ⚠ A BOOLEAN, AND `stage_high_water` ITSELF NEVER LEAVES THE SERVER (N4 commit 9, CD-7's
+      // precedent). The client is told whether to show the note, not given the mark to reason
+      // about — so no client-side code can ever grow a money opinion about it, and the condition
+      // has one implementation rather than one per surface.
+      stage_regressed:  stageRegressedFromRow(row),
     };
   });
 
