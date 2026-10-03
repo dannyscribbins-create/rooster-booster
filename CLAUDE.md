@@ -433,12 +433,53 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2504 server tests across 423 suites, and 1410 React tests across 86 files** (measured 2026-10-03 by the invoice-paid delivery-claim commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2504 · suites 423 · pass 2504 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE DELIVERY-CLAIM COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
-  Server 2499 → 2504 is **+5**, one new file (`invoicePaidDeliveryClaim.test.js`); suites 422 → 423 is
-  that file's single describe. React did not move and was re-measured — **no `src/` file was touched**.
-  **All four predicted before the run and matched.** Counted with an anchored `^\s*it\(` (5); the file's
-  one loop sits in `beforeEach`.
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2508 server tests across 423 suites, and 1410 React tests across 86 files** (measured 2026-10-03 by the N4 commit 8 commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2508 · suites 423 · pass 2508 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE N4 COMMIT 8 COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2504 → 2508 is **+4**, all four APPENDED to `oneStatusDerivation.test.js` (14 → 18), so
+  **suites hold at 423** — the expected shape when a file grows rather than a file arriving. React did
+  not move — **no `src/` file was touched at all** — and was re-measured. **All four predicted before the
+  run and matched, and the gate was green on its first run.** Counted with an anchored `^\s*it\(` (18),
+  and the file's **32** loops were each checked for POSITION rather than counted: all 18 `it(` lines sit
+  at exactly two spaces and **zero** at four or more, so no loop and no nested describe wraps a case.
+  ⚠ **THE COMMIT'S SUBJECT: TWO ALLOW-LISTS REACHED EMPTY AND NOTHING SAID SO.** `EXPIRING_CLASSIFIERS`
+  and `EXPIRING_WRITERS` emptied as commits 3 and 7b retired their entries — and the two cases named
+  *"every expiring entry names the commit that deletes it"* ITERATE those arrays, so **over an empty
+  array they run zero times and assert nothing.** *"The arc is complete"* was a fact about the source
+  that no test could observe. Both are `assert.deepEqual(…, [])` now, which makes it a RATCHET: a future
+  temporary exception cannot be parked in a list nothing checks.
+  ⚠ **THE TWO NAMING CASES ARE KEPT THOUGH THEY NOW ITERATE NOTHING.** The one path that re-opens either
+  list is someone deleting the emptiness assertion on purpose, and the naming requirement must still
+  bite when they do. **A rule removed because it is currently unreachable is a rule nobody re-adds when
+  it becomes reachable again.**
+  ⚠ **AND A JUSTIFICATION STRING'S CLAIM IS NOW CHECKED INSTEAD OF ASSERTED.** `PERMANENT_WRITERS` says
+  of the import `why: 'the SEED write (Danny ruling 6); COALESCEd'` — **and nothing read the SQL.** A
+  case reads `fullJobberImport.js` with comments stripped and requires `COL_STAGE = COALESCE` present and
+  `COL_STAGE = EXCLUDED.COL_STAGE` absent, so "COALESCEd" is a property rather than a promise.
+  ⚠ **DANNY PREDICTED EXACTLY 1 RED FOR HIS NAMED INJECTION AND THE TRUE WIDTH IS 3 — REPORTING 1 WOULD
+  HAVE HIDDEN TWO MECHANISMS.** A new file writing the stage FROM the live classifier trips the caller
+  allow-list, the writer allow-list AND the new only-live-classifier case. Split into halves to show
+  why: **caller-only → 2, writer-only → 1, both → 3.**
+  ⚠ **ONE GUARD-PROOF CAME BACK WIDTH 0 AND THE FLATTERING READING WAS WRONG — WHICH IS THE ENTRY WORTH
+  KEEPING.** Removing `classifyImportedClientStage(client)` from the import loop changed nothing, which
+  reads as *"the CLOSURE case does not cover PERMANENT entries"*. **It does.** The carve-out names the
+  classifier call INSIDE that function and I had removed a caller **OF** it, leaving the span in place —
+  an injection that edits the wrong site, not a fence hole. Re-pointed at the real
+  `return classifyPipelineStatus({` it reds **2**. Found by reading the fence rather than believing the
+  number.
+  ⚠ **AND THAT RAISED A FAIR QUESTION ABOUT MY OWN NEW CASE, SETTLED BY MEASUREMENT RATHER THAN
+  ARGUMENT.** Two injections red it ALONGSIDE a pre-existing case, so on their evidence it could be a
+  duplicate. An eighth injection removes the classifier call **AND** its allow-list entry together — a
+  COHERENT edit, which is exactly what CLOSURE is built to permit, because that is how an entry retires
+  — and it reds **exactly 1, the new case alone.** ⚠ **So the uniquely-caught state is the import's SEED
+  retiring tidily, after which a fresh import writes no stage at all and every other mechanism stays
+  green.** The measurement is in the case's comment instead of the reasoning it was written on.
+  ⚠ **TWO OF THE EIGHT INJECTIONS CREATE A FILE RATHER THAN PATCHING ONE, which is new to this arc** —
+  deleted in the same `finally`, with the directory asserted afterwards to hold no leftover. **A
+  guard-proof that leaves a file behind is a source edit.**
+  ⚠ **NO DATABASE, so nothing joins any reset list** — the suite reads source text only.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE DELIVERY-CLAIM COMMIT ITSELF, BECAUSE IT
+  SHIPS TESTS.* It read **2504 / 423 / 1410 / 86**. Server 2499 → 2504 was **+5**, one new file
+  (`invoicePaidDeliveryClaim.test.js`); suites 422 → 423 was that file's single describe.
   ⚠ **THE INVOICE-PAID DOOR WAS THE ONLY ONE THAT CLAIMED NOTHING, AND THAT IS HOW C1'S LAUNCH-GATE CAME
   TO BE ANSWERED FROM LOGS RATHER THAN FROM THE DATABASE.** `claimWebhookDelivery` had exactly two call
   sites, so `jobber_webhook_events` held **0 rows for `topic ILIKE '%INVOICE%'` across 5,379 events**. A

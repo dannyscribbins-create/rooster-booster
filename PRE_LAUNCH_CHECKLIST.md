@@ -15225,6 +15225,66 @@ source and, where stated, against a read-only production `SELECT` whose text is 
       while processing twice is idempotent by write shape. **Adding it must not be read as making the
       door exactly-once.**
 
+- [x] **N4 COMMIT 8 — THE FULL IMPORT IS AN EXPLICIT SEED, AND THE ONE-STATUS FENCE'S EXPIRING LISTS ARE
+      NOW ASSERTED EMPTY. DONE 2026-10-03 (built, NOT PUSHED). No schema change, no behaviour change —
+      the commit is entirely in the fence.**
+      ⚠ **IT CLOSES A VACUITY RATHER THAN ADDING A RULE, AND THAT IS THE WHOLE SUBSTANCE.** The arc
+      opened with an EXPIRING inventory of live classifiers and stage writers, each naming the commit
+      that would delete it; commits 3 and 7b retired them one at a time and **both lists reached empty
+      some commits ago.** ⚠ **NOTHING ASSERTED THAT.** The two pre-existing cases *"every expiring entry
+      names the commit that deletes it"* iterate those arrays, and **over an empty array a `for` loop
+      runs zero times and asserts nothing** — so *"the arc is complete"* was a fact about the source
+      that no test could observe. `EXPIRING_CLASSIFIERS` and `EXPIRING_WRITERS` are now
+      `assert.deepEqual(…, [])`.
+      ⚠ **AND IT IS A RATCHET, WHICH IS THE POINT.** A future temporary exception can no longer be
+      parked in a list nothing checks: adding one reds the emptiness case, so it must either be argued
+      into the PERMANENT set with a named ruling or the assertion must be deleted openly. Both are
+      decisions someone has to make rather than slide past.
+      ⚠ **THE TWO NAMING CASES ARE KEPT THOUGH THEY NOW ITERATE NOTHING, AND SAYING SO IS DELIBERATE.**
+      The one path that re-opens either list is someone deleting the emptiness assertion on purpose, and
+      when they do the naming requirement must still bite. **A rule removed because it is currently
+      unreachable is a rule nobody re-adds when it becomes reachable again.**
+      ⚠ **EMPTINESS ALONE IS SATISFIED BY A CODEBASE WITH NO CARVE-OUTS AT ALL — including one where the
+      import's classifier had been deleted and the SEED silently stopped happening.** So a paired case
+      asserts the import IS still a live classifier, that every live caller is a NAMED permanent
+      carve-out, and that each carries a reason rather than merely being listed.
+      ⚠ **THE PERMANENT CARVE-OUT'S OWN CLAIM IS NOW CHECKED INSTEAD OF ASSERTED.** `PERMANENT_WRITERS`
+      says of the import `why: 'the SEED write (Danny ruling 6); COALESCEd'` — **and until this commit
+      nothing read the SQL.** A case reads `fullJobberImport.js` with comments stripped and requires
+      `pipeline_stage = COALESCE` present and `pipeline_stage = EXCLUDED.pipeline_stage` absent, so the
+      word "COALESCEd" in a justification string is a property rather than a promise.
+      ⚠ **EIGHT GUARD-PROOFS, widths 2 · 1 · 3 · 1 · 1 · 1 · 2 · 1**, every revert an inverse patch in a
+      `finally` proven byte-identical by sha256; the two file-creating injections are deleted in the same
+      `finally` and the directory is asserted to hold no leftover.
+      ⚠ **DANNY NAMED ONE INJECTION — "a new file writing the stage from the live classifier" — AND
+      PREDICTED EXACTLY 1 RED. THE TRUE WIDTH IS 3, AND REPORTING 1 WOULD HAVE HIDDEN TWO MECHANISMS.**
+      Such a file trips the caller allow-list AND the writer allow-list AND the new only-live-classifier
+      case. It was split into its halves to show why: **caller-only → 2, writer-only → 1, both → 3.**
+      ⚠ **ONE GUARD-PROOF CAME BACK WIDTH 0 AND IT WAS AN INVALID INJECTION, NOT A FENCE HOLE — AND THE
+      FLATTERING READING WAS AVAILABLE.** Removing `classifyImportedClientStage(client)` from the import
+      loop changed nothing, which reads as *"the closure case does not cover PERMANENT entries"*. It
+      does. **The carve-out names the classifier call INSIDE that function; I had removed a caller OF
+      it**, leaving the span in place. Re-pointed at the real `return classifyPipelineStatus({` it reds
+      **2**. Found by reading the fence rather than believing the number.
+      ⚠ **AND THAT EXPOSED A REAL QUESTION ABOUT MY OWN NEW CASE: TWO INJECTIONS RED IT ALONGSIDE A
+      PRE-EXISTING ONE, SO ON THEIR EVIDENCE IT COULD BE A DUPLICATE.** An eighth injection settles it —
+      remove the classifier call **AND** its allow-list entry together, which is a COHERENT edit and
+      exactly what CLOSURE is built to permit, because that is how an entry retires. It reds **exactly 1,
+      the new case alone.** ⚠ **So the uniquely-caught state is the import's SEED retiring tidily, after
+      which a fresh import writes no stage at all and every other mechanism stays green.** The
+      measurement is recorded in the case's comment instead of the reasoning it was written on.
+      ⚠ **NO DATABASE, so nothing joins any reset list** — the suite reads source text only.
+      ⚠ **THE GATE: `tests 2508 · suites 423 · pass 2508 · fail 0 · cancelled 0 · skipped 0 · todo 0`,
+      React 1410 across 86 files, `EXIT=0` read from the log's own line. Green on the FIRST run.**
+      Server +4 is four cases APPENDED to an existing file (14 → 18), so suites hold — the expected shape
+      when a file grows rather than a file arriving.
+      ⚠ **CITATION ROT CAUSED, MEASURED AND NOT REPAIRED — 12 `LIKELY ROTTED`**, every one from the +41
+      lines this commit inserts into `CLAUDE.md`'s tripwire block (8 `PRE_LAUNCH_CHECKLIST.md` · 2
+      `CDL_3c_PHASE05_RULINGS.md` · 1 each `CLAUDE.md` and `docs/GROUND_TRUTH_2026-08-21.md`). ⚠ **The
+      `GROUND_TRUTH` one must NOT be shifted** — a dated snapshot that quotes verbatim what it cites. Not
+      repaired by adding the delta, per the rule. `tablecheck` BROKEN 0; `citecheck --role-only` holds at
+      **844**, unchanged from the delivery-claim commit, so this commit added no line citations.
+
 - [ ] ⚠ **RULED 2026-10-01 (Danny, ruling 4) — THE BACKUP DECISION IS DANNY'S, NOT CLAUDE'S.** Before
       any push that changes the database **SCHEMA** (DDL), **ask Danny to click Run Backup Now and wait
       for his confirmation.** The sharpened rule is resident in `CLAUDE.md` under *Deployment* — it

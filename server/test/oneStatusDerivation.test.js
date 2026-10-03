@@ -414,7 +414,67 @@ describe('N4 commit 1 — the classifier has one sanctioned caller', () => {
     );
   });
 
+  it('N4 COMMIT 8 — THE EXPIRING CLASSIFIER LIST IS EMPTY: every temporary exception has retired', () => {
+    // ⚠ THIS IS N4 COMMIT 8's SUBSTANCE, AND IT CLOSES A VACUITY RATHER THAN ADDING A RULE. The arc
+    // opened with an EXPIRING inventory — live classifiers awaiting conversion, each naming the commit
+    // that would delete it. Commits 3 and 7b retired them one at a time, and the list reached empty.
+    // ⚠ BUT NOTHING ASSERTED THAT. The case below iterates `EXPIRING_CLASSIFIERS`, and over an EMPTY
+    // array a `for` loop runs ZERO times and asserts nothing at all — so "the arc is complete" was a
+    // fact about the source that no test could observe, which is precisely the shape CLAUDE.md records
+    // as making a green run meaningless.
+    // ⚠ AND IT IS A RATCHET, WHICH IS THE POINT. With this assertion in place, a future temporary
+    // exception cannot be parked here quietly: adding one reds this case, so it must either be argued
+    // into PERMANENT_CLASSIFIERS with a named ruling, or this assertion must be deleted deliberately
+    // and visibly. Both are decisions someone has to make rather than slide past.
+    assert.deepEqual(
+      EXPIRING_CLASSIFIERS, [],
+      'every temporary live-classifier exception has retired (ruling 6). A new entry here is a '
+      + 'decision: argue it into PERMANENT_CLASSIFIERS with its ruling, or delete this assertion '
+      + 'openly — do not park an exception in a list nothing checks.'
+    );
+  });
+
+  it('N4 COMMIT 8 — the import is the ONLY live classifier left, and it is carved out BY RULING', () => {
+    // ⚠ WITHOUT THIS, THE EMPTINESS ASSERTION ABOVE IS SATISFIED BY A CODEBASE WITH NO CARVE-OUTS AT
+    // ALL — including one where the import's classifier had been deleted and the SEED silently stopped
+    // happening. The pair is what makes "the arc finished" mean "finished in the intended shape".
+    // ⚠ AND THAT IS MEASURED RATHER THAN ARGUED, BECAUSE TWO INJECTIONS RED THIS CASE ALONGSIDE A
+    // PRE-EXISTING ONE AND ON THEIR EVIDENCE ALONE IT COULD BE A DUPLICATE. Removing the classifier
+    // call ALONE reds this and CLOSURE (2). Adding a new live caller reds this and the caller fence (2).
+    // ⚠ BUT REMOVING THE CALL **AND** ITS ALLOW-LIST ENTRY TOGETHER REDS THIS CASE AND NOTHING ELSE —
+    // exactly 1 — because that is a COHERENT edit, and CLOSURE is deliberately built to permit it: it
+    // is how an entry retires. So the uniquely-caught state is the import's SEED retiring tidily, after
+    // which a fresh import writes no stage at all and every other mechanism stays green.
+    const counts = countByKey(callSites(FN_CLASSIFY));
+    const liveCallers = [...counts.keys()].filter((k) => k !== SANCTIONED_CALLER);
+    const IMPORT_SEED = 'server/jobs/fullJobberImport.js :: function classifyImportedClientStage';
+
+    assert.ok(
+      liveCallers.includes(IMPORT_SEED),
+      `the import's SEED classifier must still exist — ruling 6 is what permits it, and if it is gone `
+      + `the carve-out is excusing nothing. Live callers: ${liveCallers.join(' | ')}`
+    );
+    for (const k of liveCallers) {
+      assert.ok(
+        PERMANENT_CLASSIFIERS.some((e) => e.key === k),
+        `${k} calls the live classifier and is not a NAMED permanent carve-out`
+      );
+    }
+    // And every permanent entry carries a ruling rather than a convenience.
+    for (const entry of PERMANENT_CLASSIFIERS) {
+      assert.ok(
+        entry.why && entry.why.length > 40,
+        `${entry.key} must carry its reason, not merely be listed`
+      );
+    }
+  });
+
   it('every expiring entry names the commit that deletes it', () => {
+    // ⚠ DELIBERATELY KEPT THOUGH IT NOW ITERATES NOTHING, AND SAYING SO IS THE POINT. The emptiness
+    // assertion above means this loop runs zero times today — so on its own it asserts nothing. It
+    // stays because the one path that re-opens the list is someone deleting that assertion on purpose,
+    // and when they do, the naming requirement must still bite. **A rule removed because it is
+    // currently unreachable is a rule nobody re-adds when it becomes reachable again.**
     for (const entry of EXPIRING_CLASSIFIERS) {
       assert.match(
         entry.removedBy, /N4 commit \d/,
@@ -488,7 +548,53 @@ describe('N4 commit 1 — every writer of a displayed status is accounted for', 
     assert.deepEqual(stale, [], 'writer allow-list has drifted:\n  ' + stale.join('\n  '));
   });
 
+  it('N4 COMMIT 8 — THE EXPIRING WRITER LIST IS EMPTY: every temporary exception has retired', () => {
+    // ⚠ THE WRITER HALF OF COMMIT 8, AND THE SAME VACUITY. `EXPIRING_WRITERS` reached empty as commits
+    // 3 and 7b converted each door to capture-then-decide, and the case below iterates it — over an
+    // empty array, asserting nothing. This makes the arc's completion checkable and turns the list into
+    // a ratchet: a new temporary writer cannot be parked here without someone deciding to.
+    assert.deepEqual(
+      EXPIRING_WRITERS, [],
+      'every temporary stage-writer exception has retired. A new entry here is a decision: argue it '
+      + 'into SANCTIONED_WRITERS (it captures facts and decides from them) or PERMANENT_WRITERS (with '
+      + 'its ruling), or delete this assertion openly.'
+    );
+  });
+
+  it('N4 COMMIT 8 — the import\'s SEED write is COALESCEd, so it cannot regress a stored stage', () => {
+    // ⚠ THIS TURNS A CLAIM IN A STRING INTO A CHECKED PROPERTY, WHICH IS THE WHOLE REASON IT IS HERE.
+    // `PERMANENT_WRITERS` carries `why: 'the SEED write (Danny ruling 6); COALESCEd'` — and until now
+    // "COALESCEd" was a word in a comment. **A `why` string is documentation, not a fence**, and the
+    // property it names is the entire basis of the carve-out: the import may classify from a LIVE,
+    // incomplete client only because its write can never lower a stage something better already
+    // decided. A bare `EXCLUDED.pipeline_stage` would make it an overwriter, and ruling 6 would no
+    // longer apply to it.
+    // ⚠ READ FROM SOURCE WITH COMMENTS STRIPPED, so the comment that explains the COALESCE cannot be
+    // what satisfies the assertion — this file's own `\bFROM\b`-in-a-SQL-comment defect is the same
+    // mechanism with the sign flipped.
+    const raw = fs.readFileSync(path.join(SERVER_ROOT, 'jobs', 'fullJobberImport.js'), 'utf8');
+    const src = raw
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+      .replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+
+    // ⚠ NON-VACUITY FLOOR: the statement this reads must still be there. A fence over a write that has
+    // moved passes by finding nothing, which is how a moved target goes unnoticed.
+    assert.ok(
+      new RegExp(COL_STAGE + '\\s*=\\s*COALESCE').test(src),
+      `the import's ON CONFLICT branch must write ${COL_STAGE} through COALESCE — a SEED fills a gap, `
+      + 'it does not overwrite. Ruling 6 permits a live classify ONLY because of this.'
+    );
+    // And the dangerous form is absent: a bare EXCLUDED assignment would make it an overwriter.
+    assert.ok(
+      !new RegExp(COL_STAGE + '\\s*=\\s*EXCLUDED\\.' + COL_STAGE).test(src),
+      `the import must not assign ${COL_STAGE} straight from EXCLUDED — that is an overwrite, not a seed`
+    );
+  });
+
   it('every expiring writer names the commit that deletes it', () => {
+    // ⚠ KEPT THOUGH IT NOW ITERATES NOTHING, for the same reason as its classifier twin: the only way
+    // the list re-opens is someone deleting the emptiness assertion deliberately, and the naming rule
+    // must still bite when they do.
     for (const entry of EXPIRING_WRITERS) {
       assert.match(entry.removedBy, /N4 commit \d/, `${entry.key} must name its removing commit`);
     }
