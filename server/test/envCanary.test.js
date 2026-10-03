@@ -11,6 +11,20 @@
 // defect being fenced is one that appears in exactly those files. A canary that loaded the test
 // harness first would be testing the harness, not the guarantee.
 //
+// ⚠ AMENDED 2026-10-03: `setup.js` IS NOW LOADED FOR THIS FILE, BY THE RUNNER, AND THE SENTENCE ABOVE
+// IS KEPT BECAUSE IT IS STILL TRUE OF WHAT THIS FILE DOES — it still does not require `./setup`. What
+// changed is that `npm run test:server` preloads it via `--require`, so "never require it" no longer
+// implies "runs without it". **Read the paragraph above as a statement about this file, not about the
+// environment it runs in.**
+// ⚠ AND THE CASES BELOW STILL MEASURE WHAT THEY CLAIM, CHECKED RATHER THAN ASSUMED. The leak case
+// compares each exclusive name's VALUE against the real `.env`, and `setup.js` sets its own test
+// values — so its pins read as pins, not as leaks, which is exactly why the name-only version of this
+// assertion had to become a value comparison. The *"recognised WITHOUT NODE_ENV"* case asserts
+// `isTestProcess()` and the presence of `NODE_TEST_CONTEXT`; it never asserted `NODE_ENV` was unset,
+// so the preload setting it changes nothing there. ⚠ **Its NAME is now a poor description of its
+// environment though, and that is said rather than left to mislead**: the runner's signal is what it
+// pins, and `NODE_ENV` happens also to be present now.
+//
 // ⚠ AND IT IS IN TWO HALVES BECAUSE THE OBVIOUS ONE GOES VACUOUS OFF THIS MACHINE.
 //   · The REAL-`.env` half can only run where that file exists. On CI, on a fresh clone, or in the
 //     deployed container there is no `.env` at all — so on its own this canary would pass by having

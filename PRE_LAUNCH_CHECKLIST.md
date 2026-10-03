@@ -3408,7 +3408,8 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       unloadable suites — a commit that cannot reproduce its own green. `loadEnv()` substitutes
       deliberately-unusable values (the Resend stub does not begin `re_`) **only where a variable is unset**,
       so `setup.js`'s pins, the shell and Railway all still win, and the 7d-0 interlock is untouched.
-- [ ] **The 7d-0 Resend interlock is unreachable for the 17 suites that never require `./setup`.**
+- [x] **The 7d-0 Resend interlock is unreachable for the 17 suites that never require `./setup`.**
+      ⚠ **CLOSED 2026-10-03 — see the closure note at the end of this entry. The count was 18, not 17.**
       The interlock's three guards live in `server/test/setup.js`, so a suite that does not require it gets
       **none of them**. Before 2026-10-03 those suites held the **real** Resend key; they now hold an
       unusable stub, so an accidental send is refused by the provider instead of delivered — **a strictly
@@ -3416,12 +3417,65 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       what makes the TEST FAIL.** Those are different questions, and a refused send that nothing asserts on
       still passes. Fix: install the interlock from somewhere every test process reaches regardless of
       require order — the same argument that moved the env decision out of `setup.js`.
-- [ ] **`server/scripts/seedTestTeamMember.js` loads PRODUCTION credentials when run by hand.**
+      ⚠ **CLOSED: `npm run test:server` now carries `--require ./server/test/setup.js`.** Node's test runner
+      passes its own `execArgv` to the child it spawns per FILE, so the preload reaches every suite before the
+      suite's first line — **verified empirically before the change was written, not inferred from the docs.**
+      `server/test/runnerPreload.test.js` is the proof: it never requires `./setup`, and it asserts an unstubbed
+      Resend send is REFUSED, that `setup.js` sits in `require.cache` anyway, and that the `.env` guard ran.
+      Removing the preload reds **5 of its 6** cases.
+      ⚠ **THE COUNT IN THIS ENTRY'S TITLE WAS WRONG AND IS LEFT AS WRITTEN: 18, not 17.** The figure came from
+      `loadEnv.js` and omitted `envCanary.test.js`, which had just been added by the same commit. **A count
+      taken before a commit's own new file is a count of the tree that no longer exists.**
+      ⚠ **AND IT WAS NOT INERT — ONE CASE WENT RED, WHICH IS THE ENTRY WORTH KEEPING.** `paletteTokens.test.js`
+      shells out to a real **production** Vite build and asserts a DEV-only harness marker is eliminated. It
+      passed the parent's environment through, so it depended on `NODE_ENV` being UNSET; once `setup.js` set
+      `NODE_ENV=test` for every suite, Vite stopped treating the build as production, the guard was not folded
+      away, and the marker SHIPPED. **The production code was right; the test was reading a bundle it had
+      accidentally asked for in the wrong mode.** The build now pins `NODE_ENV=production` itself.
+      ⚠ **WHAT THIS DOES NOT LICENSE:** `loadEnv()`'s signals stay OR-ed. A flag in a package script can be
+      dropped in one edit, and `node --test <file>` carries no preload at all — **the preload is defence in
+      depth over that guard, never a replacement for it.**
+- [x] **`server/scripts/seedTestTeamMember.js` loads PRODUCTION credentials when run by hand.**
       Pre-existing and **unchanged** by the 2026-10-03 root fix, which is why it is filed rather than
       quietly altered. Run from a terminal it carries no test signal, so `loadEnv()` correctly gives it the
       real `.env` — and a script whose name says *test* then points at the production database. The other
       four operator scripts in that folder are meant to, so this is not a blanket problem. Decide whether
       this one should refuse to run without an explicit `--prod` flag.
+      ⚠ **CLOSED 2026-10-03, AND THE DECISION WENT THE OTHER WAY: IT REFUSES A NON-LOCAL DATABASE OUTRIGHT
+      RATHER THAN TAKING A `--prod` FLAG.** A flag that permits production is a flag someone passes; this
+      script seeds a TEST fixture with a known PIN and has no legitimate production use at all, so the
+      honest guard is a refusal with no override. `server/utils/requireLocalDatabase.js` carries it, mirroring
+      `setup.js`'s localhost check, and it parses the URL rather than substring-matching — a remote host can
+      CONTAIN the word localhost, and an unparseable value is treated as NOT local, so it fails closed.
+      ⚠ **THE GUARD IS THE FIRST STATEMENT OF `run()`, AND ITS FIRST WRITING HAD IT LAST — CAUGHT BY A TEST.**
+      Placed above the pool but BELOW the `TEST_MEMBER_*` validation, it was reachable only by an operator who
+      had already supplied an email and a password — **precisely the operator able to do the damage** — and a
+      remote URL was refused for the wrong reason. A source case now pins the ordering.
+      ⚠ **THE FULL INVENTORY, CHECKED RATHER THAN ASSERTED, and three scripts are deliberately NOT gated.**
+      Every file outside `server/test/` that opens a pool or client: `scripts/seedLocalStack.js` (**already
+      had this guard**, explicitly modelled on `setup.js`), `server/db.js`, `server/scripts/seedTestTeamMember.js`
+      (**now gated**) and `server/utils/backup.js` (the production backup; writes nothing to the database).
+      `captureReferredClients.js`, `recaptureClients.js` and `redecideStaleClients.js` write to the live
+      database **on purpose** — a localhost gate would not make them safer, it would make them useless — and
+      each already refuses without an explicit contractor id, which is the opt-in that fits a production tool.
+      `previewRebuild.js` is read-only. ⚠ **Reading "every hand-run script that writes to a database" as "all
+      of them" would have disabled three working operator tools under a commit message about safety**, so a
+      named case pins their EXCLUSION and a future consistency pass has to argue with it.
+      ⚠ **TWO OTHER COPIES OF THE CHECK ARE LEFT ALONE DELIBERATELY:** `setup.js`'s must run before anything
+      else loads and the suite depends on its message, and `seedLocalStack.js`'s already works. Rewriting
+      either to route through the shared helper risks a live interlock for a tidiness gain. Consolidating the
+      three is filed as its own job.
+- [ ] **Three copies of the localhost database check — consolidate, or decide not to.**
+      `server/test/setup.js`, `scripts/seedLocalStack.js` and `server/utils/requireLocalDatabase.js` each spell
+      the same rule: the host must be `localhost` or `127.0.0.1`. The third was added 2026-10-03 and the other
+      two were deliberately left alone — `setup.js`'s must run before anything else loads and the suite asserts
+      on its message, and `seedLocalStack.js`'s already works and is tested. ⚠ **The honest reason is risk, not
+      principle:** CLAUDE.md requires duplicated logic to be extracted, and this is three copies of a
+      money-adjacent safety check. ⚠ **AND THEY ARE NOT IDENTICAL, WHICH IS THE ARGUMENT FOR DOING IT:** only
+      the new one PARSES the URL — `seedLocalStack.js` and `setup.js` compare a parsed hostname too, but a
+      future fourth copy written from either will not necessarily, and a substring form admits
+      `localhost.db.example.com`. Decide: one helper used by all three, or a named case asserting the three
+      agree. **Not a drive-by — touching `setup.js`'s load-time interlock is its own commit.**
 - [ ] **The MVP comment above both `CLIENT_*` handlers was INVERTED, not merely stale.**
       It claimed the webhook payload *"may not include full nested quotes/jobs/invoices data"*
       when in fact it includes **no client object at all**. **A wrong comment defending a wrong

@@ -5,6 +5,7 @@
 // the shared loader, which picks `.env.test` for a test process and the real file otherwise.
 const { loadEnv } = require('../utils/loadEnv');
 loadEnv();
+const { assertLocalDatabase } = require('../utils/requireLocalDatabase');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 
@@ -26,6 +27,15 @@ const PERMISSIONS = {
 const CONTRACTOR_ID = 'accent-roofing-dev';
 
 async function run() {
+  // ⚠ THE FIRST STATEMENT, BEFORE ANY INPUT VALIDATION AND BEFORE THE POOL — AND ITS FIRST WRITING
+  // HAD IT LAST, WHICH A TEST CAUGHT. Placed after the `TEST_MEMBER_*` checks it was reachable only
+  // by an operator who had already supplied an email and a password — which is precisely the
+  // operator capable of seeding a test fixture into production. **The most consequential refusal
+  // must not sit behind the least consequential one.** This script takes no argument naming an
+  // environment, so run by hand it loads the real `.env`, which points at PRODUCTION. The reason is
+  // in `server/utils/requireLocalDatabase.js`; it throws, and the throw is deliberately not caught.
+  assertLocalDatabase(process.env.DATABASE_URL, 'server/scripts/seedTestTeamMember.js');
+
   const email    = process.env.TEST_MEMBER_EMAIL;
   const password = process.env.TEST_MEMBER_PASSWORD;
 

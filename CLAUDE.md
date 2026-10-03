@@ -433,8 +433,103 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2580 server tests across 436 suites, and 1434 React tests across 88 files** (measured 2026-10-03 by the TEST-ENVIRONMENT ROOT FIX commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2580 · suites 436 · pass 2580 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE TEST-ENVIRONMENT ROOT FIX COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2596 server tests across 442 suites, and 1434 React tests across 88 files** (measured 2026-10-03 by the RUNNER-PRELOAD commit, by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2596 · suites 442 · pass 2596 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE RUNNER-PRELOAD COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2580 → 2596 is **+16 = 6 + 10**: six in `runnerPreload.test.js` and ten in
+  `localDatabaseGuard.test.js`; suites 436 → 442 is those two files' **three** top-level describes
+  each. React did not move — **no `src/` file was touched at all** — and was re-measured. **All four
+  predicted before the run and matched, and the gate was green on its first run.** Counted with an
+  anchored `^\s*it\(` (6 and 10), every `it(` line at exactly two spaces and **zero** at four or
+  more; all four loops sit inside `it()` bodies. **No edit landed during the run** — verified by
+  mtime against the log's creation time, not assumed.
+  ⚠ **THE COMMIT'S SUBJECT: NO SUITE CAN SKIP THE SAFETY INTERLOCKS, BECAUSE THE RUNNER LOADS THEM.**
+  `npm run test:server` now carries `--require ./server/test/setup.js`. Node's test runner passes its
+  own `execArgv` to the child it spawns per FILE, so the preload reaches every suite before its first
+  line — **verified empirically with a throwaway preload and probe before the change was written**,
+  not inferred from the docs. `runnerPreload.test.js` is the proof and it works only because it never
+  requires `./setup`: a case asserting "the interlock is active" from a file that had just required
+  `setup.js` would prove that requiring `setup.js` installs the interlock, which nobody doubted.
+  ⚠ **AND THE PRELOAD WAS NOT INERT — IT BROKE EXACTLY ONE CASE, MEASURED BEFORE A LINE WAS WRITTEN,
+  AND THAT CASE IS THE ENTRY WORTH KEEPING.** A dry run with the flag reported `fail 1` against
+  2580/436. `paletteTokens.test.js` shells out to a real **production** Vite build and asserts a
+  DEV-only harness marker is eliminated — and it passed the parent's environment straight through, so
+  it depended on `NODE_ENV` being **UNSET**. `setup.js` sets `NODE_ENV=test` from `.env.test`, Vite
+  therefore stopped treating the build as production, `import.meta.env.DEV` stayed true, the branch
+  was not folded away, and the marker SHIPPED. **The production code was right; the test was reading a
+  bundle it had accidentally asked for in the wrong mode.** The build now pins `NODE_ENV=production`
+  itself, which is what a test whose subject is a production bundle should always have done.
+  ⚠ **THE DRY RUN IS THE MECHANISM, NOT CARE.** Running the whole suite WITH the flag before writing
+  anything is what turned "this should be inert" into a measurement. A one-case failure in a 2580-case
+  suite is exactly the size of thing that gets attributed to a flake if it surfaces later.
+  ⚠ **AND IT INVERTS TWO CLAIMS IN THE COMMIT BEFORE IT, CORRECTED IN PLACE WITH THE OLD WORDING
+  QUOTED.** `loadEnv.js` and `envCanary.test.js` both rest on *"17 files never require `./setup`"* —
+  the measured premise for OR-ing the test signals. `NODE_ENV` is now set for every suite, so that
+  premise no longer describes the running state. ⚠ **THE INFERENCE TO REFUSE IS THE TEMPTING ONE:**
+  *"NODE_ENV is reliable now, so key on it alone."* A flag in a package script can be dropped in one
+  edit, `node --test <file>` carries no preload at all, and a credential guard whose correctness
+  depends on a belt elsewhere is not a guard. **The preload is defence in depth over that check,
+  never a replacement for it** — and proof (1) shows the two are independent.
+  ⚠ **THE COUNT IN THAT PREMISE WAS ALSO WRONG AND IS CORRECTED RATHER THAN RENUMBERED: 18, NOT 17.**
+  It omitted `envCanary.test.js`, which the same commit had just added. **A count taken before a
+  commit's own new file is a count of a tree that no longer exists.**
+  ⚠ **THE SECOND HALF: A HAND-RUN SEEDER REFUSES A REMOTE DATABASE, AND THE DECISION WENT AGAINST THE
+  FILED SUGGESTION.** The checklist proposed a `--prod` flag; a flag that permits production is a flag
+  someone passes, and `seedTestTeamMember.js` seeds a TEST fixture with a known PIN and has no
+  legitimate production use — so `server/utils/requireLocalDatabase.js` refuses outright, with no
+  override. It **parses** the URL rather than substring-matching, because a remote host can CONTAIN
+  the word localhost, and an unparseable value is treated as NOT local so it fails closed.
+  ⚠ **AND ITS FIRST WRITING PUT THE GUARD LAST, WHICH A TEST CAUGHT.** Placed above the pool but
+  BELOW the `TEST_MEMBER_*` validation, a remote URL was refused for the WRONG REASON and the guard
+  was reachable only by an operator who had already supplied an email and a password — **precisely the
+  operator able to do the damage.** It is the first statement of `run()` now, and a source case pins
+  the ordering so the fix is a ratchet rather than a one-time correction.
+  ⚠ **THREE SCRIPTS ARE DELIBERATELY NOT GATED, AND A NAMED CASE PINS THEIR EXCLUSION.**
+  `captureReferredClients.js`, `recaptureClients.js` and `redecideStaleClients.js` write to the live
+  database **on purpose**; a localhost gate would not make them safer, it would make them useless, and
+  each already refuses without an explicit contractor id — the opt-in that fits a production tool.
+  ⚠ **Reading *"every hand-run script that writes to a database"* as *"all of them"* would have
+  disabled three working operator tools under a commit message about safety.** The distinction is what
+  a script is FOR, not whether it writes. The full inventory was enumerated from `new Pool(`/
+  `new Client(` rather than from memory: `seedLocalStack.js` **already had** this guard,
+  `backup.js` writes nothing to the database, and `previewRebuild.js` is read-only.
+  ⚠ **EIGHT GUARD-PROOFS, EVERY WIDTH PREDICTED AND MATCHED ON THE SECOND SET**, every revert an
+  inverse patch in a `finally` proven byte-identical by sha256 across six watched files, anchors
+  unique in BOTH directions, empty-string replacements refused, every injection confirmed landed.
+  (1) the runner-level load removed — Danny's named proof → **5**; (2) the proof suite requires
+  `./setup`, making its own central case a tautology → **exactly 1**; (3) the guard substring-matches
+  instead of parsing → **2**; (4) it fails OPEN on an unparseable value → **exactly 1**; (5) two-part,
+  the seeder's guard moved back to its pre-fix position → **2**; (6) the seeder stops calling the
+  guard → **3**; (7) the refusal message leaks the whole connection string → **exactly 1**; (8) a
+  PRODUCTION operator tool is "helpfully" given the local-only guard → **exactly 1**.
+  ⚠ **(1) LEAVES NO DELIVERABLE PATH, AND THAT IS ONLY TRUE BECAUSE OF THE COMMIT BEFORE IT.** With
+  the preload gone nothing pins `RESEND_API_KEY`, so the Resend **constructor** throws
+  *"Missing API key"* before any send is attempted — confirmed in the harness output. **Before the
+  test-env root fix the same guard-proof would have held a live key and the send would have gone
+  out.**
+  ⚠ **(5) PREDICTED 2 AND MEASURED 1 ON ITS FIRST WRITING, AND THE PREDICTION WAS WRONG RATHER THAN
+  THE FENCE.** The injection moved the guard only below the `email` ASSIGNMENT — still above the
+  `if (!email…)` branch — so it still fired first and only the ordering case reddened. **An injection
+  that lands short of the real defect measures something narrower than it claims**, and reporting 1 as
+  the width of "the pre-fix ordering" would have understated it. Rewritten as a genuine two-part MOVE
+  it reds 2; collapsing it to a single removal would have made it a duplicate of (6).
+  ⚠ **AND THE HARNESS LEFT A FILE INJECTED ON ITS FIRST RUN, FOR THE OVERLAPPING-ANCHOR REASON THIS
+  FILE ALREADY RECORDS FROM `db.js` — IN THE SESSION THAT HAD QUOTED IT.** Proof (2) PREPENDS a line,
+  so its replacement is a superset of its own anchor and `count(old) == 0` is the wrong landed-check.
+  It raised — correctly — **from inside `patch()`, after writing, before the caller had a path to
+  revert**, so the `finally` had nothing to undo. Two fixes: the landed-check requires the anchor's
+  absence only when the replacement does not contain it, and **the path is computed BEFORE `patch()`
+  runs**, because a revert that depends on the injector succeeding is not a revert.
+  ⚠ **TWO OF MY OWN NEW CASES WERE WRONG AND BOTH WERE FOUND BY RUNNING THEM, NOT BY READING.**
+  (a) The interlock replaces `send` with an **async** function, so a refusal arrives as a REJECTED
+  PROMISE; a synchronous `try/catch` caught nothing and the case reported *"the interlock is not
+  installed"* against a perfectly installed interlock, with the rejection surfacing separately as
+  *"asynchronous activity after the test ended"*. **A guard that rejects and a guard that is absent
+  look identical to a sync catch.** (b) The anti-defeat case's own non-vacuity fixture was the
+  forbidden call spelled out as a string literal — which survives comment-stripping, because a string
+  is code — so the fence flagged **this very file**. Assembled from concatenated pieces now.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE TEST-ENVIRONMENT ROOT FIX COMMIT ITSELF,
+  BECAUSE IT SHIPS TESTS.* It read **2580 / 436 / 1434 / 88**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE TEST-ENVIRONMENT ROOT FIX COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2567 → 2580 is **+13**, one new file (`envCanary.test.js`); suites 432 → 436 is that file's
   **four** top-level describes. React did not move — **no `src/` file was touched at all** — and was
   re-measured. **All four predicted before the run and matched.** Counted with an anchored `^\s*it\(`

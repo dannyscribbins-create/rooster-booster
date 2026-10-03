@@ -50,7 +50,7 @@
     "build": "vite build",
     "lint": "eslint src",
     "test": "npm run lint && npm run test:server && npm run test:react",
-    "test:server": "node --test --test-concurrency=1 server/test/*.test.js",
+    "test:server": "node --test --test-concurrency=1 --require ./server/test/setup.js server/test/*.test.js",
     "test:react": "vitest run",
     "test:react:watch": "vitest",
     "sizing": "node scripts/sizing.js",

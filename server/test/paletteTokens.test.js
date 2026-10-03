@@ -342,7 +342,23 @@ describe('Palette-1 T5b — the harness route is ABSENT from a production build'
     // in a production build and Rollup folds the branch away, so the correct
     // observation is of the emitted asset.
     const repo = path.resolve(__dirname, '..', '..');
-    execFileSync('npm', ['run', 'build'], { cwd: repo, stdio: 'pipe', shell: true, timeout: 180000 });
+    // ⚠ `NODE_ENV` IS PINNED FOR THE BUILD RATHER THAN INHERITED, AND THIS CASE FOUND OUT WHY BY
+    // FAILING. It used to pass the parent's environment straight through, so the assertion depended
+    // on `NODE_ENV` happening to be UNSET in whoever ran the suite. The moment `setup.js` began
+    // loading for every test file (it sets `NODE_ENV=test` from `.env.test`), Vite stopped treating
+    // the build as production — `import.meta.env.DEV` stayed true, the guard was not folded away,
+    // and the harness marker SHIPPED. **The code was correct; the test was reading a bundle it had
+    // accidentally asked for in the wrong mode.**
+    // ⚠ A TEST WHOSE SUBJECT IS A *PRODUCTION* BUNDLE MUST SPECIFY PRODUCTION. Inheriting it meant
+    // the one variable that decides the answer was supplied by the environment, which is the
+    // *"assert at the boundary that actually supplies the value"* rule pointed at a build flag.
+    execFileSync('npm', ['run', 'build'], {
+      cwd: repo,
+      stdio: 'pipe',
+      shell: true,
+      timeout: 180000,
+      env: { ...process.env, NODE_ENV: 'production' },
+    });
 
     const assetsDir = path.join(repo, 'dist', 'assets');
     const files = fs.readdirSync(assetsDir).filter((f) => f.endsWith('.js'));

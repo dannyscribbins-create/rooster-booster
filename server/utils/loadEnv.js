@@ -35,6 +35,19 @@
 // `./setup` at all**, and Node's runner gives each FILE its own process — so for those files a
 // NODE_ENV-keyed guard would be absent exactly when it was needed, and silently.
 //
+// ⚠ AMENDED 2026-10-03, AND THE AMENDMENT MUST NOT BE READ AS RETIRING THE REASON. The test script
+// now carries `--require ./server/test/setup.js`, so `setup.js` loads for every suite and `NODE_ENV`
+// IS set everywhere — the measured premise above ("17 files never require it", and the count is
+// really **18** once `envCanary.test.js` is included) no longer describes the running state.
+// ⚠ **THE SIGNALS STAY OR-ED ANYWAY, AND THIS IS THE INFERENCE TO REFUSE.** *"NODE_ENV is reliable
+// now, so key on it alone"* is wrong for three reasons that have nothing to do with the count: a flag
+// in a package script can be dropped by anyone in one edit; a suite run directly as
+// `node --test <file>` carries no preload at all, which is how a developer runs one file; and a
+// credential guard whose correctness depends on a belt somewhere else is not a guard. **The preload
+// is defence in depth over this check, never a replacement for it** — and the proof that the two are
+// independent is `server/test/runnerPreload.test.js`, which goes red when the preload is removed
+// while this function keeps working.
+//
 // ⚠ `NODE_TEST_CONTEXT` IS SET BY THE RUNNER ITSELF, BEFORE ANY REPO FILE IS LOADED. Measured under
 // the real script: `"child-v8"`, with `NODE_ENV` undefined beside it. It cannot depend on require
 // order, cannot be forgotten by a new suite, and does not need a `cross-env` someone might drop.
