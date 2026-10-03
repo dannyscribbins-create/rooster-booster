@@ -21,7 +21,7 @@ const { isEmailSuppressed } = require('../utils/emailSuppression');
 const { executeStripeTransfer } = require('../utils/stripeTransfer');
 const { getCashoutBalance } = require('../utils/cashoutBalance');
 const { stageRegressedFromRow } = require('../utils/stageHighWater');
-const { verifyReferrerSession, verifyAnySession } = require('../middleware/auth');
+const { verifyReferrerSession, verifyAnySession, resolveSessionContractor } = require('../middleware/auth');
 const { applyTag } = require('../utils/tags');
 const { runContactMatchingPass } = require('../jobs/contactMatchingPass');
 // recordScanEvent is NOT imported here any more — the only caller was the landing
@@ -98,24 +98,63 @@ const missingReferralLimiter = rateLimit({
   message: { error: 'Too many missing referral reports. Please try again tomorrow.' }
 });
 
+// ⚠ THE ROUTE STAYS UNAUTHENTICATED, BY DESIGN — A CRASHED APP MUST STILL BE ABLE TO REPORT.
+// Cleanup C (Danny's ruling 1, 2026-10-03) changes three things about what gets STORED and nothing
+// about who may post:
+//   · a boundary catch is classified CRITICAL for TRIAGE, regardless of route;
+//   · the componentStack is kept instead of discarded;
+//   · the session's contractor is read when a session exists, falling back as before when none.
+const CLIENT_STACK_BUDGET = 3500;
+const COMPONENT_STACK_BUDGET = 1400;
+
 router.post('/api/log-client-error', clientErrorLimiter, async (req, res) => {
   try {
-    const { error_message, stack_trace, route, component } = req.body
+    const { error_message, stack_trace, route, component, component_stack, fatal } = req.body
 
     if (!error_message) {
       return res.status(400).json({ error: 'error_message is required' })
     }
 
+    // ⚠ A SESSION'S CONTRACTOR WHEN THERE IS ONE, AND TODAY'S FALLBACK WHEN THERE IS NOT.
+    // `resolveSessionContractor` never writes to `res` and never throws — see its header for why
+    // `verifyAnySession` cannot be used here. **`undefined`, not `null`**, so `logError`'s own `||`
+    // chain still reaches its default; passing null would be indistinguishable from "no session" to
+    // a reader but would skip nothing, and being explicit about which falsy value is passed is the
+    // difference between a fallback and an accident.
+    const sessionContractorId = await resolveSessionContractor(req);
+
+    // ⚠ THE COMPONENT STACK GETS ITS OWN BUDGET RATHER THAN BEING APPENDED AND TRUNCATED TOGETHER.
+    // A naive `(stack + componentStack).substring(0, 5000)` satisfies "keep the componentStack" in
+    // the source and loses it in practice: a long JS stack fills the budget first and the component
+    // stack — the half that says WHICH TREE died — is cut off. There is no `component` column on
+    // `error_log` and adding one is DDL, so the two share `stack_trace` under separate caps.
+    const clientStack = stack_trace ? String(stack_trace).substring(0, CLIENT_STACK_BUDGET) : null;
+    const componentStack = component_stack
+      ? String(component_stack).substring(0, COMPONENT_STACK_BUDGET)
+      : null;
+    const combinedStack = [
+      clientStack,
+      componentStack ? `\n--- component stack ---\n${componentStack}` : null,
+    ].filter(Boolean).join('') || null;
+
     await logError({
       req: {
-        path: route || component || 'frontend-unknown',
+        // ⚠ `component` IS NO LONGER A PATH FALLBACK. It used to be, and for a boundary catch the
+        // `component` WAS the componentStack — so a multi-line React tree could become the stored
+        // `route`, which is part of the dedup key. The stack has its own field now.
+        path: route || 'frontend-unknown',
         method: 'CLIENT'
       },
       error: {
         message: String(error_message).substring(0, 500),
-        stack: stack_trace ? String(stack_trace).substring(0, 5000) : null
+        stack: combinedStack
       },
-      source: 'frontend'
+      source: 'frontend',
+      contractorId: sessionContractorId || undefined,
+      // ⚠ CRITICAL FOR A BOUNDARY CATCH REGARDLESS OF ROUTE — the whole page is gone, and the
+      // browser pathname cannot express that. `fatal` is read as STRICTLY TRUE: a truthy test would
+      // let any non-empty string from an unauthenticated body promote a row's severity.
+      severity: fatal === true ? 'CRITICAL' : undefined,
     })
 
     res.status(200).json({ ok: true })

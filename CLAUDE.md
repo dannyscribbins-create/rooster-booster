@@ -437,8 +437,86 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2596 server tests across 442 suites, and 1472 React tests across 90 files** (measured 2026-10-03 by the `no-undef` commit (cleanup B), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2596 · suites 442 · pass 2596 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE `no-undef` COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2611 server tests across 445 suites, and 1480 React tests across 91 files** (measured 2026-10-03 by the ERROR-REPORTING commit (cleanup C), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2611 · suites 445 · pass 2611 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE ERROR-REPORTING COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  **BOTH HALVES MOVED, EACH BY ONE NEW FILE.** Server 2596 → 2611 is **+15**
+  (`clientErrorReporting.test.js`); suites 442 → 445 is that file's **three** describes. React 1472 →
+  1480 is **+8** (`errorBoundaryReport.test.jsx`), and 90 → 91 is that file. **All four predicted
+  before the run and matched.** Counted with an anchored `^\s*it\(` (15 and 8), every `it(` at exactly
+  two spaces and **zero loops in either file**, so both counts are exact rather than N × anything.
+  ⚠ **NO PHANTOM, ASKED BEFORE THE RUN.** The new React file is in `src/components/shared`, not a
+  walked root, and is a `.test.` file the walker skips anyway. ⚠ **The commit DOES edit
+  `src/utils/clientErrorReporter.js`, which IS in a walked root** — but that sweep emits one case per
+  FILE and the file already existed.
+  ⚠ **THE COMMIT'S SUBJECT, AND THE PREMISE OF THE ASK WAS WORTH CORRECTING FIRST.** The request was
+  for a severity *"that ALERTS regardless of route"* — but `sendErrorAlert` was **never
+  severity-gated**: it fires on first occurrence and every 10th for EVERY severity. So Danny ruled
+  option (a): a boundary catch is **CLASSIFIED** CRITICAL for triage, cadence unchanged. **A case
+  asserts the gate is still the count-based one**, because *"the ruling changed severity only"* is the
+  half most easily lost later.
+  ⚠ **THE DEFECT WAS STRUCTURAL, NOT A WRONG CONSTANT.** `classifySeverity` grades by ROUTE needles,
+  and a frontend crash's "route" is the **browser pathname** — so an error boundary catching on `/` (a
+  whole page gone) scored **INFO**, while the identical crash on `/cashout` scored CRITICAL. **The
+  grade described where the user was standing, not what happened.**
+  ⚠ **THE COMPONENT STACK GETS ITS OWN BUDGET, AND THE NAIVE VERSION WOULD HAVE SATISFIED THE RULING IN
+  THE SOURCE WHILE LOSING IT IN PRACTICE.** There is no `component` column and adding one is DDL, so
+  the two stacks share `stack_trace` — but `(js + component).substring(0, 5000)` lets a long JS stack
+  fill the budget and cut off the half that says WHICH TREE died. Separate caps, and a case drives a
+  **~9k-character** JS stack to prove it; guard-proof (4) writes the shared-budget form and reds.
+  ⚠ **AND `component` IS NO LONGER A PATH FALLBACK, WHICH WAS A DEDUP BUG NOBODY HAD NAMED.** It used
+  to be, and for a boundary catch the `component` **WAS** the componentStack — so a multi-line React
+  tree could become the stored `route`, which is part of the dedup key
+  `(contractor_id, route, method, error_message)`. **One crash could therefore never dedupe with the
+  next.**
+  ⚠ **`verifyAnySession` COULD NOT BE USED, AND THE REASON IS WHY A NEW HELPER EXISTS.** It **responds**
+  — a 401 on a missing or expired token — which would refuse reports from exactly the crashed,
+  logged-out client this route exists for. `resolveSessionContractor(req)` never touches `res`. It
+  lives in `auth.js` rather than inline because the resident rule forbids inlining a raw token check in
+  a route.
+  ⚠ **AND IT IS SILENT ON FAILURE AS A SECURITY PROPERTY, NOT LAZINESS.** The reply must be
+  byte-identical whether the token is valid, expired, forged or absent, or an unauthenticated endpoint
+  becomes a **token-validity oracle** — anyone could test a stolen token by watching the response. A
+  case asserts the valid and forged replies match on status AND body.
+  ⚠ **`fatal` IS READ AS STRICTLY TRUE, BECAUSE THE BODY IS UNTRUSTED.** The route is unauthenticated,
+  so a truthiness test would let anyone promote a row's severity and pollute triage.
+  ⚠ **BOTH HALVES ARE FENCED, AND THAT IS NOT BELT-AND-BRACES.** The server suite posts its own bodies,
+  so it would stay green against a browser that never sends `fatal` or the stack — **a server that
+  reads a field nobody sets is a gate that silently never fires.** Guard-proofs (6) and (7) break the
+  CLIENT and red only the React suite, which is what proves the two are independent.
+  ⚠ **SEVEN GUARD-PROOFS, EVERY WIDTH PREDICTED AND MATCHED, every revert byte-identical by sha256
+  across four watched files.** (1) the severity override removed → **1**; (2) the componentStack dropped
+  → **2**; (3) the session ignored so a logged-in user is filed under the phantom id → **2**; (4) one
+  shared stack budget → **1**; (5) `fatal` read as truthy → **1**; (6) the CLIENT stops sending `fatal`
+  → **1**; (7) the CLIENT stops sending the token → **2**. (1), (2) and (3) are the three Danny named.
+  ⚠ **A HOOK FAULT FAILED ALL 15 CASES INCLUDING ONE THAT TOUCHES NO DATABASE — THE RECORDED SIGNATURE,
+  OBSERVED AGAIN.** `beforeEach` deleted `contractors WHERE contractor_id = …`, and that table keys on
+  **`id`**; the error was `column "contractor_id" does not exist`. **The pure-source cadence case failed
+  too, which is the tell**: a subject fault spares the cases that cannot depend on it. `seedContractor`
+  is idempotent, so the delete was simply removed.
+  ⚠ **AND MY OWN SOURCE NEEDLE FAILED ON ITS OWN NON-VACUITY FLOOR, WHICH IS WHY THE FLOOR WAS THERE.**
+  The cadence case sliced `sendErrorAlert` with a **400-character** cap against a **1256-character**
+  function, so the match found nothing — and the case failed loudly on *"could not slice"* rather than
+  passing against an empty string. Line-based now, with a length floor.
+  ⚠ **AND A MODULE-LEVEL THROTTLE COST SEVEN FAILURES WITH ZERO REQUESTS, WHICH IS WORTH KNOWING BEFORE
+  WRITING ANY TEST OF THIS REPORTER.** `clientErrorReporter` suppresses a repeat of the same
+  `context:message` for **60 seconds**, and the first writing threw the SAME message from the same
+  context in every case — so only the first reported and the other seven observed nothing.
+  **`vi.restoreAllMocks()` does not touch module state.** Every case throws a distinct message now.
+  ⚠ **AND `captureResend()` WAS BOTH THE CORRECT OPT-IN AND A 4× SPEED FIX.** Every row the suite writes
+  is a FIRST OCCURRENCE, so each attempted an alert, the 7d-0 interlock refused it, and
+  `retryWithBackoff` retried with backoff — **~14 seconds per describe spent waiting on mail it never
+  wanted to send.** Opting in took the file from ~50s to **11.2s**.
+  ⚠ **AND A FINDING THAT CHANGES COMMIT D's SCOPE, FILED RATHER THAN CARRIED: `req.session` DOES NOT
+  EXIST ANYWHERE IN THIS CODEBASE.** `logError` reads
+  `contractorId || req?.session?.contractorId || 'accent-roofing'`, and **nothing in `server/` ever
+  assigns `req.session`** — there is no session middleware, and the `verify*Session` helpers RETURN a
+  descriptor rather than attaching one. So the middle arm is **dead code** and the chain is effectively
+  `contractorId || 'accent-roofing'`. ⚠ **The earlier enumeration treated ~312 sites as "resolving via
+  the session, correct for a logged-in user" — that was wrong; all ~387 contractor-less calls land
+  under the phantom literal.** D's scope is 387, not 65, and its accepted alert burst scales with it.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE `no-undef` COMMIT ITSELF, BECAUSE IT SHIPS
+  TESTS.* It read **2596 / 442 / 1472 / 90**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE `no-undef` COMMIT, BECAUSE IT SHIPS TESTS.**
   React 1438 → 1472 is **+34**, one new file (`src/eslintNoUndef.test.js`), and 89 → 90 is that file.
   **Server did not move — no `server/` file was touched at all** — and was re-measured. **All four
   predicted before the run and matched.**

@@ -143,7 +143,17 @@ async function sendErrorAlert(errorRow) {
 // direction specifically; T10c pins explicit true.
 //
 // Suppressing the email never suppresses the ROW. error_log is still the record.
-async function logError({ req, error, contractorId, source = 'backend', alert = true }) {
+// ⚠ `severity` IS AN OPTIONAL OVERRIDE AND EXISTS FOR ONE SHAPE: A CONSEQUENCE THE ROUTE CANNOT
+// EXPRESS. `classifySeverity` grades by route needles, which works for backend paths and is blind on
+// a frontend crash — a React error boundary catching on `/` is a WHOLE PAGE GONE and classified
+// INFO, while the identical crash on `/cashout` is CRITICAL. The route is the browser pathname there,
+// so the grade describes where the user was standing rather than what happened.
+// ⚠ IT DOES NOT CHANGE ALERT CADENCE, AND THAT IS DANNY'S RULING (1, 2026-10-03): every severity
+// already alerts on first occurrence and every 10th, so severity is a TRIAGE label. Anyone reading
+// this as "CRITICAL now emails more" has it backwards — nothing about `sendErrorAlert` moved.
+// ⚠ OMITTED MEANS CLASSIFY BY ROUTE, which is what all ~460 existing call sites do. An override is
+// never inferred and never defaulted; a caller that wants one says so.
+async function logError({ req, error, contractorId, source = 'backend', alert = true, severity: severityOverride }) {
   try {
     // ⚠ baseUrl + path. NOT req.path, and NOT req.originalUrl (Wave 0.2 item 5).
     //
@@ -173,7 +183,7 @@ async function logError({ req, error, contractorId, source = 'backend', alert = 
     const method        = req?.method || 'UNKNOWN';
     const error_message = (error?.message || String(error)).slice(0, 500);
     const stack_trace   = (error?.stack || null)?.slice(0, 5000) ?? null;
-    const severity      = classifySeverity(route);
+    const severity      = severityOverride || classifySeverity(route);
     const app_version   = process.env.APP_VERSION || 'unknown';
     const contractor_id = contractorId || req?.session?.contractorId || 'accent-roofing';
 

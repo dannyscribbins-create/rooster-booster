@@ -299,10 +299,58 @@ async function verifyAnySession(req, res) {
   }
 }
 
+/**
+ * Which contractor does this request's bearer token belong to, if any?
+ * Input: the Express request. Output: a contractor id, or `null`.
+ *
+ * ⚠ THIS IS NOT AN AUTHORISATION CHECK AND MUST NEVER BE USED AS ONE. It answers a strictly weaker
+ * question — *"whose tenant should this row be filed under?"* — and it is the only sanctioned way to
+ * ask it on a route that is deliberately UNAUTHENTICATED.
+ *
+ * ⚠ WHY IT EXISTS RATHER THAN CALLING `verifyAnySession`: that helper **responds**. It writes a 401
+ * on a missing or expired token and a 500 on a failure, and returns null. On
+ * `POST /api/log-client-error` that would break the property the route is built around — *a crashed
+ * app must still be able to report* — by refusing reports from anyone not logged in. This one never
+ * touches `res`.
+ *
+ * ⚠ AND IT IS DELIBERATELY SILENT ON FAILURE, WHICH IS A SECURITY PROPERTY RATHER THAN LAZINESS.
+ * The caller's response must be byte-identical whether the token is valid, expired, forged or
+ * absent — otherwise an unauthenticated endpoint becomes a **token-validity oracle**: anyone could
+ * test a stolen token by watching the reply. It returns `null` for every one of those cases and
+ * logs nothing, so there is no timing-free signal to read.
+ *
+ * ⚠ IT LIVES HERE BECAUSE THE RESIDENT RULE SAYS SO: *"New endpoints handling user data must use
+ * `verifyReferrerSession()` — never inline a raw token check."* The spirit is that session reads
+ * live in this file; a bare `SELECT … FROM sessions` inlined in a route handler is the shape that
+ * rule forbids. The `expires_at > NOW()` predicate is the same one every helper above uses.
+ * ⚠ **ROLE-AGNOSTIC ON PURPOSE**, like `verifyAnySession` — a crashing client does not know which
+ * surface its stored token belongs to, which is the reason that helper was written in the first
+ * place.
+ */
+async function resolveSessionContractor(req) {
+  try {
+    const token = req?.headers?.['authorization']?.replace('Bearer ', '');
+    if (!token) return null;
+    const { rows } = await pool.query(
+      `SELECT contractor_id
+         FROM sessions
+        WHERE token = $1 AND expires_at > NOW()`,
+      [token]
+    );
+    return rows[0]?.contractor_id || null;
+  } catch {
+    // ⚠ SWALLOWED, AND NOT LOGGED. This runs inside the error-reporting path: a `logError` here
+    // could recurse, and an alert about a failed contractor lookup would bury the crash the caller
+    // is trying to report. Falling back to the caller's default is the correct outcome.
+    return null;
+  }
+}
+
 module.exports = {
   verifyAdminSession,
   verifyReferrerSession,
   verifySuperAdminSession,
   verifyAnySession,
+  resolveSessionContractor,
   applySessionSlide,
 };

@@ -3532,6 +3532,53 @@ that fixes them acquires a money-path review standard it was scoped to avoid.** 
       IDENTIFIERS.** A render-path crash from a null dereference, a bad property read or a thrown
       TypeError is invisible to it. **The mount-test item for the 18 never-mounted admin components is
       NOT closed by this commit** — it is the half a static rule cannot reach.
+- [x] **⚠ FRONTEND ERROR REPORTING — FIXED 2026-10-03 (post-N4 cleanup C, Danny's ruling 1).**
+      Three parts and no fourth: a boundary catch is CLASSIFIED CRITICAL for triage regardless of
+      route; the componentStack is KEPT instead of discarded; and the route reads the session's
+      contractor when one exists, falling back as before when none does.
+      ⚠ **ALERT CADENCE IS UNCHANGED, AND THE PREMISE OF THE ORIGINAL ASK WAS WORTH CORRECTING.** The
+      request was for a severity *"that ALERTS regardless of route"* — but `sendErrorAlert` was never
+      severity-gated: it fires on first occurrence and every 10th for EVERY severity. So severity is a
+      TRIAGE label, and nothing about who gets emailed moved. A case asserts the gate is still the
+      count-based one, because *"the ruling changed severity only"* is the half most easily lost.
+      ⚠ **THE DEFECT WAS STRUCTURAL, NOT A WRONG CONSTANT.** `classifySeverity` grades by ROUTE needles
+      (`/cashout`, `/stripe`, `/admin`), and a frontend crash's "route" is the browser pathname — so an
+      error boundary catching on `/` (a whole page gone) scored **INFO**, while the identical crash on
+      `/cashout` scored CRITICAL. **The grade described where the user was standing, not what
+      happened.**
+      ⚠ **THE COMPONENT STACK GETS ITS OWN BUDGET, AND A NAIVE APPEND WOULD HAVE SATISFIED THE RULING IN
+      THE SOURCE WHILE LOSING IT IN PRACTICE.** There is no `component` column on `error_log` and adding
+      one is DDL, so the two stacks share `stack_trace` — but `(js + component).substring(0, 5000)`
+      lets a long JS stack fill the budget and cut off the half that says WHICH TREE died. Separate
+      caps (3500 / 1400), and a case drives a ~9k-char JS stack to prove it.
+      ⚠ **AND `component` IS NO LONGER A PATH FALLBACK.** It used to be, and for a boundary catch the
+      `component` WAS the componentStack — so a multi-line React tree could become the stored `route`,
+      which is part of the dedup key `(contractor_id, route, method, error_message)`. One crash could
+      therefore never dedupe with the next.
+      ⚠ **`fatal` IS READ AS STRICTLY TRUE, because the route is unauthenticated and the body is
+      untrusted input.** A truthiness test would let anyone on the internet promote a row's severity
+      and pollute triage. Guard-proof (5) writes the truthy form and reds.
+      ⚠ **BOTH HALVES ARE FENCED, AND THAT IS NOT BELT-AND-BRACES.** The server suite posts its own
+      bodies, so it would stay green against a browser that never sends `fatal` or the stack — **a
+      server that reads a field nobody sets is a gate that silently never fires**, this repo's
+      most-recorded shape. `errorBoundaryReport.test.jsx` asserts on the request actually made.
+- [ ] **⚠ `req.session` DOES NOT EXIST ANYWHERE IN THIS CODEBASE, SO `logError`'s MIDDLE FALLBACK ARM IS
+      DEAD CODE — AND IT MAKES COMMIT D BIGGER THAN FILED.** Found 2026-10-03 while building cleanup C.
+      `errorLogger.js` reads `contractorId || req?.session?.contractorId || 'accent-roofing'`. **Nothing
+      in `server/` ever assigns `req.session`** — there is no session middleware; the `verify*Session`
+      helpers RETURN a descriptor and attach nothing to the request. Verified both ways: `req.session`
+      is read in exactly one place and written in none.
+      ⚠ **THE CONSEQUENCE: the chain is effectively `contractorId || 'accent-roofing'`.** The earlier
+      enumeration recorded 65 sites (those passing `req: null`) as landing under the phantom id and
+      treated the other ~312 as *"resolving via `req.session.contractorId`, correct for a logged-in
+      session"*. **That is wrong: all ~387 contractor-less calls land under the phantom literal.**
+      ⚠ **SO COMMIT D's SCOPE IS 387, NOT 65**, and the fix is not only "thread the contractor at 65
+      call sites" — it is also a decision about whether that dead arm should be deleted or made real by
+      attaching the resolved session to the request. **Deleting it is not cosmetic: while it is there,
+      every reader believes logged-in requests are already attributed correctly.**
+      ⚠ **AND IT MULTIPLIES D's ALREADY-ACCEPTED ALERT BURST**, which Danny ruled acceptable at 65 and
+      has not ruled on at 387 — each corrected lineage starts at `count = 1` and emails on its next
+      natural occurrence. **Re-confirm before building D.**
 - [ ] **Three copies of the localhost database check — consolidate, or decide not to.**
       `server/test/setup.js`, `scripts/seedLocalStack.js` and `server/utils/requireLocalDatabase.js` each spell
       the same rule: the host must be `localhost` or `127.0.0.1`. The third was added 2026-10-03 and the other
@@ -11832,6 +11879,19 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       rehydrated — so the contractor is read *when available* and the fallback remains for the genuinely
       anonymous case. **That fallback must stop being the phantom literal**, which is the other half of
       this item and is what makes the dedup lineage honest.
+      ⚠ **FIRST HALF DELIVERED 2026-10-03 (cleanup C): the route now reads the session's contractor.**
+      `resolveSessionContractor(req)` in `server/middleware/auth.js` resolves it role-agnostically and
+      **never touches `res`** — `verifyAnySession` could not be used because it writes a 401 on a
+      missing or expired token, which would refuse reports from exactly the crashed, logged-out client
+      this route exists for. The helper lives in `auth.js` rather than inline because the resident rule
+      forbids inlining a raw token check in a route.
+      ⚠ **AND IT IS DELIBERATELY SILENT ON FAILURE, WHICH IS A SECURITY PROPERTY.** The response must be
+      byte-identical whether the token is valid, expired, forged or absent, or an unauthenticated
+      endpoint becomes a **token-validity oracle**. A case asserts the valid and forged replies match on
+      status and body.
+      ⚠ **THE SECOND HALF — THE PHANTOM FALLBACK — IS STILL OPEN AND IS COMMIT D's**, and C deliberately
+      did not touch it: the route passes `undefined` when there is no session, so the fallback behaves
+      exactly as before. Danny's ruling: *"falling back as today when none."*
       ⚠ **`routes/stripe.js` IS DONE — CLOSED BY WAVE 1.1-e, 2026-08-29.** Both of its literals
       are gone: the module-level constant is **deleted** (not left unused) and the Stripe
       customer metadata stamp resolves from the session. This line used to cite them by line

@@ -13,7 +13,18 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    reportClientError(error, info?.componentStack || 'ErrorBoundary')
+    // ⚠ A BOUNDARY CATCH IS FATAL BY DEFINITION — THE SURFACE IS GONE — AND THAT IS NOW SAID
+    // EXPLICITLY RATHER THAN LEFT FOR THE SERVER TO INFER FROM A ROUTE. `classifySeverity` grades by
+    // route needles, so this crash on `/` scored INFO while the identical crash on `/cashout` scored
+    // CRITICAL: the grade described where the user was standing, not that the page had died.
+    // ⚠ AND THE COMPONENT STACK IS ITS OWN ARGUMENT NOW, NOT THE `context`. It used to be passed AS
+    // the context string, and the server used `context` only as a fallback for the stored ROUTE —
+    // so the stack was discarded whenever a route was present (always), and on the rare occasion it
+    // was not, a multi-line React tree became the `route`, which is part of the dedup key.
+    reportClientError(error, 'ErrorBoundary', {
+      fatal: true,
+      componentStack: info?.componentStack || null,
+    })
   }
 
   render() {
