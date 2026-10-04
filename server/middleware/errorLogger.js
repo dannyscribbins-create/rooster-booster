@@ -3,7 +3,7 @@ const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { resendShouldRetry } = require('../utils/retryHelpers');
-
+const PLATFORM_TENANT = 'platform'; // an error with genuinely no tenant; why, and the measurements, in logErrorTenancy.test.js
 // ── SECTION A — SEVERITY CLASSIFICATION ──────────────────────────────────────
 function classifySeverity(route) {
   const r = route || '';
@@ -185,7 +185,7 @@ async function logError({ req, error, contractorId, source = 'backend', alert = 
     const stack_trace   = (error?.stack || null)?.slice(0, 5000) ?? null;
     const severity      = severityOverride || classifySeverity(route);
     const app_version   = process.env.APP_VERSION || 'unknown';
-    const contractor_id = contractorId || req?.session?.contractorId || 'accent-roofing';
+    const contractor_id = contractorId || PLATFORM_TENANT;
 
     const result = await pool.query(
       `INSERT INTO error_log
@@ -224,4 +224,4 @@ async function expressErrorHandler(err, req, res, next) {
   });
 }
 
-module.exports = { logError, expressErrorHandler, buildAlertSubject };
+module.exports = { logError, expressErrorHandler, buildAlertSubject, PLATFORM_TENANT };

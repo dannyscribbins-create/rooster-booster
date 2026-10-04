@@ -32,7 +32,14 @@ const { createApp } = require('../app');
 
 const TENANT = 'cec-tenant';
 const OTHER = 'cec-other';
-const PHANTOM = 'accent-roofing';   // the hardcoded fallback in errorLogger.js
+// ⚠ RETIRED BY CLEANUP D1 AND KEPT AS A FENCE RATHER THAN DELETED. `const PHANTOM =
+// 'accent-roofing'` was the hardcoded fallback in `errorLogger.js`, and three cases below asserted
+// rows landed on it. **That was correct about the old design and is now forbidden** — Danny's ruling
+// 2: an error with genuinely no tenant is filed under an explicit `'platform'`, never a fake
+// contractor id. The constant stays so the cases can assert the phantom is ABSENT, which is a
+// stronger claim than simply naming the new value.
+const PHANTOM = 'accent-roofing';
+const { PLATFORM_TENANT } = require('../middleware/errorLogger');
 
 let pool;
 let server;
@@ -270,12 +277,18 @@ describe('cleanup C — the session\'s contractor is read when there is one', ()
     assert.equal((await soleRow()).contractor_id, OTHER);
   });
 
-  it('NO session falls back exactly as before — the route stays unauthenticated', async () => {
-    // ⚠ THE PROPERTY DANNY NAMED: "falling back as today when none." A crashed app that was never
-    // logged in must still be able to report, so this is a 200 with the old fallback, not a 401.
+  it('NO session falls back to the PLATFORM tenant — the route stays unauthenticated', async () => {
+    // ⚠ THE PROPERTY DANNY NAMED IN C: "falling back as today when none." A crashed app that was
+    // never logged in must still be able to report, so this is a 200 and not a 401 — and THAT half
+    // is unchanged. ⚠ **What changed is WHICH tenant it falls back to, by ruling 2 in D1.** This
+    // case read `assert.equal((await soleRow()).contractor_id, PHANTOM);` and C's comment called it
+    // "the old fallback"; the old fallback was a contractor id that does not exist, so the honest
+    // value is now the explicit platform marker. **A ruling replaced the mechanism — not a bug.**
     const res = await report({ error_message: 'anonymous crash', route: '/login' });
     assert.equal(res.status, 200);
-    assert.equal((await soleRow()).contractor_id, PHANTOM);
+    const row = await soleRow();
+    assert.equal(row.contractor_id, PLATFORM_TENANT);
+    assert.notEqual(row.contractor_id, PHANTOM, 'still filed under the phantom contractor id');
   });
 
   it('an EXPIRED session falls back too, and the response is indistinguishable', async () => {
@@ -284,7 +297,10 @@ describe('cleanup C — the session\'s contractor is read when there is one', ()
     });
     const res = await report({ error_message: 'expired crash', route: '/' }, 'cec-expired');
     assert.equal(res.status, 200);
-    assert.equal((await soleRow()).contractor_id, PHANTOM);
+    // Same inversion as the case above: this asserted PHANTOM until D1's ruling 2.
+    const row = await soleRow();
+    assert.equal(row.contractor_id, PLATFORM_TENANT);
+    assert.notEqual(row.contractor_id, PHANTOM, 'still filed under the phantom contractor id');
   });
 
   it('⚠ a FORGED token is not an oracle — same status, same body as a valid one', async () => {

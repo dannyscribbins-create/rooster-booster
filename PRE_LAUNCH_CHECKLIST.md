@@ -11830,6 +11830,24 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
 
 ## Contractor-ID reconciliation
 
+- [ ] **⚠ 23 EXISTING `error_log` ROWS CARRY THE PHANTOM ID, AND CLEANUP D DELIBERATELY DID NOT TOUCH
+      THEM.** Measured read-only 2026-10-03, while building D1: **23 rows under `accent-roofing` across
+      1,074 occurrences, and all 23 match no `contractors` row.** The live tenant holds 611 rows /
+      1,783 occurrences, so the phantom set is small in rows and HOT in occurrences — these are
+      recurring paths, not one-offs.
+      ⚠ **NOT REWRITTEN, BY DANNY'S SCOPE FENCE FOR D:** *"D is ONLY about which contractor NEW error
+      reports are filed under — do not rewrite existing error_log rows."* D1 changes the default for
+      new rows only. **Deciding what happens to these 23 is this wave's job**, and the options are not
+      obvious: re-attributing them guesses at a tenant nobody recorded, while leaving them means the
+      log keeps 23 rows pointing at a contractor that does not exist.
+      ⚠ **AND THE DEDUP CONSEQUENCE IS WHY THEY WILL NOT SIMPLY FADE.** `contractor_id` is part of the
+      conflict target, so once D threads real tenants the same failures start NEW lineages at
+      `count = 1` and the old rows stop incrementing — **frozen, not cleaned up.** A reader who sees
+      1,074 occurrences will not be able to tell a dead lineage from a live one without a date.
+      ⚠ **`error_log` HAS NO FK TO `contractors`, WHICH IS HOW THIS WAS POSSIBLE AT ALL** — confirmed by
+      the 23 orphans existing. Adding one would be DDL and would reject the new `'platform'` value too,
+      so it is a decision for this wave rather than a tidy-up.
+
 - [ ] **🔴 `account.js:436` IS BROKEN NOW, NOT LATER.** The query is
       `SELECT email_sender_name, company_name FROM contractor_settings WHERE contractor_id =
       'accent-roofing'` — the **phantom** id. `contractors` holds exactly one row and it is
@@ -11838,7 +11856,29 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       now.** Recorded as F10 in `CONTRACTOR2_READINESS_AUDIT.md`, where "hardcoded literal"
       understates it.
 - [ ] **Server `contractor_id` defaults / phantom-id literals:** `db.js` (column defaults and
-      seed rows), `crm/jobber.js:106`, `middleware/errorLogger.js:141`.
+      seed rows), `crm/jobber.js`'s `fetchPipelineForReferrer`, `middleware/errorLogger.js`'s `logError`.
+      <!-- citecheck:record -->
+      ⚠ **BOTH LINE CITATIONS HERE WERE WRONG AND ARE REPLACED BY ROLES RATHER THAN RENUMBERED.** They
+      read `crm/jobber.js:106` and `middleware/errorLogger.js:141`; the literal in `errorLogger.js` was
+      never on `:141` — it was on the `contractor_id` line near the end of `logError` — so adding a
+      delta would have certified a wrong number as repaired, which is the move this repo has already
+      measured going wrong eleven times out of eleven. ⚠ **The two wrong numbers are QUOTED as the
+      evidence and are inside a record marker for that reason** — the correction above is by ROLE, so
+      it cannot rot in turn, which is the half of the record rule this repo had got wrong.
+      <!-- /citecheck:record -->
+      ✅ **`middleware/errorLogger.js` IS DONE — CLOSED BY CLEANUP D1, 2026-10-03.** Its fallback is now
+      the explicit `PLATFORM_TENANT` (`'platform'`), and the dead `req?.session?.contractorId` arm is
+      DELETED (Danny's ruling 1) — nothing in `server/` has ever assigned `req.session`, so it never
+      fired. `server/test/logErrorTenancy.test.js` fences both: no file may default a tenant to the
+      phantom literal, and `'platform'` may never exist as a `contractors` row.
+      ⚠ **`crm/jobber.js` IS STILL OPEN AND ITS LINE HAS MOVED — cited by role now:**
+      `fetchPipelineForReferrer`'s `contractorId || config?.contractorId || 'accent-roofing'`. ⚠ **It is
+      NOT error reporting — it resolves the tenant for a Jobber PIPELINE FETCH**, so a legacy-path call
+      would read the wrong tenant's pipeline. D1's fence lists it as DEFERRED-TO-THIS-WAVE and asserts
+      the entry LIVE, so fixing it here will fail that fence until the exemption is deleted.
+      ⚠ **`db.js`'s remaining use is the FIRST-BOOT SEED and reads `contractors` first**, so on a
+      genuinely fresh deployment the literal is the correct id rather than a phantom. Decide whether it
+      should seed a different id at all; it is not a defaulting bug.
       ⚠ **A LIVE INSTANCE, OBSERVED IN A REAL ALERT EMAIL 2026-10-01 16:58:43 UTC — the
       `errorLogger` one, and it is the WORST-PLACED of the set.** The alert for the CRM Settings crash
       read **"Contractor: accent-roofing"** for a session belonging to **`accent-roofing-dev`**. The
@@ -11853,9 +11893,14 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       key — so frontend errors from *every* future contractor will share one lineage under a tenant
       that does not exist. **Fix by ROUTING the real contractor in, not by changing the literal to
       `accent-roofing-dev`**, which would be a hardcoded right answer for exactly one tenant.
-      ⚠ **AND THE SAME CLEANUP COMMIT CARRIES ITS MIRROR IMAGE, FILED 2026-10-03 BY DANNY ON THE 7c-3
-      REPORT: `logError` CALLS THAT PASS NO `contractorId` AT ALL WRITE ROWS WITH `contractor_id` NULL,
-      WHICH ARE INVISIBLE TO EVERY TENANT-SCOPED QUERY.** The entry above is a row filed under the
+      ⚠ **CORRECTED 2026-10-03 — THIS SAID `contractor_id` NULL AND THAT WAS WRONG, NOT MERELY LOOSE.**
+      It read: *"`logError` CALLS THAT PASS NO `contractorId` AT ALL WRITE ROWS WITH `contractor_id` NULL,
+      WHICH ARE INVISIBLE TO EVERY TENANT-SCOPED QUERY."* **There was never a NULL.** The chain ended in
+      the hardcoded literal, so those rows landed under the PHANTOM id — the same bucket as the entry
+      above, not a separate one. ⚠ **The practical harm is the same and the diagnosis is not: anyone
+      acting on the old wording would have gone looking for `WHERE contractor_id IS NULL` rows and found
+      none**, then concluded the item was already fixed. Measured read-only 2026-10-03: **0 NULL rows,
+      23 rows under the phantom across 1,074 occurrences.** The entry above is a row filed under the
       WRONG tenant; this is a row filed under NO tenant, and the two are the same defect in opposite
       directions — **pass the contractor through, in both.**
       ⚠ **THE WORKED EXAMPLE, FOUND WHILE BUILDING 7c-3's GUARD-PROOF RATHER THAN BY LOOKING FOR IT.**
@@ -11898,6 +11943,41 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       number; the numbers are not restored, because the subject no longer exists.
       Registry Known Issues 2a's "STILL OPEN" list also names `oauth.js`,
       `notificationEmail.js`, `stripeTransfer.js`.
+      ⚠ **D's BATCH PLAN, APPROVED BY DANNY AND ENCODED IN THE FENCE RATHER THAN ONLY HERE.** The
+      remaining 376 untenanted `logError` sites across 42 files clear in seven batches, and
+      `server/test/logErrorTenancy.test.js`'s `EXPIRING_BY_FILE` carries one entry per file with an
+      EXACT count and the batch that deletes it — so this list cannot drift from the code:
+      **D2** middleware + cron + jobs (28 sites, 11 files) · **D3** crm + utils (41, 11) ·
+      **D4** the non-referrer, non-admin routes (70, 11) · **D5** `routes/referrer.js` (69, 1) ·
+      **D6** `routes/admin/index.js` (57, 1) · **D7** `routes/admin/campaigns.js` (57, 1) ·
+      **D8** the remaining admin routers (54, 6).
+      ⚠ **THE ORDER IS BY BLAST RADIUS, NOT BY SIZE.** D2–D4 are the paths with no user session at
+      all, where the contractor must come from the row or the job's own argument; D5–D8 are
+      session-bearing surfaces where it comes from the verified descriptor. Doing the session-less
+      ones first means the harder question — *is there a tenant here at all?* — is answered before
+      the mechanical ones begin.
+      ⚠ **AND AN OPEN DESIGN QUESTION FOR D2 ONWARD, RAISED RATHER THAN DECIDED: hand-threading
+      311 session-bearing sites against having the `verify*Session` helpers attach the contractor
+      to `req`.** Ruling 3 (*"thread the real `contractorId` through every call"*) was made when the
+      number was believed to be 65; it is 376, and ruling 1 deleted the `req.session` arm that would
+      have been the natural place for an attached value. **Not actioned** — a helper that attaches
+      to `req` would collapse most of D5–D8 to zero edits, and it is a different change from
+      threading, with its own fence. Ask before D5.
+- [ ] ⚠ **TWO ALREADY-ROTTED LINE CITATIONS INTO `server/middleware/errorLogger.js`, FOUND WHILE
+      BUILDING D1 AND FILED RATHER THAN REPAIRED.** Both are in test comments, both were **already
+      wrong before cleanup C** (checked at `cc81097^`, not inferred), and neither is D's subject:
+      <!-- citecheck:record -->
+      `server/test/jobberIngestionRepair.test.js` cites `errorLogger.js:143-153` for
+      `EXCLUDED.stack_trace`, which lives in the upsert's `DO UPDATE SET` branch;
+      `server/test/logoUpload.test.js` cites `errorLogger.js:172` for the generic express error
+      handler, which is `expressErrorHandler`.
+      <!-- /citecheck:record -->
+      **The fix is to cite both by ROLE, never to add a delta** — the numbers were wrong when
+      written, so arithmetic repair would certify them. A third citation in this file's own
+      phantom-literal bullet was already converted, because that bullet was being edited anyway.
+      ⚠ **D1 itself rotted NOTHING: its `errorLogger.js` edit is net delta 0** (the explanation went
+      into the new fence file instead of a 33-line block at the top of the module), and all six
+      citations into that file were verified line-by-line as unmoved against HEAD.
 - [ ] **`db.js:1532` — `SELECT id FROM contractors LIMIT 1` with no `ORDER BY`**, inside the
       `OWNER_SEED_EMAIL` block. Non-deterministic the moment a second row exists; the seeded
       Owner could land under an arbitrary tenant. *(Was misfiled under "carried further out";
@@ -15638,8 +15718,11 @@ source and, where stated, against a read-only production `SELECT` whose text is 
       behind one `error_log` row.** Guarded, with the guard pinned by a source fence AND a
       behavioural case (width 2 together).
       ⚠ **AND A REAL OBSERVABILITY FINDING FELL OUT OF BUILDING THAT CASE, FILED RATHER THAN
-      WORKED AROUND SILENTLY: the tag deriver's swallow calls `logError` with NO `contractorId`, so
-      its row lands with `contractor_id` NULL — invisible to every tenant-scoped query.** The one
+      WORKED AROUND SILENTLY: the tag deriver's swallow calls `logError` with NO `contractorId`.**
+      ⚠ **CORRECTED 2026-10-03: this said the row lands with `contractor_id` NULL. It does not.** The
+      fallback was a hardcoded phantom contractor id, so the row landed under a tenant that does not
+      exist — **equally invisible to the real tenant, by a different mechanism**, and the wrong
+      mechanism sends the next reader hunting for NULL rows that were never there. The one
       trace of a defect that stops all tagging cannot be found by asking about the affected
       contractor. Not fixed here (it is not 7c-3's subject); the test matches on the source alone.
       ⚠ **TWELVE GUARD-PROOFS, widths 2 · 1 · 2 · 2 · 2 · 1 · 1 · 1 · 1 · 1 · 1 · 1.** All four

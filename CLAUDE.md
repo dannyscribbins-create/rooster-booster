@@ -437,8 +437,118 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2611 server tests across 445 suites, and 1480 React tests across 91 files** (measured 2026-10-03 by the ERROR-REPORTING commit (cleanup C), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2611 · suites 445 · pass 2611 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE ERROR-REPORTING COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2624 server tests across 447 suites, and 1480 React tests across 91 files** (measured 2026-10-03 by the PLATFORM-TENANT commit (cleanup D1), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2624 · suites 447 · pass 2624 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE PLATFORM-TENANT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2611 → 2624 is **+13**, one new file (`logErrorTenancy.test.js`); suites 445 → 447 is that
+  file's **two** top-level describes. React did not move — **no `src/` file was touched at all**
+  (`git status --porcelain | grep -c src/` returned 0) — and was re-measured rather than carried.
+  **All four predicted before the run and matched.** Counted with an anchored `^\s*it\(` (13), and
+  every `it(` line was checked for POSITION rather than counted: **all 13 sit at exactly two spaces
+  and zero at four or more**, so no loop and no nested describe wraps a case. The file's loops sit in
+  helper bodies (`stripComments`, `serverFiles`, `callExtent`, `untenantedSites`) or inside `it()`
+  bodies.
+  ⚠ **THE GATE WAS RUN TWICE AND THE SECOND RUN IS THE ONE CITED — AND THE FIRST WAS RED AT
+  `fail 3`.** All three were fences working on a real arrival, and the counts were identical across
+  both runs (2624 / 447), which is the expected shape when a repair changes assertions rather than
+  cases.
+  ⚠ **TWO OF THE THREE WERE CLEANUP C's OWN CASES PINNING THE VALUE D1 DELETES, AND THEY ARE INVERTED
+  BY A RULING RATHER THAN BROKEN.** `clientErrorReporting.test.js` asserted a tenantless frontend
+  error lands on `PHANTOM` — `'accent-roofing'` — and C's own comment called that *"the old
+  fallback"*. Ruling 2 forbids it: a fake contractor id is never the answer. **Updated openly with
+  the old assertion quoted in place**, and made STRICTLY STRONGER — each now asserts the platform
+  value AND that the phantom is absent, which is a claim a bare equality could not make. ⚠ **The
+  constant `PHANTOM` is KEPT rather than deleted**, precisely so the absence is expressible.
+  ⚠ **THE THIRD WAS THE 6c RESET-COVERAGE FENCE, AND ITS PRESCRIBED FIX WAS THE WRONG ONE HERE.** It
+  reported *"logErrorTenancy.test.js touches contractors but never clears it"* and says to add the
+  table to the per-test reset. That is right for state a suite MUTATES per case, and this suite does
+  not: one row, created once, never changed, plus a read of a baseline fact. Both touches moved into
+  `before()`, **which that fence excludes BY DESIGN** — verified by reading its own context rule
+  (*"the complement of before()/after()"*, with `before` word-bounded so `beforeEach` still counts)
+  rather than assumed. **`KNOWN_GAPS` was NOT widened.** ⚠ Clearing `contractors` per test would also
+  drag its FK chain (`titles` first), which is the hook-fault shape this file already records as
+  failing every case including ones with no database dependency.
+  ⚠ **THE COMMIT'S SUBJECT: THE DEFAULT TENANT FOR AN ERROR WAS A CONTRACTOR ID THAT DOES NOT
+  EXIST.** `logError` ended its chain in the literal `'accent-roofing'`; the dev tenant is
+  `accent-roofing-dev`. **Measured read-only: 23 `error_log` rows carry it across 1,074 occurrences,
+  and all 23 match no `contractors` row.** It is now the explicit `PLATFORM_TENANT` (`'platform'`),
+  exported rather than spelled at each site. ⚠ **A fake id is worse than an honest one**: it reads as
+  a real tenant's problem, so a defect in a shared util looked like a defect in Accent's account —
+  and `contractor_id` is part of the dedup key, so every future contractor's frontend errors would
+  have shared one lineage under a tenant nobody owns.
+  ⚠ **AND THE DEAD ARM IS GONE (ruling 1), WHICH IS WHY D GREW FROM 65 SITES TO 376.** The chain read
+  `contractorId || req?.session?.contractorId || <literal>`, and **nothing in `server/` has ever
+  assigned `req.session`** — there is no session middleware, and the `verify*Session` helpers RETURN
+  a descriptor rather than attaching one. While that arm was there, 311 sites were counted as already
+  attributed correctly on exactly that belief.
+  ⚠ **ITS WIDTH IS 1 AND THE SPLIT IS SAID RATHER THAN GLOSSED: restoring the arm reds the SOURCE
+  case only.** The behavioural case stays green **because the arm genuinely never fires**, so no
+  fixture can tell the two states apart. The property is a source property, and claiming a
+  behavioural proof for it would overstate the fix.
+  ⚠ **RULING 2's SECOND HALF HAS NO CODE TO CHECK, AND SAYING SO IS THE HONEST ANSWER RATHER THAN A
+  GREEN TICK.** It asks that tenant-scoped error queries exclude the platform value. **Nothing in the
+  application reads `error_log`** — it is written by `logError` and read by no query in `server/`; the
+  only consumers are the alert email and a human running SQL. So there is no such query to exclude it
+  from. The collision half WAS checkable and was checked: `contractors.id` is `TEXT PRIMARY KEY` with
+  no format constraint, the only `INSERT INTO contractors` outside tests is `db.js`'s first-boot seed,
+  and production holds exactly one contractor.
+  ⚠ **THE FENCE SHIPS AN ALLOW-LIST, AND THE THREE THINGS STOPPING THAT KILLING IT ARE THE SAME THREE
+  `oneStatusDerivation.test.js` USES.** It is keyed BY FILE with an EXACT count (376 sites across 42
+  files; a 376-entry list would not be maintained): every entry NAMES the batch that deletes it, every
+  entry is asserted LIVE so a file reaching zero must be REMOVED rather than left at 0, and the count
+  is exact rather than a ceiling — so a new untenanted call cannot hide inside an allow-listed file.
+  ⚠ **AND THE COMMIT'S OWN FIRST WRITING BROKE THIS FILE'S CITATION RULE, IN THE WAY IT RECORDS FROM
+  `db.js`.** The explanation was a **33-line comment block at the TOP of `errorLogger.js`** — and
+  *adding a comment block is a citation-rotting edit*. Six citations point into that file below the
+  insertion point. Collapsed to a ONE-LINE constant replacing the blank line after the requires, the
+  net delta is **0** and **not one of the six moved**, verified line-by-line against HEAD; the
+  explanation lost nothing because it lives in full in the new fence file. ⚠ **`citecheck
+  --changed-files` reports ZERO `LIKELY ROTTED`** — the findings section was read in full, never
+  tailed, because that check prints its totals LAST.
+  ⚠ **AND IT FOUND TWO CITATIONS INTO `errorLogger.js` THAT WERE ALREADY WRONG, WHICH IS WHY THE
+  DELTA WAS NOT ADDED.** `jobberIngestionRepair.test.js`'s `:143-153` for `EXCLUDED.stack_trace` and
+  `logoUpload.test.js`'s `:172` for the express error handler were **both wrong at `cc81097^`** —
+  checked at the old revision, not inferred. A third, in `PRE_LAUNCH_CHECKLIST.md`'s own phantom
+  bullet, never held the literal at all. **Arithmetic repair would have certified three wrong numbers
+  as fixed**, so the one in the bullet being edited was converted to a ROLE and the other two were
+  FILED. ⚠ The two wrong numbers are quoted as evidence inside a `citecheck:record` marker, and the
+  correction beside them is by role **so the record cannot rot in turn** — the half of that rule this
+  repo had previously got wrong.
+  ⚠ **A GUARD-PROOF CAME BACK WIDTH 0 AND THE REPAIR IS THE ENTRY WORTH KEEPING.** Rewriting the
+  collision case's assertion as `assert.equal(0, 0, …)` reds **nothing** — correctly, because that
+  injection **deletes the test** rather than reintroducing a defect, and no assertion can catch its
+  own removal. Replaced with the real defect — a `contractors` row actually holding `'platform'` —
+  which reds **exactly 1**. The measurement is recorded in the case's comment instead of the
+  reasoning it was written on, together with the direction that IS free: if the `before()` read stops
+  happening the variable is `undefined`, and `assert.equal(undefined, 0)` fails rather than passing.
+  ⚠ **EIGHT GUARD-PROOFS, EVERY WIDTH PREDICTED BEFORE THE RUN AND EVERY ONE MATCHED**, each revert
+  an inverse patch in a `finally` proven byte-identical by sha256, anchors checked unique in BOTH
+  directions, empty-string replacements refused outright, and every injection confirmed landed before
+  its result was believed. (1) the phantom literal restored, the exact pre-fix state → **5**; (2) the
+  dead arm put back → **1**; (3) the fence's needle blind to ES6 shorthand → **3**; (4) an expiring
+  count understated by one → **1**; (5) an entry naming no known batch → **1**; (6) a stale entry
+  pinned at 0, the CLOSURE case → **2**; (7) a NEW file with an untenanted call → **1**; (8) a real
+  collision → **1**.
+  ⚠ **THE WIDTHS WERE MEASURED TWICE AND THE SECOND SET IS CITED, FOR TWO REASONS.** The first
+  harness ran **only** the new fence suite, so it could not see that restoring the phantom now also
+  reds two cases in the C suite — it reported (1) as **3** where the true width is **5**, and
+  *understating protection is the flattering direction*. And `errorLogger.js` changed after that run
+  (the comment collapse), so **a width measured against code that no longer exists is a claim rather
+  than a measurement**, which is this block's own rule.
+  ⚠ **(7) CREATES A FILE RATHER THAN PATCHING ONE**, deleted in the same `finally` with the directory
+  asserted afterwards to hold no leftover — a guard-proof that leaves a file behind is a source edit.
+  ⚠ **AND THE HEREDOC ESCAPE TRAP AGAIN, IN THE HARNESS, ON A `\n` INSIDE A PYTHON STRING.** It
+  arrived as a real newline and produced an unterminated literal — the LOUD variant. Repaired with
+  the editor and `'\n'.join([...])`, which is the rule this file states and the habit that keeps
+  costing time.
+  ⚠ **AND THE WRAPPER REPORTED exit 0 WHILE THE RED RUN'S LOG READ `EXIT=1`** — another instance of
+  that disagreement, and the only reason the three failures were noticed at all.
+  ⚠ **ONE DATE DISCREPANCY, CHECKED RATHER THAN "CORRECTED": `citecheck`'s banner stamps 2026-10-04
+  while this commit is dated 2026-10-03.** The machine is 2026-10-03 21:03 EDT and UTC is already the
+  4th; the script prints UTC. **Not a disagreement about the date**, and worth knowing before someone
+  renumbers a record on the strength of a banner.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE ERROR-REPORTING COMMIT ITSELF, BECAUSE
+  IT SHIPS TESTS.* It read **2611 / 445 / 1480 / 91**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE ERROR-REPORTING COMMIT, BECAUSE IT SHIPS TESTS.**
   **BOTH HALVES MOVED, EACH BY ONE NEW FILE.** Server 2596 → 2611 is **+15**
   (`clientErrorReporting.test.js`); suites 442 → 445 is that file's **three** describes. React 1472 →
   1480 is **+8** (`errorBoundaryReport.test.jsx`), and 90 → 91 is that file. **All four predicted
