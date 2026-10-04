@@ -1,7 +1,7 @@
 'use strict';
 
 const { pool } = require('../db');
-const { logError } = require('./errorLogger');
+const { logError, PLATFORM_TENANT } = require('./errorLogger');
 const { computeSessionSlide } = require('../utils/sessionPolicy');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -24,7 +24,14 @@ const { computeSessionSlide } = require('../utils/sessionPolicy');
 //     from; rewriting it on each slide would make the ceiling unreachable and
 //     turn every session immortal. sessionPersistence.test.js asserts this.
 // ─────────────────────────────────────────────────────────────────────────────
-async function applySessionSlide(req, { sessionId, createdAt, expiresAt }) {
+// ⚠ `contractorId` IS REQUIRED OF EVERY CALLER AND IS FOR THE LOG LINE ONLY (cleanup D2). Each
+// caller has just read the session row, so it KNOWS the tenant — and a slide failure belongs to
+// that tenant rather than to the platform. The super-admin callers pass PLATFORM_TENANT, which is
+// the truth for them: that session spans every contractor.
+// ⚠ It is NOT defaulted. A default would let a new caller omit it and get a silently wrong label,
+// which is the whole defect cleanup D exists to close; `authSlideTenant.test.js` fences the
+// call sites so a new one cannot forget.
+async function applySessionSlide(req, { sessionId, createdAt, expiresAt, contractorId }) {
   try {
     const decision = computeSessionSlide({ createdAt, expiresAt });
     if (!decision.shouldBump) return;
@@ -33,7 +40,7 @@ async function applySessionSlide(req, { sessionId, createdAt, expiresAt }) {
       [sessionId, decision.nextExpiresAt]
     );
   } catch (err) {
-    await logError({ req, error: err, source: 'applySessionSlide' });
+    await logError({ req, error: err, contractorId, source: 'applySessionSlide' });
   }
 }
 
@@ -104,13 +111,17 @@ async function verifyAdminSession(req, res) {
       return null;
     }
     const row = result.rows[0];
-    await applySessionSlide(req, { sessionId: row.id, createdAt: row.created_at, expiresAt: row.expires_at });
+    await applySessionSlide(req, {
+      sessionId: row.id, createdAt: row.created_at, expiresAt: row.expires_at,
+      contractorId: row.contractor_id,
+    });
     return {
       contractorId: row.contractor_id,
       teamMemberId: row.team_member_id,
     };
   } catch (err) {
-    logError({ req, error: err, source: 'verifyAdminSession' });
+    // PLATFORM — the lookup that would name the tenant is what failed. See verifyAnySession.
+    logError({ req, error: err, contractorId: PLATFORM_TENANT, source: 'verifyAdminSession' });
     res.status(500).json({ error: 'Auth check failed' });
     return null;
   }
@@ -143,14 +154,18 @@ async function verifyReferrerSession(req, res) {
       return null;
     }
     const row = result.rows[0];
-    await applySessionSlide(req, { sessionId: row.session_id, createdAt: row.created_at, expiresAt: row.expires_at });
+    await applySessionSlide(req, {
+      sessionId: row.session_id, createdAt: row.created_at, expiresAt: row.expires_at,
+      contractorId: row.contractor_id,
+    });
     return {
       userId: row.user_id,
       sessionId: row.session_id,
       contractorId: row.contractor_id,
     };
   } catch (err) {
-    logError({ req, error: err, source: 'verifyReferrerSession' });
+    // PLATFORM — the lookup that would name the tenant is what failed. See verifyAnySession.
+    logError({ req, error: err, contractorId: PLATFORM_TENANT, source: 'verifyReferrerSession' });
     res.status(500).json({ error: 'Auth check failed' });
     return null;
   }
@@ -178,10 +193,15 @@ async function verifySuperAdminSession(req, res) {
       return false;
     }
     const row = result.rows[0];
-    await applySessionSlide(req, { sessionId: row.id, createdAt: row.created_at, expiresAt: row.expires_at });
+    // PLATFORM: a super-admin session belongs to no contractor. See the note in verifyAnySession.
+    await applySessionSlide(req, {
+      sessionId: row.id, createdAt: row.created_at, expiresAt: row.expires_at,
+      contractorId: PLATFORM_TENANT,
+    });
     return true;
   } catch (err) {
-    logError({ req, error: err, source: 'verifySuperAdminSession' });
+    // PLATFORM — the lookup that would name the tenant is what failed. See verifyAnySession.
+    logError({ req, error: err, contractorId: PLATFORM_TENANT, source: 'verifySuperAdminSession' });
     res.status(500).json({ error: 'Auth check failed' });
     return false;
   }
@@ -254,7 +274,10 @@ async function verifyAnySession(req, res) {
         [s.user_id]
       );
       if (!users.length || !s.contractor_id) return deny();
-      await applySessionSlide(req, { sessionId: s.id, createdAt: s.created_at, expiresAt: s.expires_at });
+      await applySessionSlide(req, {
+        sessionId: s.id, createdAt: s.created_at, expiresAt: s.expires_at,
+        contractorId: s.contractor_id,
+      });
       return {
         role: 'referrer',
         sessionId: s.id,
@@ -276,7 +299,10 @@ async function verifyAnySession(req, res) {
         [s.team_member_id]
       );
       if (!members.length || !members[0].active) return deny();
-      await applySessionSlide(req, { sessionId: s.id, createdAt: s.created_at, expiresAt: s.expires_at });
+      await applySessionSlide(req, {
+        sessionId: s.id, createdAt: s.created_at, expiresAt: s.expires_at,
+        contractorId: s.contractor_id,
+      });
       return {
         role: 'team',
         sessionId: s.id,
@@ -286,14 +312,24 @@ async function verifyAnySession(req, res) {
     }
 
     if (s.role === 'super_admin') {
-      await applySessionSlide(req, { sessionId: s.id, createdAt: s.created_at, expiresAt: s.expires_at });
+      // ⚠ PLATFORM, AND IT IS THE ONE ROLE WHERE THAT IS THE TRUTH RATHER THAN A FALLBACK.
+      // A super-admin session spans every contractor — `verifySuperAdminSession` does not even
+      // select `contractor_id` — so a slide failure here belongs to no tenant.
+      await applySessionSlide(req, {
+        sessionId: s.id, createdAt: s.created_at, expiresAt: s.expires_at,
+        contractorId: PLATFORM_TENANT,
+      });
       return { role: 'super_admin', sessionId: s.id };
     }
 
     // An unrecognised role is not a session this build knows how to restore.
     return deny();
   } catch (err) {
-    await logError({ req, error: err, source: 'verifyAnySession' });
+    // ⚠ PLATFORM BECAUSE THE LOOKUP THAT WOULD NAME THE TENANT IS WHAT FAILED (cleanup D2).
+    // This catch wraps the session query itself, so there is no contractor to attribute to —
+    // and D5's request-attached value is set only AFTER a verify succeeds, so it is unset here
+    // too. A failure to verify a session is platform infrastructure, not a tenant's problem.
+    await logError({ req, error: err, contractorId: PLATFORM_TENANT, source: 'verifyAnySession' });
     res.status(500).json({ error: 'Auth check failed' });
     return null;
   }

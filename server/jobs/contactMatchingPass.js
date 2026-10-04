@@ -51,7 +51,7 @@ async function runContactMatchingPass(contractorId, options = {}) {
           linked += newLinks;
         } catch (err) {
           errors++;
-          await logError({ req: null, error: err, source: `runContactMatchingPass — jobber_client ${jc.jobber_client_id}` });
+          await logError({ req: null, contractorId, error: err, source: `runContactMatchingPass — jobber_client ${jc.jobber_client_id}` });
         }
       }
 
@@ -70,7 +70,7 @@ async function runContactMatchingPass(contractorId, options = {}) {
           linked += newLinks;
         } catch (err) {
           errors++;
-          await logError({ req: null, error: err, source: `runContactMatchingPass — contact ${contactId}` });
+          await logError({ req: null, contractorId, error: err, source: `runContactMatchingPass — contact ${contactId}` });
         }
       }
 
@@ -89,12 +89,12 @@ async function runContactMatchingPass(contractorId, options = {}) {
           linked += newLinks;
         } catch (err) {
           errors++;
-          await logError({ req: null, error: err, source: `runContactMatchingPass — contact ${contact.id}` });
+          await logError({ req: null, contractorId, error: err, source: `runContactMatchingPass — contact ${contact.id}` });
         }
       }
     }
   } catch (err) {
-    await logError({ req: null, error: err, source: 'runContactMatchingPass' });
+    await logError({ req: null, contractorId, error: err, source: 'runContactMatchingPass' });
     console.error('[contactMatchingPass] Error:', err.message);
   }
 

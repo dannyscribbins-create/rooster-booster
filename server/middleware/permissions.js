@@ -1,7 +1,7 @@
 'use strict';
 
 const { pool } = require('../db');
-const { logError } = require('./errorLogger');
+const { logError, PLATFORM_TENANT } = require('./errorLogger');
 const { ALL_FLAGS } = require('../permissions/registry');
 
 /**
@@ -29,6 +29,17 @@ function requirePermission(flag) {
       return res.status(401).json({ error: 'Not authorized' });
     }
 
+    // ⚠ FOR THE LOG LINE ONLY, AND IT IS NOT A SECOND TENANCY SOURCE (cleanup D2). The catch
+    // below cannot see `session`, which is declared inside the try — so without this a failure
+    // anywhere in this middleware was filed under no tenant at all. It is assigned from the SAME
+    // verified row STEP 1 already reads for its authorization decision, never from client input,
+    // and nothing but the `logError` call reads it.
+    // ⚠ AND THIS MIDDLEWARE CANNOT WAIT FOR D5's REQUEST-ATTACHED VALUE, which is the reading
+    // worth writing down: `requirePermission` is mounted as ROUTE middleware and runs BEFORE the
+    // handler body calls `verifyAdminSession`, so the attached value is not yet set when this
+    // catch fires. Checked at the mount sites, not assumed.
+    let logContractorId = null;
+
     try {
       // ── STEP 1: look up the session ──────────────────────────────────────────
       const sessionResult = await pool.query(
@@ -43,6 +54,7 @@ function requirePermission(flag) {
       }
 
       const session = sessionResult.rows[0];
+      logContractorId = session.contractor_id || null;
 
       // ── STEP 1a: super-admin short-circuit ───────────────────────────────────
       // Super-admin sessions bypass all permission checks across all tenants.
@@ -97,7 +109,14 @@ function requirePermission(flag) {
 
       return next();
     } catch (err) {
-      await logError({ req, error: err, source: `requirePermission('${flag}')` });
+      // A super-admin session carries no contractor, and a failure before STEP 1 returned has
+      // none either — both are genuinely platform-level, so the fallback is explicit.
+      await logError({
+        req,
+        error: err,
+        contractorId: logContractorId || PLATFORM_TENANT,
+        source: `requirePermission('${flag}')`,
+      });
       return res.status(500).json({ error: 'Internal server error' });
     }
   }

@@ -162,6 +162,7 @@ async function _runEngagementCadencePass(today) {
           } catch (sendErr) {
             logError({
               error: sendErr,
+              contractorId,
               source: `cron:engagement_cadence — send M${month} to ${contact.email}`,
             });
           }

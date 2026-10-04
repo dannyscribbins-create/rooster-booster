@@ -30,7 +30,7 @@ const { pool } = require('../db');
 const { nameMissingClients } = require('./repImportScope');
 const { classifyPipelineStatus } = require('../crm/pipelineSync');
 const { getFreshContractorAccessToken } = require('../crm/jobber');
-const { logError: realLogError } = require('../middleware/errorLogger');
+const { logError: realLogError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 
 /**
  * The rep-scope clients with no jobber_clients row, rebuilt from what the import STORED —
@@ -127,7 +127,14 @@ async function startRepNamesBackfill(db = pool, { getToken = getFreshContractorA
     }
     return results;
   } catch (err) {
-    await logError({ req: null, error: err, source: 'repNamesBackfill — contractor scan', alert: false });
+    // ⚠ PLATFORM, AND IT IS NARROW BECAUSE THE INNER TRY ALREADY OWNS THE PER-CONTRACTOR CASE.
+    // Each contractor's own failure is caught in the loop above and logged WITH its contractorId,
+    // so the only thing that reaches here is the contractor-listing query itself — which spans
+    // every tenant and belongs to none. (Contrast saleRegroupBackfill, which has no inner try.)
+    await logError({
+      req: null, contractorId: PLATFORM_TENANT, error: err,
+      source: 'repNamesBackfill — contractor scan', alert: false,
+    });
     return [];
   }
 }

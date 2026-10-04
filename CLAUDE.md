@@ -437,8 +437,107 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2624 server tests across 447 suites, and 1480 React tests across 91 files** (measured 2026-10-03 by the PLATFORM-TENANT commit (cleanup D1), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2624 · suites 447 · pass 2624 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE PLATFORM-TENANT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2631 server tests across 449 suites, and 1480 React tests across 91 files** (measured 2026-10-03 by the CRON/JOB TENANT commit (cleanup D2), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2631 · suites 449 · pass 2631 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CRON/JOB TENANT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2624 → 2631 is **+7**, all APPENDED to `logErrorTenancy.test.js` (13 → 20), so **no new
+  test file arrived**; suites 447 → 449 is that file's **two new top-level describes**. React did not
+  move — **no `src/` file was touched at all** (`git status --porcelain | grep -c src/` returned 0) —
+  and was re-measured rather than carried. **All four predicted before the run and matched.** Counted
+  with an anchored `^\s*it\(` (20), every `it(` at exactly two spaces and **zero** at four or more,
+  so no loop and no nested describe wraps a case.
+  ⚠ **THE GATE WAS RUN TWICE AND THE SECOND RUN IS THE ONE CITED — THE FIRST WAS RED AT `fail 1`,
+  AND IT WAS A FALSE POSITIVE WITH A PRECEDENT.** The 6c reset fence reported *"logErrorTenancy
+  touches dynamic_audiences but never clears it"*. **The suite touches no table there at all** — it
+  reads `dynamicAudiences.js` as TEXT — but its needle and its paired negative both had to SPELL the
+  table, so a scanner looking for table names read a source-reading fence as a database write.
+  ⚠ **Fixed by assembling the name from pieces, exactly as N4 commit 6 did for `DELETE FROM ${`, and
+  `KNOWN_GAPS` was NOT widened.** This is *"scans read test files"* with the sign flipped once more:
+  there prose MATCHES a forbidden pattern; here a NEEDLE is mistaken for the thing it hunts. The
+  counts were identical across both runs, which is the expected shape when a fix changes what a
+  scanner sees rather than how many cases exist.
+  ⚠ **THE COMMIT'S SUBJECT: WHICH TENANT A CRON, JOB OR MIDDLEWARE ERROR IS FILED UNDER — DECIDED
+  PER SITE, NOT PER FILE.** 28 sites: **20 THREADED · 7 PLATFORM · 1 deferred to D5.** Total 376 →
+  **349 across 32 files**, and the ten files that reached zero are DELETED from `EXPIRING_BY_FILE`
+  rather than pinned at 0, which the CLOSURE case requires.
+  ⚠ **PLATFORM IS A FINDING HERE, NOT A FALLBACK, AND THE TWO CASES ARE DIFFERENT.** `withLock` ×2
+  is platform because `cron_job_locks` holds one row per JOB NAME and the catch wraps work across
+  every tenant — inventing a contractor there would be the phantom defect relabelled. The four
+  `verify*Session` catches are platform because **the lookup that would NAME the tenant is what
+  failed**; D5's request-attached value is set only after a verify succeeds, so it is unset there
+  too. Saying which of the two reason applies is what stops the next reader treating either as lazy.
+  ⚠ **AND ONE SITE NEEDED ITS QUERY WIDENED, NOT JUST ITS CALL CHANGED — THIS REPO'S MOST-RECORDED
+  DEFECT, ARRIVING IN THE TENANT COLUMN.** `dynamicAudiences` read `SELECT id, name` while the catch
+  wanted `audience.contractor_id`: a writer reading a field no query selects. It would have passed
+  `undefined`, which `logError` turns into PLATFORM_TENANT — **so the error would be filed
+  platform-level while the source read as if it named the tenant**, which is strictly worse than the
+  honest absence it replaced.
+  ⚠ **AND THAT FENCE IS SOURCE-ONLY, SAID RATHER THAN IMPLIED.** The per-audience loop lives inside
+  `cron.schedule(...)` and only `evaluateAudience` is exported, so **no test can drive that loop** and
+  a behavioural case is not available. It proves the shape is WRITTEN, not that it paints.
+  ⚠ **A PREDICTION OF MINE WAS WRONG AND THE FENCE WAS RIGHT, WHICH IS WHY (5) BECAME (5a) AND
+  (5b).** I predicted the combined width as 2 and measured **1**: the SELECT and the READ are fenced
+  INDEPENDENTLY, so breaking one reds exactly one case. **Reporting 2 for a single edit would have
+  claimed the halves are coupled when they are not** — and running both halves separately is what
+  shows "both or neither" operationally. Each measures 1.
+  ⚠ **`applySessionSlide` NOW REQUIRES `contractorId` AND IT IS DELIBERATELY NOT DEFAULTED.** Each
+  of its six callers has just read the session row, so it knows the tenant; a default would let a
+  new caller omit it and get `undefined` → PLATFORM_TENANT, which **looks exactly like a deliberate
+  platform decision**. That is the defect cleanup D exists to close, one level up. A call-site sweep
+  is the only thing that can enforce it, because JavaScript will happily pass `undefined`.
+  ⚠ **AND A MEASURED FACT THAT CHANGES D5's SCOPE: `requirePermission` RUNS BEFORE THE VERIFY.** It
+  is mounted as ROUTE middleware and the handler body calls `verifyAdminSession` afterwards, so
+  D5's request-attached value is **not set** when its catch fires — checked at the mount sites, not
+  assumed. It was therefore threaded by hand from its own session read, and **D5 must not assume
+  route middleware is covered.**
+  ⚠ **ASKING "WHICH CONTRACTOR WAS IN HAND?" FOUND A CONTROL-FLOW DEFECT, FILED RATHER THAN FIXED.**
+  `startSaleRegroupBackfill`'s single catch doubles as its per-contractor handler — unlike
+  `startRepNamesBackfill` there is no inner `try` — so one contractor's failure was logged with no
+  tenant **and aborted every remaining contractor**. D2 fixed only the labelling half, because the
+  other is a behaviour change and cleanup D is about which tenant a report is filed under.
+  ⚠ **NINE GUARD-PROOFS, EVERY WIDTH PREDICTED AND MATCHED ON THE FINAL SET**, each revert an
+  inverse patch in a `finally` proven byte-identical by sha256 across six watched files, anchors
+  checked unique in BOTH directions, empty replacements refused, every injection confirmed landed.
+  (1) the exact pre-D2 state for a job site → **1**; (2) a super-admin slide given a real contractor
+  → **1**; (3) the required parameter given a DEFAULT → **1**; (4) one call site stops passing it →
+  **1**; (5a) the SELECT loses the column → **1**; (5b) the catch stops reading it → **1**; (6)
+  `withLock` invents a tenant → **1**; (7) the slide sweep pointed at nothing → **2**; (8) the
+  backfill stops tracking which contractor → **1**.
+  ⚠ **THE WIDTHS WERE MEASURED TWICE AND THE SECOND SET IS CITED**, because the fence file changed
+  after the first run (the table-name concatenation) — and a width measured against code that no
+  longer exists is a claim rather than a measurement.
+  ⚠ **TWO INJECTIONS WERE REFUSED BEFORE WRITING, BOTH FOR REASONS THIS FILE ALREADY RECORDS.**
+  (2)'s first form replaced with `contractorId: s.contractor_id,` — which **already appears twice**
+  in `auth.js` (the referrer and team branches), so the REVERSE anchor matched 3. *An anchor unique
+  forwards is not unique backwards.* And (8)'s first anchor omitted a `req: null, ` prefix and
+  matched **0**. Both times the harness said so and wrote nothing, and `auth.js` was proven
+  byte-identical afterwards — the behaviour to want.
+  ⚠ **AND THE REPAIRED (2) IS A TRUER DEFECT THAN THE ONE I FIRST WROTE:** giving a super-admin
+  session a real contractor id is the phantom-id shape with a different literal, which is exactly
+  what the two-platform-paths case exists to forbid.
+  ⚠ **CITATION ROT: TEN CITING LOCATIONS, CLASSIFIED RATHER THAN DELTA-ADDED, AND ONLY THREE WERE
+  REPAIRABLE.** D2 inserted comment blocks into `auth.js` (+7, +20) and `permissions.js` (+12).
+  **Each was read at its OLD line in the OLD revision first**, which is the only way to tell "my
+  edit moved a correct citation" from "this was already wrong". **Three were verified correct and
+  are now cited BY ROLE** (`ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` ×2 and this repo's SUPER ADMIN
+  checklist bullet, all pointing at `permissions.js`'s STEP 1a short-circuit) — a role cannot rot in
+  turn, which is why the repair is not a new number. **Two were ALREADY WRONG at HEAD**
+  (`TENANT_RESOLUTION_REBUILD_SPEC.md` ×2, one citing `verifyAdminSession`'s lines for
+  `verifyReferrerSession`), so a delta would have certified them. **Five are records that must never
+  be renumbered**, including `docs/GROUND_TRUTH_2026-08-21.md` ×3.
+  ⚠ **AND THE FIFTH RECORD EXPOSED A GAP IN THE MECHANISM RATHER THAN IN THE RECORD: THIS FILE'S OWN
+  *Adding a comment block is a citation-rotting edit* WORKED EXAMPLE CARRIES NO `citecheck:record`
+  MARKER.** It quotes `server/middleware/auth.js:86-90` as the evidence of the `9ad52f2` rot, so it
+  will be reported LIKELY ROTTED by **every future commit that touches `auth.js`** — permanently,
+  and a permanent false positive is how a check gets ignored. Filed on `PRE_LAUNCH_CHECKLIST.md`;
+  not fixed here, because it is a citecheck-hygiene edit rather than a cleanup-D one.
+  ⚠ **AND THE HEREDOC ESCAPE TRAP TWICE MORE, BOTH IN THE HARNESS**, on `\\n` inside a Python
+  heredoc. The first wrote nothing and asserted; the second silently matched 0. Repaired with the
+  editor and `'\n'.join([...])`, which is the rule this file states.
+  ⚠ **AND THE WRAPPER REPORTED exit 0 WHILE THE RED RUN'S LOG READ `EXIT=1`** — another instance,
+  and again the only reason the single failure was noticed at all.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE PLATFORM-TENANT COMMIT ITSELF, BECAUSE
+  IT SHIPS TESTS.* It read **2624 / 447 / 1480 / 91**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE PLATFORM-TENANT COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2611 → 2624 is **+13**, one new file (`logErrorTenancy.test.js`); suites 445 → 447 is that
   file's **two** top-level describes. React did not move — **no `src/` file was touched at all**
   (`git status --porcelain | grep -c src/` returned 0) — and was re-measured rather than carried.

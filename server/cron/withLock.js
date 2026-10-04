@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const { pool } = require('../db');
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 
 // ── CRON JOB LOCKING (owner-checked since 3d Phase 1a Commit 7a-3) ───────────
 //
@@ -54,7 +54,12 @@ async function withLock(jobName, timeoutMinutes, fn) {
     await fn();
     console.log(`[cron] ${jobName} completed at ${new Date().toISOString()}`);
   } catch (err) {
-    logError({ error: err, source: `cron:${jobName}` });
+    // ⚠ PLATFORM, AND HERE IT IS THE TRUTH RATHER THAN AN ABSENCE OF INFORMATION (cleanup D2).
+    // `withLock` is generic cron infrastructure: `cron_job_locks` holds one row per JOB NAME, not
+    // per contractor, and this catch wraps whatever the job did across every tenant it touched.
+    // ⚠ So a tenant must NOT be invented here. The per-contractor failures inside each job are
+    // logged by the jobs themselves, which do know whose work they were doing.
+    logError({ error: err, contractorId: PLATFORM_TENANT, source: `cron:${jobName}` });
   } finally {
     // ⚠ `AND locked_by = $2` IS THE WHOLE FIX. A run that lost its lock to the timeout clears
     // NOTHING, so the run that took it over keeps it. A zero-row result here is therefore a
@@ -76,6 +81,7 @@ async function withLock(jobName, timeoutMinutes, fn) {
       // and it is the number to read before changing the expiry again.
       await logError({
         req: null,
+        contractorId: PLATFORM_TENANT,   // the lock is per JOB, not per tenant — see above
         error: new Error(`cron:${jobName} overran its lock expiry — another run owns the lock now, `
           + 'so this run released nothing. The expiry is too short for the work, or this run hung.'),
         source: `cron:${jobName} — lock overrun`,

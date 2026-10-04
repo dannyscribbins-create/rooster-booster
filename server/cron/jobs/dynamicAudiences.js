@@ -175,8 +175,13 @@ function startDynamicAudiencesJob() {
     withLock('dynamic_audiences', 20, async () => {
       console.log('[cron:dynamic_audiences] Starting dynamic audience evaluation');
 
+      // ⚠ `contractor_id` IS SELECTED FOR THE LOG LINE (cleanup D2). This query is deliberately
+      // cross-tenant — the cron evaluates every contractor's audiences in one pass — but each
+      // AUDIENCE belongs to exactly one contractor, so a failure evaluating one is that
+      // contractor's failure and not the platform's. Without the column the catch below had no
+      // tenant to name, and every audience error in production was filed under a phantom id.
       const { rows: audiences } = await pool.query(
-        `SELECT id, name FROM dynamic_audiences WHERE is_active = TRUE`
+        `SELECT id, name, contractor_id FROM dynamic_audiences WHERE is_active = TRUE`
       );
 
       if (audiences.length === 0) {
@@ -196,6 +201,7 @@ function startDynamicAudiencesJob() {
         } catch (audienceErr) {
           logError({
             error: audienceErr,
+            contractorId: audience.contractor_id,
             source: `cron:dynamic_audiences — audience id ${audience.id}`,
           });
           console.error(

@@ -47,8 +47,9 @@
 // check. A human filtering by a real contractor id simply no longer sees platform-level rows.
 //
 // ⚠ THE ALLOW-LIST IS KEYED BY FILE WITH A PINNED COUNT, NOT BY SITE, AND THAT IS A DELIBERATE
-// TRADE. There are 376 non-compliant sites across 42 files; a 376-entry list would be unreadable and
-// nobody would maintain it. Per file with an exact count gives the same two protections that matter:
+// TRADE. There were 376 non-compliant sites across 42 files when D1 wrote this, and 349 across 32
+// after D2; a list of that many entries would be unreadable and nobody would maintain it.
+// Per file with an exact count gives the same two protections that matter:
 // a file NOT listed must be at zero, and a listed file whose count CHANGES fails — so a new
 // non-compliant call cannot hide inside an allow-listed file, and a batch that fixes sites must come
 // here and say so.
@@ -72,24 +73,19 @@ const SERVER_ROOT = path.join(__dirname, '..');
 
 /**
  * Files that still have `logError` calls carrying no tenant, with the EXACT count and the batch that
- * clears them. Measured 2026-10-03: 376 sites across 42 files.
+ * clears them. Measured 2026-10-03 after batch D2: **349 sites across 32 files**, down from 376
+ * across 42 — D2 closed 27 of its 28 and the 28th moved to D5 (see the D2 note below).
  *
  * ⚠ TO CHANGE A NUMBER HERE YOU MUST BE FIXING SITES. A count that rises fails; a count that falls
  * fails until it is updated; a file that reaches zero must be DELETED from this object.
  */
 const EXPIRING_BY_FILE = {
-  // ── batch D2: middleware, cron, jobs ──
-  'middleware/auth.js': { sites: 5, batch: 'D2' },
-  'middleware/errorLogger.js': { sites: 1, batch: 'D2' },
-  'middleware/permissions.js': { sites: 1, batch: 'D2' },
-  'cron/jobs/dynamicAudiences.js': { sites: 1, batch: 'D2' },
-  'cron/jobs/engagementCadence.js': { sites: 1, batch: 'D2' },
-  'cron/jobs/jobberIncrementalSync.js': { sites: 5, batch: 'D2' },
-  'cron/withLock.js': { sites: 2, batch: 'D2' },
-  'jobs/contactMatchingPass.js': { sites: 4, batch: 'D2' },
-  'jobs/fullJobberImport.js': { sites: 6, batch: 'D2' },
-  'jobs/repNamesBackfill.js': { sites: 1, batch: 'D2' },
-  'jobs/saleRegroupBackfill.js': { sites: 1, batch: 'D2' },
+  // ── batch D2: CLOSED 2026-10-03. Ten files reached zero and are DELETED from this object, which
+  //    is what the CLOSURE case below requires — a file left pinned at 0 fails.
+  //    The ONE survivor is retagged D5 rather than carried as D2, because its tenant cannot be
+  //    hand-threaded: `expressErrorHandler` is generic Express middleware holding only the
+  //    request, which is exactly what D5's request-attached value is for.
+  'middleware/errorLogger.js': { sites: 1, batch: 'D5' },
   // ── batch D3: crm + utils ──
   'crm/jobber.js': { sites: 3, batch: 'D3' },
   'crm/pipelineSync.js': { sites: 15, batch: 'D3' },
@@ -408,5 +404,132 @@ describe('cleanup D — the fence: every logError call names a tenant', () => {
     assert.ok(total > 100,
       `only ${total} untenanted sites found — the needle or the walk has stopped working, because `
       + 'this was 376 when the fence was written');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BATCH D2 — EVERY `applySessionSlide` CALL SUPPLIES THE TENANT IT JUST READ
+//
+// ⚠ A PARAMETER WITH NO DEFAULT IS A CONVENTION UNTIL SOMETHING READS THE CALL SITES. D2 made
+// `applySessionSlide`'s `contractorId` required precisely so a new caller cannot omit it and get a
+// silently platform-labelled slide failure — and the only thing that can enforce that is a sweep of
+// the callers, because JavaScript will happily pass `undefined`.
+//
+// ⚠ AND `undefined` IS THE DANGEROUS VALUE RATHER THAN A LOUD ONE: `logError` would fall back to
+// PLATFORM_TENANT, so an omission looks exactly like a deliberate platform decision. That is the
+// defect cleanup D exists to close, one level up.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('cleanup D2 — the session-slide call sites name their tenant', () => {
+  const AUTH = path.join(SERVER_ROOT, 'middleware', 'auth.js');
+
+  /** Every `applySessionSlide(` CALL (never the declaration), as its parenthesised extent. */
+  function slideCalls() {
+    const src = stripComments(fs.readFileSync(AUTH, 'utf8'));
+    const out = [];
+    const re = /\bapplySessionSlide\s*\(/g;
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      // The declaration is `async function applySessionSlide(` — not a call.
+      if (/function\s+$/.test(src.slice(Math.max(0, m.index - 20), m.index))) continue;
+      out.push({ line: src.slice(0, m.index).split('\n').length, text: callExtent(src, m.index) });
+    }
+    return out;
+  }
+
+  it('the declaration takes contractorId and does NOT default it', () => {
+    const src = stripComments(fs.readFileSync(AUTH, 'utf8'));
+    const decl = /async function applySessionSlide\(req, \{([^}]*)\}\)/.exec(src);
+    assert.ok(decl, 'harness: the applySessionSlide declaration must be findable');
+    assert.match(decl[1], /\bcontractorId\b/, 'contractorId must be a declared option');
+    assert.doesNotMatch(decl[1], /contractorId\s*=/,
+      'contractorId must NOT be defaulted — a default is how a new caller omits it silently');
+  });
+
+  it('every call site passes a contractorId, and there are at least six of them', () => {
+    const calls = slideCalls();
+    // Six: one per verify helper (admin, referrer, super_admin) plus verifyAnySession's three
+    // role branches. A count that FALLS means a slide stopped happening on some path.
+    assert.ok(calls.length >= 6,
+      `only ${calls.length} applySessionSlide call sites found — expected at least 6`);
+    const missing = calls.filter((c) => !/\bcontractorId\b/.test(c.text))
+      .map((c) => `middleware/auth.js:${c.line}`);
+    assert.deepEqual(missing, [],
+      'these applySessionSlide calls do not name a tenant, so a slide failure there would be '
+      + 'filed under the platform rather than the contractor whose row was just read');
+  });
+
+  it('the two super-admin paths pass PLATFORM_TENANT, not a contractor', () => {
+    // ⚠ NOT COSMETIC: a super-admin session carries no contractor_id at all, so inventing one
+    // would be the phantom-id defect with a different literal. Asserted positively so the
+    // distinction cannot be "tidied" into `s.contractor_id` (which is undefined there).
+    const calls = slideCalls().filter((c) => /PLATFORM_TENANT/.test(c.text));
+    assert.equal(calls.length, 2,
+      `expected exactly 2 platform-labelled slide calls (verifySuperAdminSession and `
+      + `verifyAnySession's super_admin branch), found ${calls.length}`);
+  });
+
+  it('PAIRED POSITIVE: the needle can see a call that omits the tenant', () => {
+    // Without this, a `slideCalls()` that matched nothing would report "all compliant".
+    const synthetic = 'await applySessionSlide(req, { sessionId: s.id, createdAt: a, expiresAt: b });';
+    assert.ok(!/\bcontractorId\b/.test(synthetic), 'the synthetic omission must read as missing');
+    const real = "await applySessionSlide(req, { sessionId: s.id, contractorId: s.contractor_id });";
+    assert.ok(/\bcontractorId\b/.test(real), 'a real compliant call must read as present');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BATCH D2 — THE CRON'S AUDIENCE ERROR NAMES A TENANT THE QUERY ACTUALLY SELECTED
+//
+// ⚠ SOURCE-ONLY, AND THE LIMIT IS STATED RATHER THAN IMPLIED. The per-audience loop lives inside
+// `cron.schedule(...)`'s callback in `startDynamicAudiencesJob`, and only `evaluateAudience` is
+// exported — so **no test can drive that loop**, and a behavioural case is not available. This
+// proves the shape is WRITTEN, not that it paints. Saying which is the difference between a proof
+// and a claim.
+//
+// ⚠ IT IS STILL WORTH A CASE, BECAUSE THE DEFECT IT GUARDS IS THIS REPO'S MOST-RECORDED ONE: a
+// writer reading a field no query SELECTS. `logError({ contractorId: audience.contractor_id })`
+// against `SELECT id, name` passes `undefined`, which `logError` then turns into PLATFORM_TENANT —
+// so the error would be filed platform-level while the code reads as if it names the tenant. The
+// two halves must move together or neither is true.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('cleanup D2 — the audience cron selects the tenant it logs', () => {
+  const DYN = path.join(SERVER_ROOT, 'cron', 'jobs', 'dynamicAudiences.js');
+
+  // ⚠ THE TABLE NAME IS ASSEMBLED FROM PIECES, AND IT IS NOT AN AFFECTATION — THE 6c RESET FENCE
+  // WENT RED ON THE FIRST WRITING. `testResetCoverage.test.js` scans a suite's source for table
+  // names outside before()/after() and reports a table the suite "touches but never clears". This
+  // suite touches NO table here at all: it reads `dynamicAudiences.js` as TEXT. But the needle and
+  // its paired negative both had to SPELL the table, so the scanner read a source-reading fence as
+  // a database write. ⚠ **`KNOWN_GAPS` was NOT widened** — the fence's own message forbids that,
+  // and the right fix is to stop supplying the string, exactly as N4 commit 6 did for `DELETE FROM`.
+  // ⚠ This is the "scans read test files" rule with the sign flipped once more: there prose MATCHES
+  // a forbidden pattern; here a NEEDLE is mistaken for the thing it hunts.
+  const AUD = 'dynamic_' + 'audiences';
+  const QUERY_TAIL = `FROM ${AUD} WHERE is_active = TRUE`;
+
+  it('the active-audience query SELECTS contractor_id', () => {
+    const src = stripComments(fs.readFileSync(DYN, 'utf8'));
+    const q = new RegExp(`SELECT([^\`]*?)${QUERY_TAIL}`).exec(src);
+    assert.ok(q, 'harness: the active-audience query must be findable');
+    assert.match(q[1], /\bcontractor_id\b/,
+      'the query must select contractor_id, or the catch below logs `undefined` and the error is '
+      + 'filed platform-level while the source reads as if it names the tenant');
+  });
+
+  it('the per-audience catch passes that column, not a literal and not nothing', () => {
+    const src = stripComments(fs.readFileSync(DYN, 'utf8'));
+    const call = /logError\(\{([\s\S]{0,220}?)\}\);/.exec(src);
+    assert.ok(call, 'harness: the per-audience logError call must be findable');
+    assert.match(call[1], /contractorId:\s*audience\.contractor_id/,
+      'the tenant must come from the audience row itself — a hardcoded id here would be the '
+      + 'phantom-id defect with a different literal');
+  });
+
+  it('PAIRED NEGATIVE: the needle rejects the pre-D2 query shape', () => {
+    // Without this the first case could be satisfied by any SELECT at all.
+    const preD2 = `SELECT id, name ${QUERY_TAIL}`;
+    const q = new RegExp(`SELECT([^\`]*?)${QUERY_TAIL}`).exec(preD2);
+    assert.ok(q, 'the needle must still match the old shape');
+    assert.doesNotMatch(q[1], /\bcontractor_id\b/, 'the old shape must read as missing the column');
   });
 });

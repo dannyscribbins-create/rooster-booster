@@ -35,7 +35,7 @@
 
 const { pool } = require('../db');
 const { windowDaysFor } = require('../utils/clientSales');
-const { logError: realLogError } = require('../middleware/errorLogger');
+const { logError: realLogError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -154,12 +154,22 @@ async function regroupContractor(db, { contractorId, logError = realLogError }) 
  * Fire-and-forget from server.js — never throws.
  */
 async function startSaleRegroupBackfill(db = pool, { logError = realLogError } = {}) {
+  // ⚠ WHICH CONTRACTOR WAS IN HAND WHEN THIS THREW — AND ASKING THE QUESTION FOUND A DEFECT
+  // (cleanup D2). This function's single catch covers BOTH the scan query AND the whole
+  // per-contractor loop, because unlike `repNamesBackfill` there is no inner try. So a failure
+  // inside `regroupContractor` for one contractor escaped to a handler that named no tenant —
+  // losing the one fact that would let anyone act on it.
+  // ⚠ FILED, NOT FIXED: that same shape also means one contractor's failure ABORTS every
+  // remaining contractor. Changing the control flow is a behaviour change and is outside what
+  // cleanup D is for, so it is recorded on PRE_LAUNCH_CHECKLIST.md rather than done here.
+  let scanning = null;
   try {
     const { rows } = await db.query(
       `SELECT DISTINCT contractor_id FROM client_sales ORDER BY 1`
     );
     const results = [];
     for (const { contractor_id: contractorId } of rows) {
+      scanning = contractorId;
       const totals = await regroupContractor(db, { contractorId, logError });
       // diagnostic log — intentional
       console.log(`[saleRegroupBackfill] ${contractorId} — chained regroup at ${totals.windowDays} days: `
@@ -168,7 +178,12 @@ async function startSaleRegroupBackfill(db = pool, { logError = realLogError } =
     }
     return results;
   } catch (err) {
-    await logError({ req: null, error: err, source: 'saleRegroupBackfill — scan', alert: false });
+    // PLATFORM only when the SCAN itself failed — i.e. before the loop named a contractor.
+    await logError({
+      req: null, contractorId: scanning || PLATFORM_TENANT, error: err,
+      source: scanning ? `saleRegroupBackfill — contractor ${scanning}` : 'saleRegroupBackfill — scan',
+      alert: false,
+    });
     return [];
   }
 }

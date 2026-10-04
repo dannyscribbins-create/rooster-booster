@@ -191,7 +191,7 @@ async function runForContractor(contractorId) {
     if (gqlErrors?.length > 0) {
       const msg = gqlErrors.map(e => e.message).join('; ');
       console.warn('[jobberIncrementalSync] Jobber filter error:', msg);
-      await logError({ req: null, error: new Error(msg), source: 'jobberIncrementalSync — clients filter' });
+      await logError({ req: null, contractorId, error: new Error(msg), source: 'jobberIncrementalSync — clients filter' });
       return;
     }
 
@@ -487,7 +487,7 @@ async function runForContractor(contractorId) {
       }
 
     } catch (err) {
-      await logError({ req: null, error: err, source: `jobberIncrementalSync — client ${client.id}` });
+      await logError({ req: null, contractorId, error: err, source: `jobberIncrementalSync — client ${client.id}` });
       console.error(`[jobberIncrementalSync] Error processing client ${client.id}:`, err.message);
     }
   }
@@ -499,7 +499,7 @@ async function runForContractor(contractorId) {
       const { linked } = await runContactMatchingPass(contractorId, { jobberClientId: jcId });
       totalLinked += linked;
     } catch (err) {
-      await logError({ req: null, error: err, source: `jobberIncrementalSync — matching ${jcId}` });
+      await logError({ req: null, contractorId, error: err, source: `jobberIncrementalSync — matching ${jcId}` });
     }
   }
 
@@ -529,12 +529,12 @@ async function runForContractor(contractorId) {
         audiencesRefreshed++;
       } catch (err) {
         audiencesFailed++;
-        await logError({ req: null, error: err, source: `jobberIncrementalSync audience-refresh ${audience.id}` });
+        await logError({ req: null, contractorId, error: err, source: `jobberIncrementalSync audience-refresh ${audience.id}` });
         console.error(`[jobberIncrementalSync] Audience refresh failed for "${audience.name}" (${audience.id}):`, err.message);
       }
     }
   } catch (err) {
-    await logError({ req: null, error: err, source: 'jobberIncrementalSync audience-refresh query' });
+    await logError({ req: null, contractorId, error: err, source: 'jobberIncrementalSync audience-refresh query' });
     console.error('[jobberIncrementalSync] Could not query active audiences:', err.message);
   }
 

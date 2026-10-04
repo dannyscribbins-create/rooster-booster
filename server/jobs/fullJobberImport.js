@@ -356,7 +356,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
           }));
           allInvoices.push(...clientInvoices);
         } catch (invErr) {
-          await logError({ req: null, error: invErr, source: `fullJobberImport Step B — client ${client.id}` });
+          await logError({ req: null, contractorId, error: invErr, source: `fullJobberImport Step B — client ${client.id}` });
           console.error(`[fullJobberImport] Step B error fetching invoices for client ${client.id}:`, invErr.message);
         }
       }
@@ -420,7 +420,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
           }));
           allQuotes.push(...clientQuotes);
         } catch (quotErr) {
-          await logError({ req: null, error: quotErr, source: `fullJobberImport Step D — client ${client.id}` });
+          await logError({ req: null, contractorId, error: quotErr, source: `fullJobberImport Step D — client ${client.id}` });
           console.error(`[fullJobberImport] Step D error fetching quotes for client ${client.id}:`, quotErr.message);
         }
       }
@@ -483,7 +483,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
           }));
           allRequests.push(...clientRequests);
         } catch (reqErr) {
-          await logError({ req: null, error: reqErr, source: `fullJobberImport Step E — client ${client.id}` });
+          await logError({ req: null, contractorId, error: reqErr, source: `fullJobberImport Step E — client ${client.id}` });
           console.error(`[fullJobberImport] Step E error fetching requests for client ${client.id}:`, reqErr.message);
         }
       }
@@ -550,7 +550,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
           }));
           allJobs.push(...clientJobs);
         } catch (jobErr) {
-          await logError({ req: null, error: jobErr, source: `fullJobberImport Step C — client ${client.id}` });
+          await logError({ req: null, contractorId, error: jobErr, source: `fullJobberImport Step C — client ${client.id}` });
           console.error(`[fullJobberImport] Step C error fetching jobs for client ${client.id}:`, jobErr.message);
         }
       }
@@ -945,7 +945,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
       importState.matchingProgress.linked = matchResult.linked;
       importState.linksEstablished = matchResult.linked;
     } catch (err) {
-      await logError({ req: null, error: err, source: 'fullJobberImport — Phase 2 matching pass' });
+      await logError({ req: null, contractorId, error: err, source: 'fullJobberImport — Phase 2 matching pass' });
     }
 
     if (importState.linksEstablished > 0) {
@@ -990,7 +990,7 @@ async function runFullJobberImport(contractorId, filterPreference) {
   } catch (err) {
     importState.status = 'error';
     importState.errorMessage = err.message;
-    await logError({ req: null, error: err, source: 'runFullJobberImport' });
+    await logError({ req: null, contractorId, error: err, source: 'runFullJobberImport' });
     console.error('[fullJobberImport] Fatal error:', err.message);
   }
 }

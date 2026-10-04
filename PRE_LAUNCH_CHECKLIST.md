@@ -2093,9 +2093,13 @@ preview — in that order, and **the order is load-bearing**: §6 records that t
 - [ ] **Swap Stripe `pk_test_` for the live publishable key** (`VITE_STRIPE_PUBLISHABLE_KEY`)
       and confirm `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` are live values.
 - [ ] **🔴 SUPER ADMIN — the bypass is wider than the intent, and the account is seeded.**
-      `server/middleware/permissions.js:49-51` returns `next()` for `role='super_admin'` on
-      **every** gated route, `:50` being the return — including `cashout_approve` and the Stripe
-      ACH transfer endpoint. *(Corrected 2026-08-27. This line read `permissions.js:48-50`, `:49`
+      `server/middleware/permissions.js`'s **STEP 1a super-admin short-circuit** returns `next()` for
+      `role='super_admin'` on **every** gated route — including `cashout_approve` and the Stripe
+      ACH transfer endpoint. ⚠ **CITED BY ROLE SINCE 2026-10-03, BECAUSE THE NUMBER MOVED AGAIN.**
+      It read `permissions.js:49-51` (`:50` being the return), which was CORRECT — verified at the
+      old line in the old revision — and cleanup D2 inserted twelve lines above it. A role citation
+      cannot rot, which is why the repair is not a new number.
+      *(Corrected 2026-08-27. This line read `permissions.js:48-50`, `:49`
       being the return. **Both the path and the range were wrong.** There is no
       `server/permissions/permissions.js` — that directory holds `registry.js` only, which is
       exactly why the wrong path looks plausible and survived two governing documents. `:49` is
@@ -11956,13 +11960,75 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       session-bearing surfaces where it comes from the verified descriptor. Doing the session-less
       ones first means the harder question — *is there a tenant here at all?* — is answered before
       the mechanical ones begin.
-      ⚠ **AND AN OPEN DESIGN QUESTION FOR D2 ONWARD, RAISED RATHER THAN DECIDED: hand-threading
-      311 session-bearing sites against having the `verify*Session` helpers attach the contractor
-      to `req`.** Ruling 3 (*"thread the real `contractorId` through every call"*) was made when the
-      number was believed to be 65; it is 376, and ruling 1 deleted the `req.session` arm that would
-      have been the natural place for an attached value. **Not actioned** — a helper that attaches
-      to `req` would collapse most of D5–D8 to zero edits, and it is a different change from
-      threading, with its own fence. Ask before D5.
+      ✅ **D2 IS CLOSED — 2026-10-03. 27 of its 28 sites done; the 28th moved to D5.** Total
+      376 → **349 across 32 files**, and the ten files that reached zero are DELETED from
+      `EXPIRING_BY_FILE` rather than pinned at 0, which the CLOSURE case requires.
+      **20 THREADED · 7 PLATFORM · 1 deferred**, decided per site rather than per file:
+      THREADED — `applySessionSlide` (now takes a required `contractorId` from all six call sites) ·
+      `requirePermission` · `dynamicAudiences` · `engagementCadence` · `jobberIncrementalSync` ×5 ·
+      `contactMatchingPass` ×4 · `fullJobberImport` ×6 · `saleRegroupBackfill`.
+      PLATFORM — the four `verify*Session` catches (the lookup that would NAME the tenant is what
+      failed, so there is nothing to attribute to) · `withLock` ×2 (`cron_job_locks` is one row per
+      JOB NAME, not per contractor) · `repNamesBackfill`'s contractor-SCAN catch.
+      ⚠ **`dynamicAudiences` NEEDED ITS SELECT WIDENED, NOT JUST ITS CALL CHANGED.** The query read
+      `SELECT id, name` while the catch wanted `audience.contractor_id` — the
+      *writer-reads-a-field-no-query-selects* defect this repo keeps recording, which would have
+      passed `undefined` and filed the error platform-level while the source read as if it named
+      the tenant. Both halves are fenced, independently (measured: breaking either reds exactly 1).
+      ⚠ **AND IT IS A SOURCE FENCE ONLY, SAID RATHER THAN IMPLIED:** the per-audience loop lives
+      inside `cron.schedule(...)` and only `evaluateAudience` is exported, so **no test can drive
+      that loop** and a behavioural case is not available.
+      ✅ **D5's MECHANISM IS RULED (Danny, 2026-10-03) AND REPLACES HAND-THREADING FOR D5–D8.** The
+      `verify*Session` helpers attach the VERIFIED contractor to the request (`req.logContractorId`)
+      and `logError` reads it when given the request, so every error raised inside an authenticated
+      request is labelled automatically. **This makes the arm ruling 1 deleted REAL rather than
+      restoring it.** Build it in its own commit at D5, with a behavioural test proving an error
+      inside a logged-in referrer request and a logged-in admin request is filed under that
+      contractor. ⚠ **SECURITY GUARDRAILS, ALL THREE:** (1) set ONLY by the verify helpers from the
+      verified token's contractor, never from any client-supplied input; (2) LOG-ONLY — named so,
+      with a fence that fails if anything but `logError` reads it, because routes keep their
+      existing verified tenant source and there must never be two; (3) per-request object only,
+      never module-level, so concurrent requests cannot cross-label.
+      ⚠ **AND ONE MEASURED FACT D2 FOUND THAT CHANGES D5's SCOPE: `requirePermission` RUNS BEFORE
+      THE VERIFY.** It is mounted as ROUTE middleware and the handler body calls
+      `verifyAdminSession` afterwards, so the attached value is NOT set when its catch fires —
+      checked at the mount sites, not assumed. It therefore had to be threaded by hand in D2 from
+      its own session read, and D5 must not assume route middleware is covered.
+- [ ] ⚠ **`startSaleRegroupBackfill`'s SINGLE CATCH DOUBLES AS ITS PER-CONTRACTOR HANDLER — FOUND BY
+      D2 AND FILED RATHER THAN FIXED.** Unlike `startRepNamesBackfill` there is no inner `try`, so a
+      failure inside `regroupContractor` for one contractor (a) escaped to a handler that named no
+      tenant and (b) **ABORTS every remaining contractor.** D2 fixed only (a) — it tracks which
+      contractor was in hand, so the row is filed correctly — because (b) is a control-flow change
+      and cleanup D is about which tenant an error report is filed under. **The fix is an inner
+      `try` per contractor, mirroring `repNamesBackfill`.** Not urgent: this is a boot-time
+      idempotent backfill, so the next boot retries the ones it skipped.
+- [ ] ⚠ **CITATION ROT FROM CLEANUP D2 — TEN CITING LOCATIONS, CLASSIFIED RATHER THAN DELTA-ADDED,
+      AND ONLY THREE WERE REPAIRABLE.** D2 inserted comment blocks into `middleware/auth.js` (+7, +20)
+      and `middleware/permissions.js` (+12), so `citecheck --changed-files` reported twelve findings
+      across ten citing locations. **Each was read at its OLD line in the OLD revision before
+      anything was decided**, which is the only way to tell "my edit moved a correct citation" from
+      "this was already wrong".
+      ✅ **THREE WERE VERIFIED CORRECT AND ARE NOW CITED BY ROLE** (not renumbered — a role cannot
+      rot in turn): `ADMIN_BRAND_RETIREMENT_BUILD_SPEC.md` ×2 and this file's SUPER ADMIN bullet,
+      all three pointing at `permissions.js`'s STEP 1a super-admin short-circuit.
+      <!-- citecheck:record -->
+      ⚠ **TWO WERE ALREADY WRONG AT HEAD, SO A DELTA WOULD HAVE CERTIFIED A WRONG NUMBER.**
+      `TENANT_RESOLUTION_REBUILD_SPEC.md:239` cites `server/middleware/auth.js:41-65` for
+      *"`verifyReferrerSession()`"* — those lines hold `verifyAdminSession` and its comment block;
+      and `:165` cites `auth.js:76-94` for the super-admin-has-no-contractor rule, which lives in
+      `verifySuperAdminSession`. **Both should be cited by role**; left as found, because correcting
+      a spec this commit does not otherwise touch is its own job.
+      ⚠ **AND FIVE ARE RECORDS THAT MUST NEVER BE RENUMBERED:** `docs/GROUND_TRUTH_2026-08-21.md`
+      ×3 (a dated snapshot that QUOTES what it cites), this file's own 2026-08-27 correction note
+      quoting `permissions.js:48-50` as the wrong number it replaced, and **`CLAUDE.md`'s
+      *Adding a comment block is a citation-rotting edit* worked example**, which quotes
+      `server/middleware/auth.js:86-90` as the evidence of the `9ad52f2` rot.
+      <!-- /citecheck:record -->
+      ⚠ **THAT LAST ONE IS A GAP IN THE MECHANISM, NOT IN THE RECORD: it is a record and carries no
+      `citecheck:record` marker**, so it will be reported as LIKELY ROTTED by every future commit
+      that touches `auth.js` — permanently, and a permanent false positive is how a check gets
+      ignored. **Add the marker around that worked example.** Not done here: it is a `CLAUDE.md`
+      edit about citecheck hygiene rather than about cleanup D, and it belongs with the doc pass.
 - [ ] ⚠ **TWO ALREADY-ROTTED LINE CITATIONS INTO `server/middleware/errorLogger.js`, FOUND WHILE
       BUILDING D1 AND FILED RATHER THAN REPAIRED.** Both are in test comments, both were **already
       wrong before cleanup C** (checked at `cc81097^`, not inferred), and neither is D's subject:
