@@ -4,7 +4,7 @@ const router = express.Router();
 const axios = require('axios');
 const { pool } = require('../db');
 const { discoverJobberFields } = require('../crm/jobber');
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../utils/retryHelpers');
 
@@ -13,7 +13,7 @@ router.get('/auth/jobber', async (req, res) => {
   const contractorId = req.query.contractorId;
   if (!contractorId) {
     const err = new Error('GET /auth/jobber: no contractorId query param — cannot start a Jobber connection without knowing which account it belongs to');
-    await logError({ req, error: err, source: 'GET /auth/jobber — contractor resolution' });
+    await logError({ req, contractorId: PLATFORM_TENANT, error: err, source: 'GET /auth/jobber — contractor resolution' });
     res.status(400).send('Missing contractorId — cannot start Jobber authorization.');
     return;
   }
@@ -27,14 +27,14 @@ router.get('/auth/jobber', async (req, res) => {
 
 router.get('/callback', async (req, res) => {
   const { code, state } = req.query;
-  const contractorId = state;
+  const contractorId = state;  let verifiedContractorId = null; // log label only; set after the contractors row is FOUND
 
   // TF-P0-3 (CRM_TOKEN_FIX_SPEC.md v1.0, F2): fail-closed on unresolvable contractor
   // identity — no default-contractor fallback. Client-supplied identity is never trusted
   // enough to guess; an OAuth connection with no known owner writes nothing.
   if (!contractorId) {
     const err = new Error('GET /callback: no contractor identity in state param — cannot resolve tenant for this OAuth connection');
-    await logError({ req, error: err, source: 'GET /callback — contractor resolution' });
+    await logError({ req, contractorId: PLATFORM_TENANT, error: err, source: 'GET /callback — contractor resolution' });
     res.status(400).send('Authorization failed: could not determine which account this connection belongs to.');
     return;
   }
@@ -49,7 +49,7 @@ router.get('/callback', async (req, res) => {
       res.status(400).send('Authorization failed: unknown account.');
       return;
     }
-
+    verifiedContractorId = contractorId;
     const response = await axios.post('https://api.getjobber.com/api/oauth/token', {
       grant_type: 'authorization_code', client_id: process.env.JOBBER_CLIENT_ID,
       client_secret: process.env.JOBBER_CLIENT_SECRET, redirect_uri: process.env.REDIRECT_URI, code
@@ -91,7 +91,7 @@ router.get('/callback', async (req, res) => {
       // Never fail the OAuth flow over this — a missing jobber_account_id fails closed
       // later, at webhook time, via the existing quarantine pattern (recoverable); a
       // broken OAuth connect is worse.
-      await logError({ req, error: captureErr, source: 'GET /callback — jobber_account_id capture' });
+      await logError({ req, error: captureErr, contractorId: verifiedContractorId, source: 'GET /callback — jobber_account_id capture' });
       console.warn('Could not capture Jobber account id:', captureErr.message);
     }
 
@@ -111,7 +111,7 @@ router.get('/callback', async (req, res) => {
         crmAccountName = accountRes.data.data.account.name;
       }
     } catch (accountErr) {
-      await logError({ req, error: accountErr, source: 'GET /callback — Jobber account name fetch' });
+      await logError({ req, error: accountErr, contractorId: verifiedContractorId, source: 'GET /callback — Jobber account name fetch' });
       console.warn('Could not fetch Jobber account name:', accountErr.message);
     }
 
@@ -137,7 +137,7 @@ router.get('/callback', async (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     res.redirect(`${frontendUrl}?admin=true&section=crm`);
   } catch (err) {
-    await logError({ req, error: err, source: 'GET /callback' });
+    await logError({ req, contractorId: verifiedContractorId || PLATFORM_TENANT, error: err, source: 'GET /callback' });
     res.status(500).send('Authorization failed. Please try again.');
   }
 });

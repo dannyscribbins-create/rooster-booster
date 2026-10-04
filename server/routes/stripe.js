@@ -3,7 +3,7 @@ const Stripe = require('stripe');
 const { pool } = require('../db');
 const { verifyAdminSession, verifyReferrerSession } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/permissions');
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { stripeShouldRetry } = require('../utils/retryHelpers');
 const { encrypt, decrypt } = require('../utils/encryption');
@@ -87,7 +87,7 @@ function getStripeClient() {
 async function getStripeRow(contractorId) {
   if (!contractorId) {
     const err = new Error('getStripeRow: contractorId is required');
-    await logError({ req: null, error: err, source: 'getStripeRow' });
+    await logError({ req: null, contractorId: PLATFORM_TENANT, error: err, source: 'getStripeRow' });
     throw err;
   }
   const r = await pool.query(
@@ -109,7 +109,7 @@ async function getStripeRow(contractorId) {
 async function upsertStripeAccount(contractorId, stripeAccountId, status) {
   if (!contractorId) {
     const err = new Error('upsertStripeAccount: contractorId is required');
-    await logError({ req: null, error: err, source: 'upsertStripeAccount' });
+    await logError({ req: null, contractorId: PLATFORM_TENANT, error: err, source: 'upsertStripeAccount' });
     throw err;
   }
   await pool.query(

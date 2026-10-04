@@ -33,7 +33,7 @@ const { notifyReferralCredit } = require('../../utils/referralNotify');
 const notifyModule = require('../../utils/referralNotify');
 const { isDerivableJobberClientId } = require('../../utils/derivableClient');
 const { refreshClientSales } = require('../../utils/clientSales');
-const { logError } = require('../../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../../middleware/errorLogger');
 const { BRANDING_THEME_DEFAULTS } = require('../../utils/brandingTheme');
 const { retryWithBackoff } = require('../../utils/retryWithBackoff');
 const { jobberShouldRetry, resendShouldRetry } = require('../../utils/retryHelpers');
@@ -557,7 +557,7 @@ async function logWebhookResolutionFailure(req, topic, itemId, payload, err) {
   const message = `[webhook-resolution] topic=${topic} itemId=${itemId ?? 'n/a'}: ${err.message}`;
   const quarantineErr = new Error(message);
   quarantineErr.stack = `${message}\n\nRaw payload:\n${JSON.stringify(payload)}\n\nOriginal stack:\n${err.stack}`;
-  await logError({ req, error: quarantineErr, source: `POST /webhooks/jobber/${topic} — contractor resolution` });
+  await logError({ req, contractorId: PLATFORM_TENANT, error: quarantineErr, source: `POST /webhooks/jobber/${topic} — contractor resolution` });
 }
 
 // Upserts a client into jobber_clients and derives+saves all tags.
@@ -1335,7 +1335,7 @@ router.post('/jobber/invoice-paid', async (req, res) => {
     try {
       payload = JSON.parse(req.body.toString());
     } catch (parseErr) {
-      await logError({ req, error: parseErr, source: 'POST /webhooks/jobber/invoice-paid — payload parse' });
+      await logError({ req, contractorId: PLATFORM_TENANT, error: parseErr, source: 'POST /webhooks/jobber/invoice-paid — payload parse' });
       return;
     }
 
@@ -1817,7 +1817,7 @@ router.post('/jobber/job-update', async (req, res) => {
     try {
       payload = JSON.parse(req.body.toString());
     } catch (parseErr) {
-      await logError({ req, error: parseErr, source: 'POST /webhooks/jobber/job-update — payload parse' });
+      await logError({ req, contractorId: PLATFORM_TENANT, error: parseErr, source: 'POST /webhooks/jobber/job-update — payload parse' });
       return;
     }
 
@@ -2003,7 +2003,7 @@ async function handleRequestWebhook(req, topic) {
   try {
     payload = JSON.parse(req.body.toString());
   } catch (parseErr) {
-    await logError({ req, error: parseErr, source: `POST /webhooks/jobber/${topic} — payload parse` });
+    await logError({ req, contractorId: PLATFORM_TENANT, error: parseErr, source: `POST /webhooks/jobber/${topic} — payload parse` });
     return;
   }
 
@@ -2248,7 +2248,7 @@ async function handleStageWebhook(req, topic) {
   try {
     payload = JSON.parse(req.body.toString());
   } catch (parseErr) {
-    await logError({ req, error: parseErr, source: `POST /webhooks/jobber/${topic} — payload parse` });
+    await logError({ req, contractorId: PLATFORM_TENANT, error: parseErr, source: `POST /webhooks/jobber/${topic} — payload parse` });
     return;
   }
 

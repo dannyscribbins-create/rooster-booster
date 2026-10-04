@@ -25,7 +25,7 @@
 const express = require('express');
 const { pool } = require('../db');
 const { verifyAnySession } = require('../middleware/auth');
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 // The ONE branding SELECT in the codebase (BR-1 Phase 1). See the route below
 // for why it is reused rather than reimplemented here.
 const { loadContractorBranding } = require('../utils/landingResolve');
@@ -233,7 +233,7 @@ router.post('/api/logout', async (req, res) => {
     }
     res.json({ success: true });
   } catch (err) {
-    await logError({ req, error: err, source: 'POST /api/logout' });
+    await logError({ req, contractorId: PLATFORM_TENANT, error: err, source: 'POST /api/logout' });
     // Still 200. A failed delete is this server's problem to fix, not a reason
     // to leave the client believing it is still signed in — the client clears
     // its stored token either way, so a 500 here would only strand the UI.

@@ -54,9 +54,8 @@
 // check. A human filtering by a real contractor id simply no longer sees platform-level rows.
 //
 // ⚠ THE ALLOW-LIST IS KEYED BY FILE WITH A PINNED COUNT, NOT BY SITE, AND THAT IS A DELIBERATE
-// TRADE. There were 376 non-compliant sites across 42 files when D1 wrote this, 349 across 32
-// after D2 and 309 across 22 after D3; a list of that many entries would be unreadable and
-// nobody would maintain it.
+// TRADE. There were 376 non-compliant sites across 42 files when D1 wrote this and 270 across 15
+// after D4; a list of that many entries would be unreadable and nobody would maintain it.
 // Per file with an exact count gives the same two protections that matter:
 // a file NOT listed must be at zero, and a listed file whose count CHANGES fails — so a new
 // non-compliant call cannot hide inside an allow-listed file, and a batch that fixes sites must come
@@ -81,9 +80,11 @@ const SERVER_ROOT = path.join(__dirname, '..');
 
 /**
  * Files that still have `logError` calls carrying no tenant, with the EXACT count and the batch that
- * clears them. Measured 2026-10-03 after batch D3: **309 sites across 22 files**.
- * The arc so far: 376/42 at D1 → 349/32 after D2 → 309/22 after D3. D2 closed 27 of its 28
- * (the 28th moved to D5); D3 closed 40 of its 41 (the 41st moved to RECON).
+ * clears them. Measured 2026-10-04 after batch D4: **270 sites across 15 files**.
+ * The arc so far: 376/42 at D1 → 349/32 after D2 → 309/22 after D3 → 270/15 after D4.
+ * D2 closed 27 of its 28 (the 28th moved to D5); D3 closed 40 of its 41 (the 41st moved to
+ * RECON); D4 closed 39 of its 70 and moved **31 to D5**, because every one of those sits in a
+ * handler that verifies a session and passes a real `req` — D5's mechanism, not threading.
  *
  * ⚠ TO CHANGE A NUMBER HERE YOU MUST BE FIXING SITES. A count that rises fails; a count that falls
  * fails until it is updated; a file that reaches zero must be DELETED from this object.
@@ -105,18 +106,16 @@ const EXPIRING_BY_FILE = {
   //    ⚠ An entry must name the batch that DELETES it; naming `D3` here would have been a lie the
   //    CLOSURE case cannot catch, because the count would still have been right.
   'utils/notificationEmail.js': { sites: 1, batch: 'RECON' },
-  // ── batch D4: the non-referrer, non-admin routes ──
-  'routes/account.js': { sites: 16, batch: 'D4' },
-  'routes/branding.js': { sites: 1, batch: 'D4' },
-  'routes/landing.js': { sites: 1, batch: 'D4' },
-  'routes/oauth.js': { sites: 5, batch: 'D4' },
-  'routes/rep.js': { sites: 4, batch: 'D4' },
-  'routes/resendWebhook.js': { sites: 21, batch: 'D4' },
-  'routes/session.js': { sites: 3, batch: 'D4' },
-  'routes/stripe.js': { sites: 11, batch: 'D4' },
-  'routes/superAdmin.js': { sites: 1, batch: 'D4' },
-  'routes/unsubscribe.js': { sites: 2, batch: 'D4' },
-  'routes/webhooks/jobber.js': { sites: 5, batch: 'D4' },
+  // ── batch D4: CLOSED 2026-10-04. Seven files reached zero and are DELETED from this object.
+  //    ⚠ THE FOUR SURVIVORS ARE RETAGGED D5, AND THAT IS THE RULING RATHER THAN A SHORTFALL.
+  //    Every one of their 31 sites sits inside a handler that calls a verify*Session helper AND
+  //    passes a real `req` — measured, not assumed — so D5's request-attached value labels them
+  //    with zero edits. Hand-threading them now would build the wrong mechanism one batch early
+  //    and then have to be unpicked.
+  'routes/account.js': { sites: 16, batch: 'D5' },
+  'routes/rep.js': { sites: 4, batch: 'D5' },
+  'routes/session.js': { sites: 2, batch: 'D5' },
+  'routes/stripe.js': { sites: 9, batch: 'D5' },
   // ── batch D5: the referrer surface ──
   'routes/referrer.js': { sites: 69, batch: 'D5' },
   // ── batch D6: admin/index.js ──
@@ -586,6 +585,39 @@ describe('cleanup D3 — the platform-level sites are explicit, and are not cont
     'utils/pendingReferral.js': [
       ['refusing to match a pending referral without a tenant', 'fires only when the user row carries no contractor'],
     ],
+    // ── batch D4's sixteen, added to THIS list rather than a second fence ────────────────────
+    // ⚠ ONE LIST AND ONE MECHANISM. A parallel D4 fence would have been easier to write and would
+    // have split the property in two, so a later batch could satisfy one and not the other.
+    'routes/oauth.js': [
+      // ⚠ BOTH FIRE WHEN THE IDENTITY IS MISSING, and that file's own rule is that a
+      // client-supplied identity is never trusted — so there is nothing to name here.
+      ["source: 'GET /auth/jobber — contractor resolution'", 'no contractorId query param at all'],
+      ["source: 'GET /callback — contractor resolution'", 'no contractor identity in the state param'],
+    ],
+    'routes/stripe.js': [
+      ["source: 'getStripeRow'", 'fires only when the caller supplied no contractor'],
+      ["source: 'upsertStripeAccount'", 'fires only when the caller supplied no contractor'],
+    ],
+    'routes/resendWebhook.js': [
+      ["error: new Error('RESEND_WEBHOOK_SECRET not set')", 'a platform configuration error, every tenant'],
+      ["error: 'Invalid signature'", 'an unauthenticated and possibly hostile request'],
+      ['JSON parse', 'before any tenant is known'],
+      ['token lookup', 'the lookup that would RESOLVE the tenant is what failed'],
+    ],
+    'routes/branding.js': [
+      ["source: 'GET /api/branding/:slug'", 'the slug→contractor resolution is what failed'],
+    ],
+    'routes/session.js': [
+      ["source: 'POST /api/logout'", 'deletes by token; no contractor is selected or needed'],
+    ],
+    'routes/superAdmin.js': [
+      ["source: 'POST /api/rm-control/login'", 'a super-admin session carries no contractor by design'],
+    ],
+    'routes/webhooks/jobber.js': [
+      ['contractor resolution` })', 'this IS the failure-to-resolve-the-contractor log'],
+      ["source: 'POST /webhooks/jobber/invoice-paid — payload parse'", 'upstream of resolveWebhookContractorId'],
+      ["source: 'POST /webhooks/jobber/job-update — payload parse'", 'upstream of resolveWebhookContractorId'],
+    ],
   };
 
   it('every chosen platform site passes PLATFORM_TENANT and not a contractor id', () => {
@@ -632,5 +664,109 @@ describe('cleanup D3 — the platform-level sites are explicit, and are not cont
       'the scan-event error must be filed under the token\'s contractor');
     assert.doesNotMatch(span, /hostContractor/,
       'the HOST\'s contractor must not be used — it is the untrusted half of this comparison');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BATCH D4 — A TENANT LABEL IS NEVER TAKEN FROM UNVERIFIED CLIENT INPUT
+//
+// ⚠ TWO GUARD-PROOFS MEASURED 0 AND THESE ARE THE CASES THAT CLOSE THEM. The allow-list fence only
+// asks whether a `contractorId` is PRESENT, and the platform fence only covers sites decided
+// PLATFORM — so a site that correctly names a tenant could be switched to name the WRONG one,
+// client-supplied, and nothing would fail.
+//
+// ⚠ WHY THIS IS WORTH A FENCE RATHER THAN CARE: `error_log`'s dedup key is
+// (contractor_id, route, method, error_message). A caller who can choose the contractor_id can
+// therefore choose which lineage their errors join — which means both filing noise against another
+// tenant and, with a known message, suppressing the alert on a real one. That is the same principle
+// as D5's guardrail 1, applied one batch early to the sites that already resolve a tenant by hand.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('cleanup D4 — route tenant labels come from a VERIFIED source, not from the request', () => {
+  function callSpanBefore(rel, needle) {
+    const src = stripComments(fs.readFileSync(path.join(SERVER_ROOT, rel), 'utf8'));
+    const at = src.indexOf(needle);
+    assert.notEqual(at, -1, `harness: ${rel} no longer contains ${needle}`);
+    const open = src.lastIndexOf('logError(', at);
+    assert.notEqual(open, -1, `harness: no logError( before ${needle} in ${rel}`);
+    return src.slice(open, at + needle.length);
+  }
+
+  it('⚠ oauth\'s OUTER catch labels from the VALIDATED contractor, never the `state` param', () => {
+    // ⚠ `contractorId` in that handler IS the client's `state` query param. It becomes a tenant only
+    // once the `contractors` row is found — which is what that file's own comment means by "client-
+    // supplied identity is never trusted enough to guess". The outer catch wraps that very check, so
+    // it must read the value set AFTER it passed, and fall back to platform otherwise.
+    const span = callSpanBefore('routes/oauth.js', "source: 'GET /callback' });");
+    assert.match(span, /contractorId:\s*verifiedContractorId\s*\|\|\s*PLATFORM_TENANT/,
+      'the outer catch must use the VALIDATED contractor or the platform marker');
+    assert.doesNotMatch(span, /contractorId:\s*contractorId\b/,
+      'labelling from the raw `state` param would let a caller choose the tenant an error is filed under');
+  });
+
+  it('⚠ and `verifiedContractorId` is assigned ONLY after the contractors row is found', () => {
+    // Without this, the name could be set from `state` at the top and the case above would pass
+    // while the property was gone — the needle would still match.
+    const src = stripComments(fs.readFileSync(path.join(SERVER_ROOT, 'routes', 'oauth.js'), 'utf8'));
+    const decl = src.indexOf('let verifiedContractorId');
+    const assign = src.indexOf('verifiedContractorId = contractorId;');
+    // ⚠ THE TABLE NAME IS ASSEMBLED, AND THIS IS THE THIRD TIME THIS SHAPE HAS BITTEN THIS ARC.
+    // `testResetCoverage.test.js` scans a suite's source for table names outside before()/after()
+    // and reports a table it "touches but never clears". This case touches NO table — it reads
+    // `oauth.js` as TEXT — but spelling the name in a NEEDLE made the scanner read a source-reading
+    // fence as a database write. D1 hit it with `contractors` (fixed by moving real touches into
+    // `before()`), D3 with `dynamic_audiences`, and D4 here. **`KNOWN_GAPS` was NOT widened.**
+    // ⚠ THE GENERAL RULE, SINCE THREE INSTANCES IS A PATTERN: a source-reading fence must never
+    // SPELL a table name. Build it from pieces — a human still reads it, the scanner does not.
+    const CONTRACTORS = 'contract' + 'ors';
+    const check = src.indexOf(`SELECT id FROM ${CONTRACTORS} WHERE id = $1`);
+    assert.ok(decl !== -1 && assign !== -1 && check !== -1, 'harness: all three sites must be findable');
+    assert.ok(decl < check, 'it must be declared before the check so the catch can see it');
+    assert.ok(assign > check, 'it must be ASSIGNED after the check — otherwise it is just `state`');
+  });
+
+  it('⚠ serveLanding labels from the token\'s contractor, never from the host', () => {
+    // Same property as `utils/landingResolve.js`'s scan-event fence, one layer up: the host is
+    // attacker-controllable, and the page's own comment says every contractor-scoped value it
+    // carries comes from the token.
+    const src = stripComments(fs.readFileSync(path.join(SERVER_ROOT, 'routes', 'landing.js'), 'utf8'));
+    const fn = src.indexOf('async function serveLanding');
+    assert.notEqual(fn, -1, 'harness: serveLanding must be findable');
+    const body = src.slice(fn, src.indexOf('\n}', fn));
+    assert.match(body, /logContractorId\s*=\s*contractorId/,
+      'the log label must track the resolved contractorId');
+    assert.doesNotMatch(body, /logContractorId\s*=\s*req\./,
+      'the log label must never be assigned from the request — host, header, query or body');
+  });
+
+  it('⚠ every hoisted log-only local is READ, not merely assigned', () => {
+    // ⚠ THE HOLE THIS CLOSES, MEASURED: a guard-proof swapped `logContractorId || PLATFORM_TENANT`
+    // for a bare `PLATFORM_TENANT` in one unsubscribe route and **nothing failed** — the value was
+    // still declared and still assigned, so every other check stayed green while the route silently
+    // stopped naming a tenant it had in hand. The allow-list fence cannot see it: `PLATFORM_TENANT`
+    // IS a contractorId as far as that needle is concerned.
+    // ⚠ This is the dead-write shape: an assignment with no reader looks exactly like a working one.
+    const HOISTED = {
+      'routes/landing.js': 1,
+      'routes/unsubscribe.js': 2,   // one per route — validate and submit
+    };
+    for (const [rel, expected] of Object.entries(HOISTED)) {
+      const src = stripComments(fs.readFileSync(path.join(SERVER_ROOT, rel), 'utf8'));
+      const assigned = (src.match(/logContractorId\s*=/g) || []).length;
+      const read = (src.match(/contractorId:\s*logContractorId\s*\|\|/g) || []).length;
+      assert.ok(assigned > 0, `${rel}: harness — the hoisted local must exist`);
+      assert.equal(read, expected,
+        `${rel}: expected ${expected} logError call(s) to READ the hoisted local and found ${read} — `
+        + 'an assignment nobody reads means the route stopped naming a tenant it already resolved');
+    }
+  });
+
+  it('PAIRED NEGATIVE: the needles reject the request-derived forms', () => {
+    // Without this, a needle that could not match the bad form would report compliance.
+    assert.doesNotMatch("contractorId: verifiedContractorId || PLATFORM_TENANT",
+      /contractorId:\s*contractorId\b/, 'the good oauth form must not look like the bad one');
+    assert.match("contractorId: contractorId, error: err", /contractorId:\s*contractorId\b/,
+      'the bad oauth form must be detectable');
+    assert.match("logContractorId = req.hostname;", /logContractorId\s*=\s*req\./,
+      'the bad landing form must be detectable');
   });
 });

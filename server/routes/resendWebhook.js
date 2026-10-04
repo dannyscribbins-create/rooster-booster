@@ -7,7 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { Webhook } = require('svix');
 const { pool } = require('../db');
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 const { sendAdminNotification } = require('../utils/notificationEmail');
 const { applyTag } = require('../utils/tags');
 
@@ -25,7 +25,7 @@ router.post('/resend', async (req, res) => {
   const rawBody = req.body;
 
   if (!process.env.RESEND_WEBHOOK_SECRET) {
-    await logError({ req, error: new Error('RESEND_WEBHOOK_SECRET not set'), source: 'POST /api/webhooks/resend' });
+    await logError({ req, contractorId: PLATFORM_TENANT, error: new Error('RESEND_WEBHOOK_SECRET not set'), source: 'POST /api/webhooks/resend' });
     return res.status(200).json({ received: true });
   }
 
@@ -37,7 +37,7 @@ router.post('/resend', async (req, res) => {
       'svix-signature': req.headers['svix-signature'],
     });
   } catch (err) {
-    await logError({ req, error: err, source: 'POST /api/webhooks/resend' });
+    await logError({ req, contractorId: PLATFORM_TENANT, error: err, source: 'POST /api/webhooks/resend' });
     return res.status(400).json({ error: 'Invalid signature' });
   }
 
@@ -46,7 +46,7 @@ router.post('/resend', async (req, res) => {
   try {
     event = JSON.parse(rawBody.toString());
   } catch (err) {
-    await logError({ req, error: err, source: 'POST /api/webhooks/resend — JSON parse' });
+    await logError({ req, error: err, contractorId: PLATFORM_TENANT, source: 'POST /api/webhooks/resend — JSON parse' });
     return res.status(400).json({ error: 'Invalid JSON body' });
   }
 
@@ -74,7 +74,7 @@ router.post('/resend', async (req, res) => {
     );
     tokenRow = tokenResult.rows[0] || null;
   } catch (err) {
-    await logError({ req, error: err, source: 'POST /api/webhooks/resend — token lookup' });
+    await logError({ req, error: err, contractorId: PLATFORM_TENANT, source: 'POST /api/webhooks/resend — token lookup' });
   }
 
   if (!tokenRow) {
@@ -98,7 +98,7 @@ router.post('/resend', async (req, res) => {
       );
       openUpdated = updateResult.rowCount > 0;
     } catch (err) {
-      await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.opened update' });
+      await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.opened update' });
     }
 
     if (openUpdated) {
@@ -109,7 +109,7 @@ router.post('/resend', async (req, res) => {
           [token, campaign_id, contractor_id, batch_number]
         );
       } catch (err) {
-        await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.opened event insert' });
+        await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.opened event insert' });
       }
     }
 
@@ -128,7 +128,7 @@ router.post('/resend', async (req, res) => {
       );
       clickUpdated = updateResult.rowCount > 0;
     } catch (err) {
-      await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.clicked update' });
+      await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.clicked update' });
     }
 
     if (clickUpdated) {
@@ -139,7 +139,7 @@ router.post('/resend', async (req, res) => {
           [token, campaign_id, contractor_id, batch_number]
         );
       } catch (err) {
-        await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.clicked event insert' });
+        await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.clicked event insert' });
       }
 
       // Non-blocking High Engager tag write
@@ -153,7 +153,7 @@ router.post('/resend', async (req, res) => {
             await applyTag(pool, contactRes.rows[0].id, contractor_id, 'High Engager', 'system');
           }
         } catch (tagErr) {
-          await logError({ req, error: tagErr, source: 'POST /api/webhooks/resend — High Engager tag' });
+          await logError({ req, contractorId: contractor_id, error: tagErr, source: 'POST /api/webhooks/resend — High Engager tag' });
         }
       })();
     }
@@ -171,7 +171,7 @@ router.post('/resend', async (req, res) => {
         [campaign_id, batch_number, contactEmail]
       );
     } catch (err) {
-      await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.complained update' });
+      await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.complained update' });
     }
 
     try {
@@ -181,7 +181,7 @@ router.post('/resend', async (req, res) => {
         [token, campaign_id, contractor_id, batch_number]
       );
     } catch (err) {
-      await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.complained event insert' });
+      await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.complained event insert' });
     }
 
     try {
@@ -193,7 +193,7 @@ router.post('/resend', async (req, res) => {
         [contractor_id, contactEmail]
       );
     } catch (err) {
-      await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.complained opt-out upsert' });
+      await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.complained opt-out upsert' });
     }
 
     // ── #27 COMPLAINT RATE WARNING (one-time per campaign) ────────────────────────
@@ -234,7 +234,7 @@ router.post('/resend', async (req, res) => {
         }
       }
     } catch (alertErr) {
-      await logError({ req, error: alertErr, source: 'POST /api/webhooks/resend — #27 complaint rate alert' });
+      await logError({ req, contractorId: contractor_id, error: alertErr, source: 'POST /api/webhooks/resend — #27 complaint rate alert' });
     }
 
     return res.status(200).json({ received: true });
@@ -250,7 +250,7 @@ router.post('/resend', async (req, res) => {
         [campaign_id, batch_number, contactEmail]
       );
     } catch (err) {
-      await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.bounced update' });
+      await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.bounced update' });
     }
 
     // Non-blocking Bounced tag write
@@ -264,7 +264,7 @@ router.post('/resend', async (req, res) => {
           await applyTag(pool, contactRes.rows[0].id, contractor_id, 'Bounced', 'system');
         }
       } catch (tagErr) {
-        await logError({ req, error: tagErr, source: 'POST /api/webhooks/resend — Bounced tag' });
+        await logError({ req, contractorId: contractor_id, error: tagErr, source: 'POST /api/webhooks/resend — Bounced tag' });
       }
     })();
 
@@ -275,7 +275,7 @@ router.post('/resend', async (req, res) => {
         [token, campaign_id, contractor_id, batch_number]
       );
     } catch (err) {
-      await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.bounced event insert' });
+      await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.bounced event insert' });
     }
 
     // ── #28 BOUNCE RATE SPIKE (one-time per campaign) ─────────────────────────────
@@ -316,7 +316,7 @@ router.post('/resend', async (req, res) => {
         }
       }
     } catch (alertErr) {
-      await logError({ req, error: alertErr, source: 'POST /api/webhooks/resend — #28 bounce rate alert' });
+      await logError({ req, contractorId: contractor_id, error: alertErr, source: 'POST /api/webhooks/resend — #28 bounce rate alert' });
     }
 
     return res.status(200).json({ received: true });
@@ -334,7 +334,7 @@ router.post('/resend', async (req, res) => {
       );
       deliveredUpdated = updateResult.rowCount > 0;
     } catch (err) {
-      await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.delivered update' });
+      await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.delivered update' });
     }
 
     if (deliveredUpdated) {
@@ -345,7 +345,7 @@ router.post('/resend', async (req, res) => {
           [token, campaign_id, contractor_id, batch_number]
         );
       } catch (err) {
-        await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.delivered event insert' });
+        await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.delivered event insert' });
       }
     }
 
@@ -364,7 +364,7 @@ router.post('/resend', async (req, res) => {
       );
       failedUpdated = updateResult.rowCount > 0;
     } catch (err) {
-      await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.failed update' });
+      await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.failed update' });
     }
 
     if (failedUpdated) {
@@ -375,7 +375,7 @@ router.post('/resend', async (req, res) => {
           [token, campaign_id, contractor_id, batch_number]
         );
       } catch (err) {
-        await logError({ req, error: err, source: 'POST /api/webhooks/resend — email.failed event insert' });
+        await logError({ req, contractorId: contractor_id, error: err, source: 'POST /api/webhooks/resend — email.failed event insert' });
       }
     }
 

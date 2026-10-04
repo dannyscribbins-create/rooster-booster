@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 const { applyTag, removeTag } = require('../utils/tags');
 
 const TRACKING_PIXEL = Buffer.from(
@@ -14,6 +14,7 @@ router.get('/api/unsubscribe/validate', async (req, res) => {
   const { token } = req.query;
   if (!token) return res.status(400).json({ error: 'Token required' });
 
+  let logContractorId = null;   // for the catch's label only; the token row is what resolves it
   try {
     const tokenResult = await pool.query(
       `SELECT t.token, t.contractor_id, t.email, t.campaign_id, t.expires_at, t.used_at
@@ -24,6 +25,7 @@ router.get('/api/unsubscribe/validate', async (req, res) => {
     if (tokenResult.rows.length === 0) return res.status(404).json({ error: 'Token not found' });
 
     const row = tokenResult.rows[0];
+    logContractorId = row.contractor_id || null;
     if (new Date(row.expires_at) < new Date()) return res.status(410).json({ error: 'Token expired' });
 
     const [settingsResult, existingResult] = await Promise.all([
@@ -68,7 +70,7 @@ router.get('/api/unsubscribe/validate', async (req, res) => {
           },
     });
   } catch (err) {
-    await logError({ req, error: err, source: 'GET /api/unsubscribe/validate' });
+    await logError({ req, contractorId: logContractorId || PLATFORM_TENANT, error: err, source: 'GET /api/unsubscribe/validate' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -78,6 +80,7 @@ router.post('/api/unsubscribe/submit', async (req, res) => {
   const { token, opt_out_campaigns, opt_out_sms, opt_out_all, referral_only } = req.body;
   if (!token) return res.status(400).json({ error: 'Token required' });
 
+  let logContractorId = null;   // for the catch's label only; the token row is what resolves it
   try {
     const tokenResult = await pool.query(
       `SELECT token, contractor_id, email, campaign_id, expires_at
@@ -88,6 +91,7 @@ router.post('/api/unsubscribe/submit', async (req, res) => {
     if (tokenResult.rows.length === 0) return res.status(404).json({ error: 'Token not found' });
 
     const row = tokenResult.rows[0];
+    logContractorId = row.contractor_id || null;
     if (new Date(row.expires_at) < new Date()) return res.status(410).json({ error: 'Token expired' });
 
     const ipAddress = req.headers['x-forwarded-for']
@@ -203,7 +207,7 @@ router.post('/api/unsubscribe/submit', async (req, res) => {
       // Non-critical
     }
   } catch (err) {
-    await logError({ req, error: err, source: 'POST /api/unsubscribe/submit' });
+    await logError({ req, contractorId: logContractorId || PLATFORM_TENANT, error: err, source: 'POST /api/unsubscribe/submit' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

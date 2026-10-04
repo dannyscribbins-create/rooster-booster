@@ -3,7 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const rateLimit = require('express-rate-limit');
@@ -51,7 +51,7 @@ router.post('/api/rm-control/login', superAdminLoginLimiter, [
     );
     res.json({ success: true, token });
   } catch (err) {
-    await logError({ req, error: err, source: 'POST /api/rm-control/login' });
+    await logError({ req, contractorId: PLATFORM_TENANT, error: err, source: 'POST /api/rm-control/login' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

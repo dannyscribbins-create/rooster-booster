@@ -437,8 +437,77 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2634 server tests across 450 suites, and 1480 React tests across 91 files** (measured 2026-10-03 by the CRM/UTILS TENANT commit (cleanup D3), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2634 · suites 450 · pass 2634 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CRM/UTILS TENANT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2639 server tests across 451 suites, and 1480 React tests across 91 files** (measured 2026-10-04 by the ROUTE TENANT commit (cleanup D4), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2639 · suites 451 · pass 2639 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE ROUTE TENANT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2634 → 2639 is **+5**, all APPENDED to `logErrorTenancy.test.js` (23 → 28), so **no new
+  test file arrived**; suites 450 → 451 is that file's **one new top-level describe**. React did not
+  move — **no `src/` file was touched at all** — and was re-measured. **All four predicted before the
+  run and matched.** Counted with an anchored `^\s*it\(` (28), every `it(` at exactly two spaces and
+  **zero** at four or more.
+  ⚠ **THE COMMIT'S SUBJECT: 70 SITES IN THE NON-REFERRER, NON-ADMIN ROUTES. 23 THREADED · 16
+  PLATFORM · 31 MOVED TO D5 BY RULING.** Total 309 → **270 across 15 files**; seven files reached
+  zero and are DELETED from `EXPIRING_BY_FILE`, four are retagged D5.
+  ⚠ **THE 31 ARE THE D5 MECHANISM, NOT A SHORTFALL, AND THE MEASUREMENT IS WHAT MAKES THAT
+  CHECKABLE: every one sits in a handler that calls a `verify*Session` helper AND passes a real
+  `req` — 0 of the 31 pass `req: null`.** So the request-attached value labels them with zero edits.
+  Hand-threading them now would build the wrong mechanism one batch early and then be unpicked.
+  ⚠ **D4 ADDED A SECURITY PROPERTY THE EARLIER BATCHES DID NOT NEED: A TENANT LABEL IS NEVER TAKEN
+  FROM UNVERIFIED CLIENT INPUT.** `oauth.js`'s `contractorId` IS the client's `state` query param,
+  and its outer catch wraps the `contractors` lookup — so labelling from it would let a caller choose
+  which tenant an error is filed under. ⚠ **Not cosmetic: `error_log`'s dedup key is
+  `(contractor_id, route, method, error_message)`, so choosing the contractor chooses the LINEAGE** —
+  which means filing noise against another tenant AND, with a known message, suppressing the
+  first-occurrence alert on a real one. A `verifiedContractorId` is set only after the row is found,
+  and the READ and the assignment ORDER are fenced separately. Same property fenced for
+  `serveLanding`, which must never label from `req.*`.
+  ⚠ **AND A GUARD-PROOF SHOWED THE HOISTED LOG-ONLY LOCALS NEEDED A FENCE OF THEIR OWN.** Swapping
+  one unsubscribe route's `logContractorId || PLATFORM_TENANT` for a bare `PLATFORM_TENANT` reddened
+  **nothing**: the local was still declared and still assigned, so the route silently stopped naming
+  a tenant it had in hand. **The allow-list fence cannot see it — `PLATFORM_TENANT` IS a
+  `contractorId` as far as that needle is concerned.** This is the dead-write shape: an assignment
+  with no reader looks exactly like a working one. A case now counts the READS per file.
+  ⚠ **TEN GUARD-PROOFS, EVERY WIDTH PREDICTED AND MATCHED ON THE FINAL SET**, each revert an inverse
+  patch in a `finally` proven byte-identical by sha256 across seven watched files. (1) the pre-D4
+  state for a threaded site → **1**; (2) a platform site given a real contractor → **1**; (3a) the
+  outer catch reads the raw `state` → **1**; (3b) `verifiedContractorId` assigned BEFORE the check →
+  **1**; (4) landing labels from the host → **1**; (5) unsubscribe stops reading its hoisted local →
+  **1**; (6) resendWebhook threads the tenant before the token row resolves it → **1**; (7) a
+  D5-deferred file hand-threaded early → **1**; (8) the resolution-FAILURE log given a tenant →
+  **1**; (9) the platform fence's needle pointed at nothing → **1**.
+  ⚠ **(3) WAS SPLIT INTO (3a)/(3b) BECAUSE MY PREDICTION WAS WRONG, NOT THE FENCE.** I predicted the
+  combined width as 2 and measured 1: the READ and the ORDERING are fenced INDEPENDENTLY, so breaking
+  one reds exactly one case. **Reporting 2 for a single edit would have claimed the halves are
+  coupled when they are not** — the identical mistake D3 made with the audience SELECT/READ pair, so
+  this is the second instance of one lesson in two batches.
+  ⚠ **AND THE HARNESS CORRUPTED A FILE, WHICH IS THE ENTRY MOST WORTH KEEPING.** A proof's forward
+  anchor matched 0, so `patch` raised BEFORE writing — and the `finally` then applied the INVERSE
+  patch anyway, whose own anchor DID match once, **inserting the line the injection was supposed to
+  remove.** The saved-bytes floor caught it (sha256 MISMATCH) and restored the file, which is why
+  that floor is not decoration. ⚠ **The recorded rule is "a revert that depends on the injector
+  succeeding is not a revert"; this is its MIRROR — a revert must not run when the injector did NOT
+  succeed.** The harness tracks whether the forward patch landed now, and said so on the next run.
+  ⚠ **AND THE 6c RESET FENCE FIRED ON A NEEDLE FOR THE THIRD TIME IN THIS ARC — SO IT IS NOW A
+  GENERAL RULE RATHER THAN THREE ANECDOTES: A SOURCE-READING FENCE MUST NEVER SPELL A TABLE NAME.**
+  That scanner looks for table names outside `before()`/`after()`; a case that reads `oauth.js` as
+  TEXT but spells `FROM contractors` in its needle is read as a database write. D1 hit it with
+  `contractors` (fixed by moving real touches into `before()`), D3 with `dynamic_audiences`, D4 here.
+  **Build the name from pieces — a human still reads it, the scanner does not. `KNOWN_GAPS` was NOT
+  widened any of the three times.**
+  ⚠ **CITATION ROT: 5, ALL INTO `oauth.js`, AND ALL FIVE AVOIDED RATHER THAN REPAIRED.** The D3
+  lesson held for the bulk of D4 — no comment blocks, so nine of eleven files are net delta 0 by
+  construction. `oauth.js` needed two real statements, and folding them onto existing lines took it
+  to **net 0** as well: `citecheck --changed-files` fell from 5 LIKELY ROTTED to **0**. ⚠ **All five
+  had been CORRECT at HEAD** (verified at the old line in the old revision), including one in
+  `docs/GROUND_TRUTH_2026-08-21.md` that must never be renumbered — so avoiding the rot was strictly
+  better than repairing it across four documents.
+  ⚠ **TWO GATE RUNS WERE DISCARDED RATHER THAN CITED**, once when the `oauth.js` fold landed and once
+  when the reset-fence fix did. A comment or a concatenation cannot change a count, **but "it cannot
+  have changed" is a prediction, not a measurement.** The counts were identical across all three.
+  ⚠ **AND THE WRAPPER REPORTED exit 0 WHILE THE RED RUN'S LOG READ `EXIT=1`** — another instance, and
+  again the only reason the single failure was noticed.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CRM/UTILS TENANT COMMIT ITSELF, BECAUSE
+  IT SHIPS TESTS.* It read **2634 / 450 / 1480 / 91**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE CRM/UTILS TENANT COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2631 → 2634 is **+3**, all APPENDED to `logErrorTenancy.test.js` (20 → 23), so **no new
   test file arrived**; suites 449 → 450 is that file's **one new top-level describe**. React did not
   move — **no `src/` file was touched at all** — and was re-measured. **All four predicted before the

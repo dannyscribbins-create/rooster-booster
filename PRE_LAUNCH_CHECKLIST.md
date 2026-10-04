@@ -12024,6 +12024,37 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       is attacker-controllable and the function's own comment already says branding must come from
       the token; without the fence a later edit could file a tampering attempt against the tenant
       whose domain was borrowed.
+      ✅ **D4 IS CLOSED — 2026-10-04. 39 of its 70 sites done; 31 MOVED TO D5 BY RULING.** Total
+      309 → **270 across 15 files**. **23 THREADED · 16 PLATFORM · 31 deferred.**
+      ⚠ **THE 31 ARE NOT A SHORTFALL — THEY ARE THE D5 MECHANISM, AND THE MEASUREMENT IS WHAT MAKES
+      THAT CHECKABLE: every one sits in a handler that calls a `verify*Session` helper AND passes a
+      real `req`** (0 of the 31 pass `req: null`). So the request-attached value labels them with
+      **zero edits**; hand-threading would build the wrong mechanism one batch early. They are
+      `routes/account.js` 16 · `routes/stripe.js` 9 · `routes/rep.js` 4 · `routes/session.js` 2.
+      THREADED — `routes/resendWebhook.js` ×17 (every site after the token row resolves the tenant) ·
+      `routes/oauth.js` ×3 (after the `contractors` row is FOUND) · `routes/unsubscribe.js` ×2 ·
+      `routes/landing.js` ×1.
+      PLATFORM — `routes/webhooks/jobber.js` ×5 (one IS the failure-to-resolve log; four are payload
+      parses upstream of `resolveWebhookContractorId`) · `routes/resendWebhook.js` ×4 (a missing
+      secret, an invalid signature, a JSON parse, and the token lookup that would RESOLVE the
+      tenant) · `routes/oauth.js` ×2 and `routes/stripe.js` ×2 (all four fire only when no
+      contractor was supplied) · `routes/branding.js`, `routes/session.js`'s logout and
+      `routes/superAdmin.js`'s rm-control login ×1 each.
+      ⚠ **D4 ADDED A SECURITY PROPERTY THE EARLIER BATCHES DID NOT NEED: A TENANT LABEL IS NEVER
+      TAKEN FROM UNVERIFIED CLIENT INPUT.** `oauth.js`'s `contractorId` IS the client's `state`
+      param, and its outer catch wraps the `contractors` lookup — so labelling from it would let a
+      caller choose which tenant an error is filed under. ⚠ **That is not cosmetic: `error_log`'s
+      dedup key is `(contractor_id, route, method, error_message)`, so choosing the contractor
+      chooses the lineage — which means filing noise against another tenant AND, with a known
+      message, suppressing the first-occurrence alert on a real one.** A `verifiedContractorId` is
+      set only after the row is found, and two fences pin the read and the assignment ORDER
+      separately. Same property fenced for `serveLanding` (never `req.*`).
+      ⚠ **AND THE HOISTED LOG-ONLY LOCALS ARE FENCED AS BEING *READ*, WHICH A GUARD-PROOF FOUND
+      NECESSARY.** Swapping one unsubscribe route's `logContractorId || PLATFORM_TENANT` for a bare
+      `PLATFORM_TENANT` reddened **nothing**: the local was still declared and still assigned, so the
+      route silently stopped naming a tenant it had in hand. **The allow-list fence cannot see it —
+      `PLATFORM_TENANT` is a `contractorId` as far as that needle is concerned.** This is the
+      dead-write shape: an assignment with no reader looks exactly like a working one.
 - [ ] ⚠ **`startSaleRegroupBackfill`'s SINGLE CATCH DOUBLES AS ITS PER-CONTRACTOR HANDLER — FOUND BY
       D2 AND FILED RATHER THAN FIXED.** Unlike `startRepNamesBackfill` there is no inner `try`, so a
       failure inside `regroupContractor` for one contractor (a) escaped to a handler that named no
@@ -12035,7 +12066,14 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       ✅ **SCHEDULED BY DANNY 2026-10-03: its own small commit immediately AFTER the D batches**
       (so it is not mixed into a labelling commit), giving each contractor its own `try` exactly as
       `repNamesBackfill` does. **Queued — do not fold it into D4–D8.**
-- [ ] ⚠ **`sendAdminNotification` AND `resolveNotificationRecipient` DEFAULT THEIR `contractorId` TO
+- [ ] **🔴 CONTRACTOR #2 GATE — ADMIN NOTIFICATION RECIPIENTS ARE CHOSEN BY A PHANTOM CONTRACTOR ID.**
+      Ruled by Danny 2026-10-03: this stays in the deferred **RECON** wave, **and it must be fixed
+      before a second contractor is onboarded**, because the recipient lookup would route a real
+      office's email by a tenant that does not exist. ⚠ **THE TRIGGER IS CONTRACTOR #2 EXISTING, NOT
+      LAUNCH** — with one contractor the fallback happens to land somewhere usable, which is exactly
+      why it has been invisible; with two, one tenant's notifications can reach the other's inbox or
+      nobody's. **Do not close the RECON entry below without closing this.**
+      ⚠ **`sendAdminNotification` AND `resolveNotificationRecipient` DEFAULT THEIR `contractorId` TO
       THE PHANTOM `'accent-roofing'`, AND ALL SIX CALLERS OMIT IT — MEASURED BY D3.** The callers
       are `crm/pipelineSync.js`, `routes/account.js`, `routes/referrer.js` ×2 and
       `routes/resendWebhook.js` ×2; in every one the last argument is the HTML body, so the default

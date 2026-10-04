@@ -59,7 +59,7 @@ const router = express.Router();
 const rateLimit = require('express-rate-limit');
 
 const { pool } = require('../db');
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 const { resolveBrandingTheme } = require('../utils/brandingTheme');
 const { resolveSlugToContractor } = require('../utils/contractorSlug');
 const { loadContractorBranding } = require('../utils/landingResolve');
@@ -124,7 +124,7 @@ router.get('/api/branding/:slug', brandingResolveLimiter, async (req, res) => {
     const { slug: _slugNotReturned, ...theme } = branding;
     res.json(theme);
   } catch (err) {
-    await logError({ req, error: err, source: 'GET /api/branding/:slug' });
+    await logError({ req, contractorId: PLATFORM_TENANT, error: err, source: 'GET /api/branding/:slug' });
     res.status(500).json({ error: 'Internal server error' });
   }
 });

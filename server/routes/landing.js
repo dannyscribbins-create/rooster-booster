@@ -66,7 +66,7 @@ const helmet = require('helmet');
 const router = express.Router();
 
 const { pool } = require('../db');
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 const { resolveLanding } = require('../utils/landingResolve');
 const { resolveDefaultMarketingToken } = require('../utils/inviteTokens');
 const { b2PublicOrigin } = require('../utils/b2Media');
@@ -1408,6 +1408,7 @@ function renderLandingPage(payload, nonce) {
 // copy. That is the drift landingResolve.js's header is about, honoured at the
 // layer where it actually applies.
 async function serveLanding(req, res, slug, source) {
+  let logContractorId = null;   // for the catch's label only; set once the token resolves it
   try {
     const payload = await resolveLanding(pool, { host: req.hostname, slug, req });
 
@@ -1422,6 +1423,7 @@ async function serveLanding(req, res, slug, source) {
     // the request, which is the whole point of the mode.
     let inviteSlug = slug;
     let contractorId = payload.contractorId;
+    logContractorId = contractorId || null;
 
     if (payload.mode === 'marketing') {
       const token = await resolveDefaultMarketingToken(pool, payload.contractorId);
@@ -1438,13 +1440,14 @@ async function serveLanding(req, res, slug, source) {
       // that a provable property of the code rather than a comment: every
       // contractor-scoped value the page carries comes from the token.
       contractorId = token.contractor_id;
+      logContractorId = contractorId;
     }
 
     res.type('html').send(
       renderLandingPage({ ...payload, inviteSlug, contractorId }, res.locals.cspNonce)
     );
   } catch (err) {
-    await logError({ req, error: err, source });
+    await logError({ req, contractorId: logContractorId || PLATFORM_TENANT, error: err, source });
     // A THROWN ERROR MUST STILL RENDER HTML. The global expressErrorHandler
     // answers JSON, which on this surface would show a homeowner a raw object.
     // Handled here so the failure mode is a plain page rather than a JSON blob,
