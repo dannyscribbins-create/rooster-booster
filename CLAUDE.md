@@ -437,8 +437,82 @@ alternative looks attractive again to anyone who sees only the outcome.
 - Never add a React test that only runs under `test:react:watch`, and never split the gate back apart.
 - Test database is local PostgreSQL at localhost:5432, database `roofmiles_test`, credentials in `.env.test` (gitignored, local-only — never commit).
 - `server/test/setup.js` contains a safety interlock: the run aborts unless `DATABASE_URL` points to localhost/127.0.0.1. Tests cannot touch production by construction.
-- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2631 server tests across 449 suites, and 1480 React tests across 91 files** (measured 2026-10-03 by the CRON/JOB TENANT commit (cleanup D2), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2631 · suites 449 · pass 2631 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
-  ⚠ **THE HEAD FOR THIS FIGURE IS THE CRON/JOB TENANT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+- Rule: run `npm test` before every push. Lint must be clean and both suites fully green — **2634 server tests across 450 suites, and 1480 React tests across 91 files** (measured 2026-10-03 by the CRM/UTILS TENANT commit (cleanup D3), by running the gate; the log's own `EXIT=` line read 0, and **all SEVEN server numbers were read by name off the log, never tailed**: `tests 2634 · suites 450 · pass 2634 · fail 0 · cancelled 0 · skipped 0 · todo 0`). A drop below these numbers means tests were deleted; stop and report.
+  ⚠ **THE HEAD FOR THIS FIGURE IS THE CRM/UTILS TENANT COMMIT ITSELF, BECAUSE IT SHIPS TESTS.**
+  Server 2631 → 2634 is **+3**, all APPENDED to `logErrorTenancy.test.js` (20 → 23), so **no new
+  test file arrived**; suites 449 → 450 is that file's **one new top-level describe**. React did not
+  move — **no `src/` file was touched at all** — and was re-measured. **All four predicted before the
+  run and matched, and the gate was green on its first run against the final tree.** Counted with an
+  anchored `^\s*it\(` (23), every `it(` at exactly two spaces and **zero** at four or more; all
+  loops sit in helper bodies or inside `it()` bodies, so none wraps a case.
+  ⚠ **THE COMMIT'S SUBJECT: 41 SITES IN `crm/` AND `utils/`, DECIDED PER SITE. 35 THREADED · 5
+  PLATFORM · 1 DEFERRED.** Total 349 → **309 across 22 files**; the ten files that reached zero are
+  DELETED from `EXPIRING_BY_FILE`, which the CLOSURE case requires.
+  ⚠ **THREE OF THE FIVE PLATFORM SITES FIRE *ONLY* WHEN NO CONTRACTOR WAS SUPPLIED, SO THE MISSING
+  ARGUMENT IS THE ERROR** — `refreshTokenIfNeeded`, `getContractorAccessToken`,
+  `getContractorStripeAccountId`. `matchPendingReferral`'s refusal fires only when the USER row
+  carries none. The fifth is the scheduler's **contractor-LISTING** catch, which spans every tenant —
+  the same split as `repNamesBackfill`'s scan catch in D2, and the reason both halves are named.
+  ⚠ **AND THE ONE DEFERRED SITE IS A MEASUREMENT, NOT A SHRUG: `sendAdminNotification`'s
+  `contractorId` DEFAULTS TO THE PHANTOM AND ALL SIX CALLERS OMIT IT.** Measured — in every caller
+  the last argument is the HTML body. So threading the parameter would file every such error under a
+  contractor that does not exist, which is **the defect cleanup D closes**; and `PLATFORM_TENANT`
+  would be wrong because these notifications belong to a real tenant. ⚠ **Worse than a logging
+  problem: `resolveNotificationRecipient` reads `contractor_settings.notification_email_*` for that
+  id, so the RECIPIENT of every admin notification is chosen by a phantom** — it works today only
+  because there is one contractor. Fixing it means six call sites and two defaults, which changes
+  where live email goes, so it is filed rather than done.
+  ⚠ **THAT ENTRY IS TAGGED `RECON`, NOT `D3`, AND THE DISTINCTION IS THE MECHANISM WORKING.** An
+  expiring entry must name the batch that DELETES it; tagging it `D3` would have claimed a batch
+  clears a file it does not — **a lie the CLOSURE case cannot catch, because the COUNT would still
+  have been right.** `KNOWN_BATCHES` gained `RECON` with a note forbidding further names without a
+  tracked owner, since a batch name with no owner is how an allow-list becomes a graveyard.
+  ⚠ **D3 CLOSED A DEFECT THAT WAS ALREADY NAMED AND FILED, WHICH IS THE PAYOFF OF HAVING FILED IT.**
+  `deriveAndSaveTags`' swallow is the one trace of a failure that **stops every tag for every client
+  of a contractor**, and it named no tenant — so the only evidence of a total tagging failure could
+  not be found by asking about the affected contractor. Recorded as a finding in 7c-3; closed here.
+  ⚠ **AND A WHITE-LABEL PROPERTY IS NOW FENCED RATHER THAN INCIDENTAL.** `resolveLanding`'s
+  scan-event error is filed under the **verified token's** contractor, never the host's. The host is
+  attacker-controllable and that function's own comment already says branding must come from the
+  token; without the fence a later edit could file a tampering attempt against the tenant whose
+  domain was borrowed.
+  ⚠ **NINE GUARD-PROOFS, EVERY WIDTH PREDICTED AND MATCHED ON THE FINAL SET**, each revert an
+  inverse patch in a `finally` proven byte-identical by sha256 across seven watched files, anchors
+  unique in BOTH directions, empty replacements refused, every injection confirmed landed.
+  (1) the pre-D3 state for a util site → **1**; (2) a platform site given a real contractor → **1**;
+  (3) the scheduler's scan catch given a tenant → **1**; (4) its per-contractor catch loses it →
+  **1**; (5) the tagging swallow reverts → **1**; (6) `landingResolve` logs the HOST's contractor →
+  **1**; (7) `notificationEmail` "helpfully" threaded → **1**; (8) the RECON entry renamed to D3 →
+  **0**, see below; (9) RECON dropped from `KNOWN_BATCHES` → **1**.
+  ⚠ **FOUR OF THOSE WERE PREDICTED AT 0 AND THREE WERE CLOSED RATHER THAN ACCEPTED.** `namesATenant`
+  is satisfied by ANY `contractorId`, so swapping a correct `PLATFORM_TENANT` for an invented real id
+  reds nothing — **the allow-list fence cannot tell an honest platform label from the phantom defect
+  wearing a different literal.** A new case pins the five chosen platform sites BY NAME, each with
+  the reason it is platform, plus the `landingResolve` token-vs-host property; (2), (3) and (6) then
+  red 1 each. **A width-0 result that is a structural blind spot is a finding, not a formality.**
+  ⚠ **(8) STAYS 0 AND THE MEASUREMENT IS RECORDED IN THE CASE ITSELF.** Retagging the RECON entry to
+  `D3` reds nothing, because the name is still KNOWN and the count still right. That is inherent: **a
+  batch label is a CLAIM about future work, and no count-based fence can verify a claim.** The other
+  side IS checkable — (9) reds 1 — so an unknown name cannot be invented to park an entry; the honest
+  protection against a wrong-but-known name is review, and saying so beats implying coverage.
+  ⚠ **AND THE `db.js` CITATION LESSON REPEATED ITSELF IN A DIFFERENT FILE, WHICH IS WHY THAT NOTE IS
+  NOW GENERAL.** Three short comment blocks in `crm/jobber.js` — two, two and four lines — rotted
+  **17 citations across six documents**, because that file is heavily cited and the insertions sat
+  near its top. Collapsed to trailing one-liners pointing at the fence: **net delta 0, and
+  `citecheck --changed-files` fell from 17 LIKELY ROTTED to 0.** ⚠ **The rule is not "write shorter
+  comments" — it is that a cleanup commit's explanation belongs in the fence that enforces it**,
+  where it costs nobody a citation and sits beside the assertions. D1 learned this for
+  `errorLogger.js`; D3 had to learn it again for `jobber.js`.
+  ⚠ **THE GUARD-PROOFS WERE RE-RUN AFTER THAT COLLAPSE AND THE SECOND SET IS CITED**, because two
+  watched files changed — a width measured against code that no longer exists is a claim rather than
+  a measurement. One anchor had to be re-pointed at the collapsed line.
+  ⚠ **AND A GATE RUN WAS STOPPED RATHER THAN CITED.** A comment-only edit to the fence landed while
+  it was running; a comment cannot change a count, **but "it cannot have changed" is a prediction,
+  not a measurement**, so the run was discarded and one clean run was taken against the tree that
+  ships. An earlier run was discarded for the same reason when the `jobber.js` collapse landed.
+  ⚠ **THE PREVIOUS ENTRY:** *THE HEAD FOR THIS FIGURE IS THE CRON/JOB TENANT COMMIT ITSELF, BECAUSE
+  IT SHIPS TESTS.* It read **2631 / 449 / 1480 / 91**.
+  ⚠ **THE HEAD FOR THAT FIGURE WAS THE CRON/JOB TENANT COMMIT, BECAUSE IT SHIPS TESTS.**
   Server 2624 → 2631 is **+7**, all APPENDED to `logErrorTenancy.test.js` (13 → 20), so **no new
   test file arrived**; suites 447 → 449 is that file's **two new top-level describes**. React did not
   move — **no `src/` file was touched at all** (`git status --porcelain | grep -c src/` returned 0) —

@@ -10,12 +10,19 @@
 //   4. a `logError` call with neither a `contractorId` nor an explicit platform marker FAILS a test,
 //      naming the file and line.
 //
-// ⚠ THE EXPLANATION LIVES HERE AND NOT IN `errorLogger.js`, AND THAT PLACEMENT IS DELIBERATE RATHER
-// THAN TIDY. The first writing put a 33-line comment block at the TOP of `errorLogger.js` — which is
+// ⚠ THE EXPLANATION LIVES HERE AND NOT IN THE PRODUCTION FILES, AND THAT PLACEMENT IS DELIBERATE
+// RATHER THAN TIDY. D1's first writing put a 33-line comment block at the TOP of `errorLogger.js` —
 // a citation-rotting edit, the exact shape this repo recorded from `db.js`, where nine lines rotted
 // 137 citations and one line rotted 15. Six citations point into `errorLogger.js` below that
 // insertion point. Collapsed to a ONE-LINE constant replacing the blank line after the requires, the
 // net delta is **0** and **not one of the six moved** (verified line by line against HEAD).
+// ⚠ AND D3 MADE THE SAME MISTAKE AGAIN, IN A DIFFERENT FILE, WHICH IS WHY THIS NOTE IS NOW GENERAL.
+// Three short comment blocks in `crm/jobber.js` — two and two and four lines — rotted **17
+// citations across six documents**, because that file is heavily cited and the insertions sat near
+// its top. Collapsed to trailing one-liners pointing here: **net delta 0, and `citecheck
+// --changed-files` fell from 17 LIKELY ROTTED to 0.** ⚠ **The rule is not "write shorter
+// comments" — it is that a cleanup commit's explanation belongs in the fence that enforces it**,
+// where it costs nobody a citation and the next reader finds it beside the assertions.
 //
 // ⚠ THE DEFAULT USED TO BE THE STRING `'accent-roofing'`, WHICH IS NOT A TENANT — IT IS A CONTRACTOR
 // ID THAT DOES NOT EXIST. The dev tenant is `accent-roofing-dev`, so every contractor-less error was
@@ -47,8 +54,9 @@
 // check. A human filtering by a real contractor id simply no longer sees platform-level rows.
 //
 // ⚠ THE ALLOW-LIST IS KEYED BY FILE WITH A PINNED COUNT, NOT BY SITE, AND THAT IS A DELIBERATE
-// TRADE. There were 376 non-compliant sites across 42 files when D1 wrote this, and 349 across 32
-// after D2; a list of that many entries would be unreadable and nobody would maintain it.
+// TRADE. There were 376 non-compliant sites across 42 files when D1 wrote this, 349 across 32
+// after D2 and 309 across 22 after D3; a list of that many entries would be unreadable and
+// nobody would maintain it.
 // Per file with an exact count gives the same two protections that matter:
 // a file NOT listed must be at zero, and a listed file whose count CHANGES fails — so a new
 // non-compliant call cannot hide inside an allow-listed file, and a batch that fixes sites must come
@@ -73,8 +81,9 @@ const SERVER_ROOT = path.join(__dirname, '..');
 
 /**
  * Files that still have `logError` calls carrying no tenant, with the EXACT count and the batch that
- * clears them. Measured 2026-10-03 after batch D2: **349 sites across 32 files**, down from 376
- * across 42 — D2 closed 27 of its 28 and the 28th moved to D5 (see the D2 note below).
+ * clears them. Measured 2026-10-03 after batch D3: **309 sites across 22 files**.
+ * The arc so far: 376/42 at D1 → 349/32 after D2 → 309/22 after D3. D2 closed 27 of its 28
+ * (the 28th moved to D5); D3 closed 40 of its 41 (the 41st moved to RECON).
  *
  * ⚠ TO CHANGE A NUMBER HERE YOU MUST BE FIXING SITES. A count that rises fails; a count that falls
  * fails until it is updated; a file that reaches zero must be DELETED from this object.
@@ -86,18 +95,16 @@ const EXPIRING_BY_FILE = {
   //    hand-threaded: `expressErrorHandler` is generic Express middleware holding only the
   //    request, which is exactly what D5's request-attached value is for.
   'middleware/errorLogger.js': { sites: 1, batch: 'D5' },
-  // ── batch D3: crm + utils ──
-  'crm/jobber.js': { sites: 3, batch: 'D3' },
-  'crm/pipelineSync.js': { sites: 15, batch: 'D3' },
-  'utils/attributionEngine.js': { sites: 1, batch: 'D3' },
-  'utils/deriveJobberTags.js': { sites: 1, batch: 'D3' },
-  'utils/emailSuppression.js': { sites: 1, batch: 'D3' },
-  'utils/landingResolve.js': { sites: 1, batch: 'D3' },
-  'utils/notificationEmail.js': { sites: 1, batch: 'D3' },
-  'utils/pendingReferral.js': { sites: 8, batch: 'D3' },
-  'utils/stripeTransfer.js': { sites: 1, batch: 'D3' },
-  'utils/tags.js': { sites: 6, batch: 'D3' },
-  'utils/userPreferences.js': { sites: 3, batch: 'D3' },
+  // ── batch D3: CLOSED 2026-10-03. Ten files reached zero and are DELETED from this object.
+  //    ⚠ THE ONE SURVIVOR IS TAGGED `RECON`, NOT `D3`, BECAUSE D3 IS NOT WHAT CLEARS IT.
+  //    `sendAdminNotification`'s `contractorId` parameter DEFAULTS to the phantom
+  //    `'accent-roofing'` and all six callers omit it, so threading it would file errors under a
+  //    contractor that does not exist — the defect this whole batch closes. Clearing it means
+  //    changing six call sites, which changes WHICH contractor's notification settings are read,
+  //    i.e. where live email goes. That belongs to the contractor-id reconciliation wave.
+  //    ⚠ An entry must name the batch that DELETES it; naming `D3` here would have been a lie the
+  //    CLOSURE case cannot catch, because the count would still have been right.
+  'utils/notificationEmail.js': { sites: 1, batch: 'RECON' },
   // ── batch D4: the non-referrer, non-admin routes ──
   'routes/account.js': { sites: 16, batch: 'D4' },
   'routes/branding.js': { sites: 1, batch: 'D4' },
@@ -125,7 +132,15 @@ const EXPIRING_BY_FILE = {
   'routes/admin/team.js': { sites: 25, batch: 'D8' },
 };
 
-const KNOWN_BATCHES = ['D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8'];
+// ⚠ `RECON` IS NOT A CLEANUP-D BATCH AND THAT IS THE POINT OF LISTING IT SEPARATELY. It names the
+// deferred contractor-id reconciliation wave, for the one site whose tenant cannot be supplied
+// without changing where live email goes (see `utils/notificationEmail.js` below). Admitting it as
+// a known batch keeps the naming case honest; the alternative was tagging it `D3`, which would have
+// claimed a batch clears a file it does not — a lie the CLOSURE case cannot catch, because the
+// COUNT would still have been right.
+// ⚠ DO NOT add further names here to park work. `RECON` has a tracked owner on
+// PRE_LAUNCH_CHECKLIST.md; a batch name with no owner is how an allow-list becomes a graveyard.
+const KNOWN_BATCHES = ['D2', 'D3', 'D4', 'D5', 'D6', 'D7', 'D8', 'RECON'];
 
 /** Comment-stripped, LINE-PRESERVING, so a reported line number is the real one. */
 function stripComments(src) {
@@ -373,6 +388,14 @@ describe('cleanup D — the fence: every logError call names a tenant', () => {
   });
 
   it('every expiring entry NAMES the batch that deletes it', () => {
+    // ⚠ MEASURED LIMIT, RECORDED HERE RATHER THAN THE REASONING IT WAS WRITTEN ON: this case checks
+    // that a batch name is KNOWN, and it cannot check that the name is TRUE. A D3 guard-proof
+    // retagged `utils/notificationEmail.js` from RECON to D3 — claiming a batch that does not clear
+    // it — and reds **nothing**, because the name is still known and the count is still right.
+    // ⚠ That is inherent rather than a hole to plug: a batch label is a CLAIM about future work, and
+    // no count-based fence can verify a claim. What IS checkable is covered from the other side —
+    // removing RECON from KNOWN_BATCHES reds this case (width 1) — so an unknown name cannot be
+    // invented to park an entry. **The honest protection for a wrong-but-known name is review.**
     const bad = Object.entries(EXPIRING_BY_FILE)
       .filter(([, v]) => !KNOWN_BATCHES.includes(v.batch))
       .map(([rel, v]) => `${rel} -> ${v.batch}`);
@@ -531,5 +554,83 @@ describe('cleanup D2 — the audience cron selects the tenant it logs', () => {
     const q = new RegExp(`SELECT([^\`]*?)${QUERY_TAIL}`).exec(preD2);
     assert.ok(q, 'the needle must still match the old shape');
     assert.doesNotMatch(q[1], /\bcontractor_id\b/, 'the old shape must read as missing the column');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BATCH D3 — THE PLATFORM SITES REALLY PASS THE PLATFORM MARKER
+//
+// ⚠ THIS CLOSES A HOLE A GUARD-PROOF MEASURED AT WIDTH 0, AND THE HOLE IS STRUCTURAL RATHER THAN AN
+// OVERSIGHT. `namesATenant` is satisfied by ANY `contractorId`, so swapping a correct
+// `PLATFORM_TENANT` for an invented real contractor id reds nothing — the allow-list fence cannot
+// tell an honest platform label from the phantom defect wearing a different literal. That is exactly
+// what cleanup D exists to stop, so the chosen platform sites are pinned by name.
+//
+// ⚠ EACH ENTRY SAYS WHY IT IS PLATFORM, because the two reasons are different and a later reader
+// will otherwise flatten them: a site that fires ONLY when no contractor was supplied has no tenant
+// to name, while a site whose work spans every contractor has no single tenant.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('cleanup D3 — the platform-level sites are explicit, and are not contractors', () => {
+  // file -> [ [needle that must appear inside the call, why] ]
+  const PLATFORM_SITES = {
+    'crm/jobber.js': [
+      ["source: 'refreshTokenIfNeeded'", 'fires only when the caller supplied no contractor'],
+      ["source: 'getContractorAccessToken'", 'fires only when the caller supplied no contractor'],
+    ],
+    'utils/stripeTransfer.js': [
+      ["source: 'getContractorStripeAccountId'", 'fires only when the caller supplied no contractor'],
+    ],
+    'crm/pipelineSync.js': [
+      ["console.error('[scheduler] Failed to query contractor list:'", 'the contractor-LISTING query spans every tenant'],
+    ],
+    'utils/pendingReferral.js': [
+      ['refusing to match a pending referral without a tenant', 'fires only when the user row carries no contractor'],
+    ],
+  };
+
+  it('every chosen platform site passes PLATFORM_TENANT and not a contractor id', () => {
+    const missing = [];
+    for (const [rel, sites] of Object.entries(PLATFORM_SITES)) {
+      const src = stripComments(fs.readFileSync(path.join(SERVER_ROOT, rel), 'utf8'));
+      for (const [needle, why] of sites) {
+        const at = src.indexOf(needle);
+        assert.notEqual(at, -1, `harness: ${rel} no longer contains the site marker ${needle}`);
+        // The call's own text: back to the nearest `logError(`, forward to the needle.
+        const open = src.lastIndexOf('logError(', at);
+        assert.notEqual(open, -1, `harness: no logError( before ${needle} in ${rel}`);
+        const span = src.slice(open, at + needle.length);
+        if (!/contractorId:\s*PLATFORM_TENANT/.test(span)) {
+          missing.push(`${rel} — ${needle} (${why})`);
+        }
+      }
+    }
+    assert.deepEqual(missing, [],
+      'these sites were decided PLATFORM, so they must say so with the exported constant — an '
+      + 'invented contractor id here is the phantom defect with a different literal, and the '
+      + 'allow-list fence cannot see it because any contractorId satisfies it');
+  });
+
+  it('PAIRED NEGATIVE: the needle rejects a real contractor id in that position', () => {
+    // Without this, a needle that matched nothing would report every site as compliant.
+    const good = "logError({ req: null, contractorId: PLATFORM_TENANT, error: err, source: 'x' })";
+    const bad = "logError({ req: null, contractorId: 'accent-roofing-dev', error: err, source: 'x' })";
+    assert.match(good, /contractorId:\s*PLATFORM_TENANT/);
+    assert.doesNotMatch(bad, /contractorId:\s*PLATFORM_TENANT/);
+  });
+
+  it('⚠ landingResolve logs the VERIFIED TOKEN\'s contractor, never the host\'s', () => {
+    // ⚠ A WHITE-LABEL PROPERTY, NOT A LOGGING DETAIL. That function's own comment says branding is
+    // read from the token's contractor and never the host's, precisely because the host is
+    // attacker-controllable; the error label must follow the same rule or a tampering attempt gets
+    // filed against the tenant whose domain was borrowed. The mismatch check runs BEFORE this.
+    const src = stripComments(fs.readFileSync(path.join(SERVER_ROOT, 'utils', 'landingResolve.js'), 'utf8'));
+    const at = src.indexOf('scan event');
+    assert.notEqual(at, -1, 'harness: the scan-event site must be findable');
+    const open = src.lastIndexOf('logError(', at);
+    const span = src.slice(open, at);
+    assert.match(span, /contractorId:\s*token\.contractor_id/,
+      'the scan-event error must be filed under the token\'s contractor');
+    assert.doesNotMatch(span, /hostContractor/,
+      'the HOST\'s contractor must not be used — it is the untrusted half of this comparison');
   });
 });

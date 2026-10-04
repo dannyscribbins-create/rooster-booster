@@ -82,7 +82,7 @@ async function getPreference({ subjectType, subjectId, contractorId, key }) {
     if (rows.length === 0) return null;
     return rows[0].pref_value;
   } catch (err) {
-    await logError({ req: null, error: err, source: 'getPreference' });
+    await logError({ req: null, contractorId, error: err, source: 'getPreference' });
     return null;
   }
 }
@@ -131,7 +131,7 @@ async function setPreference({ subjectType, subjectId, contractorId, key, value 
     // PUT /api/preferences/theme-mode — and it answers 409 rather than 200.
     return result.rowCount;
   } catch (err) {
-    await logError({ req: null, error: err, source: 'setPreference' });
+    await logError({ req: null, contractorId, error: err, source: 'setPreference' });
     throw err;
   }
 }
@@ -167,7 +167,7 @@ async function clearPreference({ db = pool, subjectType, subjectId, contractorId
     );
     return result.rowCount;
   } catch (err) {
-    await logError({ req: null, error: err, source: 'clearPreference' });
+    await logError({ req: null, contractorId, error: err, source: 'clearPreference' });
     throw err;
   }
 }

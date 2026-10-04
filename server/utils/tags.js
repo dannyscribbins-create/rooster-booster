@@ -11,7 +11,7 @@ async function applyTag(pool, contactId, contractorId, tag, source) {
       [contactId, contractorId, tag, source]
     );
   } catch (err) {
-    await logError({ req: null, error: err, source: `applyTag(${tag})` });
+    await logError({ req: null, contractorId, error: err, source: `applyTag(${tag})` });
   }
 }
 
@@ -22,7 +22,7 @@ async function removeTag(pool, contactId, contractorId, tag) {
       [contactId, tag, contractorId]
     );
   } catch (err) {
-    await logError({ req: null, error: err, source: `removeTag(${tag})` });
+    await logError({ req: null, contractorId, error: err, source: `removeTag(${tag})` });
   }
 }
 
@@ -85,7 +85,7 @@ async function backfillTagsForContacts(pool, contractorId, contactIds, jobberCrm
       if (row.is_high_engager) await applyTag(pool, cid, contractorId, 'High Engager', 'system');
     }
   } catch (err) {
-    await logError({ req: null, error: err, source: 'backfillTagsForContacts' });
+    await logError({ req: null, contractorId, error: err, source: 'backfillTagsForContacts' });
   }
 }
 
@@ -122,7 +122,7 @@ async function removeExactTag(pool, identifier, contractorId, tag) {
       [tag, contractorId, jcid, cid]
     );
   } catch (err) {
-    await logError({ req: null, error: err, source: `removeExactTag(${tag})` });
+    await logError({ req: null, contractorId, error: err, source: `removeExactTag(${tag})` });
   }
 }
 
@@ -142,7 +142,7 @@ async function removeTagsByPrefix(pool, identifier, contractorId, prefix) {
       [`${prefix}%`, contractorId, jcid, cid]
     );
   } catch (err) {
-    await logError({ req: null, error: err, source: `removeTagsByPrefix(${prefix})` });
+    await logError({ req: null, contractorId, error: err, source: `removeTagsByPrefix(${prefix})` });
   }
 }
 
@@ -168,7 +168,7 @@ async function upsertTag(pool, identifier, contractorId, tag, source = 'jobber_c
       );
     }
   } catch (err) {
-    await logError({ req: null, error: err, source: `upsertTag(${tag})` });
+    await logError({ req: null, contractorId, error: err, source: `upsertTag(${tag})` });
   }
 }
 

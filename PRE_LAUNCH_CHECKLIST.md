@@ -11994,6 +11994,36 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       `verifyAdminSession` afterwards, so the attached value is NOT set when its catch fires —
       checked at the mount sites, not assumed. It therefore had to be threaded by hand in D2 from
       its own session read, and D5 must not assume route middleware is covered.
+      ✅ **AND DANNY'S FOLLOW-UP (2026-10-03): `requirePermission` performs its OWN verified session
+      read, so if that read uses the same token verification it MAY set `req.logContractorId` too,
+      under the same three guardrails (verified token only, log-only, per request). DECIDE AND
+      REPORT AT D5.** ⚠ The thing to check before deciding: its read is a bare
+      `SELECT role, contractor_id, team_member_id FROM sessions WHERE token = $1 AND expires_at >
+      NOW()` — it does **not** go through `verifyAdminSession`, carries no `role` filter and no
+      `team_members.active` join, so it is a *weaker* verification than the helpers'. **Setting the
+      log value from a weaker check than the helpers use is a decision, not a tidy-up**, and if it is
+      taken the two writers must not be able to disagree about the same request.
+      ✅ **D3 IS CLOSED — 2026-10-03. 40 of its 41 sites done; the 41st moved to RECON.** Total
+      349 → **309 across 22 files**. **35 THREADED · 5 PLATFORM · 1 deferred.**
+      THREADED — `crm/pipelineSync.js` ×14 (13 inside `syncSingleClient`, 1 the scheduler's
+      per-contractor catch) · `utils/pendingReferral.js` ×7 · `utils/tags.js` ×6 ·
+      `utils/userPreferences.js` ×3 · `crm/jobber.js` ×1 (the resolved tenant its own queries used) ·
+      `utils/attributionEngine.js` · `utils/deriveJobberTags.js` · `utils/emailSuppression.js` ·
+      `utils/landingResolve.js`.
+      PLATFORM — **three of the five fire ONLY when no contractor was supplied**, so the missing
+      argument IS the error (`refreshTokenIfNeeded`, `getContractorAccessToken`,
+      `getContractorStripeAccountId`); `matchPendingReferral`'s refusal fires only when the USER row
+      carries no contractor; and the scheduler's **contractor-LISTING** catch spans every tenant —
+      the same split as `repNamesBackfill`'s scan catch in D2.
+      ⚠ **D3 CLOSED A DEFECT THAT WAS ALREADY NAMED AND FILED:** `deriveAndSaveTags`' swallow is the
+      one trace of a failure that **stops every tag for every client of a contractor**, and it named
+      no tenant — so the only evidence of a total tagging failure could not be found by asking about
+      the affected contractor. Recorded as a finding in 7c-3; closed here.
+      ⚠ **AND A WHITE-LABEL PROPERTY IS NOW FENCED RATHER THAN INCIDENTAL:** `resolveLanding`'s
+      scan-event error is filed under the **verified token's** contractor, never the host's. The host
+      is attacker-controllable and the function's own comment already says branding must come from
+      the token; without the fence a later edit could file a tampering attempt against the tenant
+      whose domain was borrowed.
 - [ ] ⚠ **`startSaleRegroupBackfill`'s SINGLE CATCH DOUBLES AS ITS PER-CONTRACTOR HANDLER — FOUND BY
       D2 AND FILED RATHER THAN FIXED.** Unlike `startRepNamesBackfill` there is no inner `try`, so a
       failure inside `regroupContractor` for one contractor (a) escaped to a handler that named no
@@ -12002,6 +12032,24 @@ stack on palette-beta, cross-checked against `deriveThemeTokens()` run in node.*
       and cleanup D is about which tenant an error report is filed under. **The fix is an inner
       `try` per contractor, mirroring `repNamesBackfill`.** Not urgent: this is a boot-time
       idempotent backfill, so the next boot retries the ones it skipped.
+      ✅ **SCHEDULED BY DANNY 2026-10-03: its own small commit immediately AFTER the D batches**
+      (so it is not mixed into a labelling commit), giving each contractor its own `try` exactly as
+      `repNamesBackfill` does. **Queued — do not fold it into D4–D8.**
+- [ ] ⚠ **`sendAdminNotification` AND `resolveNotificationRecipient` DEFAULT THEIR `contractorId` TO
+      THE PHANTOM `'accent-roofing'`, AND ALL SIX CALLERS OMIT IT — MEASURED BY D3.** The callers
+      are `crm/pipelineSync.js`, `routes/account.js`, `routes/referrer.js` ×2 and
+      `routes/resendWebhook.js` ×2; in every one the last argument is the HTML body, so the default
+      fires **every time**. ⚠ **This is not only a logging problem: `resolveNotificationRecipient`
+      reads `contractor_settings.notification_email_*` for that id, so the recipient of every admin
+      notification is chosen by a contractor id that does not exist** — it works today only because
+      there is one contractor and the fallback lands somewhere usable.
+      ⚠ **D3 therefore LEFT its `logError` call untenanted on purpose**, and that is the only site in
+      the batch it did not close: threading the parameter would file errors under the phantom, which
+      is the defect cleanup D exists to close, and `PLATFORM_TENANT` would be wrong because these
+      notifications belong to a real tenant. The fence entry is tagged **`RECON`**, not `D3`, so it
+      names the wave that actually clears it.
+      **The fix is the six call sites plus removing both defaults** — a notification-routing change,
+      which is why it sits here and not in a cleanup commit.
 - [ ] ⚠ **CITATION ROT FROM CLEANUP D2 — TEN CITING LOCATIONS, CLASSIFIED RATHER THAN DELTA-ADDED,
       AND ONLY THREE WERE REPAIRABLE.** D2 inserted comment blocks into `middleware/auth.js` (+7, +20)
       and `middleware/permissions.js` (+12), so `citecheck --changed-files` reported twelve findings

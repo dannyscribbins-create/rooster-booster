@@ -23,7 +23,7 @@ async function isEmailSuppressed(contractorId, recipientEmail, triggerKey) {
 
     return false;
   } catch (err) {
-    await logError({ req: null, error: err, source: 'isEmailSuppressed' });
+    await logError({ req: null, contractorId, error: err, source: 'isEmailSuppressed' });
     return false;
   }
 }

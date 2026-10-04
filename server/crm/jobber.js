@@ -2,7 +2,7 @@ const axios = require('axios');
 const { pool } = require('../db');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
 const { jobberShouldRetry } = require('../utils/retryHelpers');
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 const { stageRegressedFromRow } = require('../utils/stageHighWater');
 
 // ── TOKEN AUTO-REFRESH ────────────────────────────────────────────────────────
@@ -22,7 +22,7 @@ const inFlightRefreshes = new Map(); // contractorId -> Promise
 async function refreshTokenIfNeeded(contractorId, { force = false } = {}) {
   if (!contractorId) {
     const err = new Error('refreshTokenIfNeeded: contractorId is required');
-    await logError({ req: null, error: err, source: 'refreshTokenIfNeeded' });
+    await logError({ req: null, contractorId: PLATFORM_TENANT, error: err, source: 'refreshTokenIfNeeded' }); // no contractor was supplied; see logErrorTenancy.test.js
     throw err;
   }
 
@@ -75,7 +75,7 @@ async function refreshTokenIfNeeded(contractorId, { force = false } = {}) {
 async function getContractorAccessToken(contractorId) {
   if (!contractorId) {
     const err = new Error('getContractorAccessToken: contractorId is required');
-    await logError({ req: null, error: err, source: 'getContractorAccessToken' });
+    await logError({ req: null, contractorId: PLATFORM_TENANT, error: err, source: 'getContractorAccessToken' }); // as above
     throw err;
   }
   const result = await pool.query('SELECT access_token FROM tokens WHERE contractor_id = $1', [contractorId]);
@@ -185,7 +185,7 @@ async function fetchPipelineForReferrer(referrerName, contractorId = null, confi
       conversionMap[row.jobber_client_id] = parseInt(row.bonus_amount);
     }
   } catch (convErr) {
-    await logError({ req: null, error: convErr });
+    await logError({ req: null, contractorId: resolvedContractorId, error: convErr }); // the tenant these queries used
     console.error('[fetchPipeline] conversion lookup failed:', convErr.message);
   }
 

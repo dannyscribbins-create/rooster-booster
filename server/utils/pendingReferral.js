@@ -2,7 +2,7 @@ const axios = require('axios');
 const { pool } = require('../db');
 const { Resend } = require('resend');
 const resend = new Resend(process.env.RESEND_API_KEY);
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 const { retryWithBackoff } = require('./retryWithBackoff');
 const { resendShouldRetry, twilioShouldRetry, jobberShouldRetry } = require('./retryHelpers');
 // Safe at module scope: crm/jobber.js requires only db, retryWithBackoff, retryHelpers,
@@ -161,7 +161,7 @@ async function sendPendingInviteEmail(pendingRecord, contractorId) {
       { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
     );
   } catch (err) {
-    await logError({ req: null, error: err });
+    await logError({ req: null, contractorId, error: err });
     console.error('[pendingReferral] invite email failed:', err.message);
   }
 }
@@ -198,7 +198,7 @@ async function sendPendingInviteSMS(pendingRecord, contractorId) {
       { retries: 2, initialDelayMs: 1000, shouldRetry: twilioShouldRetry }
     );
   } catch (err) {
-    await logError({ req: null, error: err });
+    await logError({ req: null, contractorId, error: err });
     console.error('[pendingReferral] invite SMS failed:', err.message);
   }
 }
@@ -302,7 +302,7 @@ async function sendCreditAttributionEmail(referredRecord, contractorId) {
 
     console.log(`[pendingReferral] Credit attribution email sent to ${referredRecord.referred_email}`);
   } catch (err) {
-    await logError({ req: null, error: err });
+    await logError({ req: null, contractorId, error: err });
     console.error('[pendingReferral] sendCreditAttributionEmail failed:', err.message);
   }
 }
@@ -361,7 +361,7 @@ async function fetchReferrerContact(jobberId, contractorId) {
     if (!c) return { phone: null, email: null };
     return { phone: getPrimaryPhone(c), email: getPrimaryEmail(c) };
   } catch (err) {
-    await logError({ req: null, error: err });
+    await logError({ req: null, contractorId, error: err });
     console.error('[pendingReferral] fetchReferrerContact failed:', err.message);
     return { phone: null, email: null };
   }
@@ -760,7 +760,7 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
     );
 
   } catch (err) {
-    await logError({ req: null, error: err });
+    await logError({ req: null, contractorId, error: err });
     console.error('[pendingReferral] referrer lookup failed:', err.message);
   }
 
@@ -770,7 +770,7 @@ async function checkAndCreatePendingReferral(contractorId, client, referredByNam
       [`Pending referral ${isRetry ? 'retry' : 'created'} for referrer "${referredByName}" (client: "${clientName}"). Channel: ${inviteChannel}`]
     );
   } catch (logErr) {
-    await logError({ req: null, error: logErr });
+    await logError({ req: null, contractorId, error: logErr });
     console.warn('[pendingReferral] activity_log insert failed:', logErr.message);
   }
 }
@@ -849,7 +849,7 @@ async function sendPendingRewardEmail(pendingReferrerEmail, pendingReferrerName,
       { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
     );
   } catch (err) {
-    await logError({ req: null, error: err });
+    await logError({ req: null, contractorId, error: err });
     console.error('[pendingReferral] sendPendingRewardEmail failed:', err.message);
   }
 }
@@ -883,8 +883,11 @@ async function matchPendingReferral(userId, email, phone) {
   );
   const contractorId = ownerResult.rows[0]?.contractor_id || null;
   if (!contractorId) {
+    // PLATFORM: this branch fires only when the user row carries NO
+    // contractor, so there is no tenant to attribute the refusal to.
     await logError({
       req: null,
+      contractorId: PLATFORM_TENANT,
       error: new Error(`matchPendingReferral: no contractor for user ${userId} — refusing to match a pending referral without a tenant`),
       source: 'pendingReferral — matchPendingReferral tenant',
     });

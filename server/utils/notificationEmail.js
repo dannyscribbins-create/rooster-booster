@@ -98,6 +98,20 @@ async function sendAdminNotification(pool, type, subject, html, contractorId = '
   } catch (err) {
     // Log but do not throw — a failed notification email must never
     // crash the cashout flow or block the referrer's experience
+    //
+    // ⚠ DELIBERATELY STILL UNTENANTED, AND THIS IS THE ONE SITE CLEANUP D3 LEFT OPEN ON PURPOSE.
+    // Threading `contractorId` here looks correct and would make things WORSE: this function's
+    // parameter DEFAULTS to the phantom `'accent-roofing'`, and **all six callers omit it**
+    // (measured 2026-10-03 — `crm/pipelineSync.js`, `routes/account.js`, `routes/referrer.js` ×2,
+    // `routes/resendWebhook.js` ×2; in every one the last argument is the HTML body). So the only
+    // value available is a contractor id that does not exist, and filing errors under it is exactly
+    // the defect cleanup D closes.
+    // ⚠ `PLATFORM_TENANT` WOULD ALSO BE WRONG: these notifications belong to a real tenant — the
+    // one whose `contractor_settings.notification_email_*` row decides the recipient.
+    // ⚠ THE FIX IS THE SIX CALL SITES, AND THAT IS NOT A LOGGING CHANGE: passing each caller's real
+    // contractor changes WHICH contractor's notification settings are read, i.e. where live email
+    // goes. That is the deferred contractor-id reconciliation wave, and it is filed on
+    // PRE_LAUNCH_CHECKLIST.md rather than done inside a cleanup commit.
     await logError({ req: null, error: err, source: 'sendAdminNotification' });
     console.error('[notificationEmail] Failed to send admin notification:', err.message);
   }

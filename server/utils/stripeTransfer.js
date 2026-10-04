@@ -2,7 +2,7 @@
 
 const Stripe = require('stripe');
 const { decrypt } = require('./encryption');
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 
 // TODO: Danny to remove STRIPE_TEST_ACCOUNT_ID from Railway env vars — no longer used
 
@@ -29,7 +29,7 @@ const { logError } = require('../middleware/errorLogger');
 async function getContractorStripeAccountId(pool, contractorId) {
   if (!contractorId) {
     const err = new Error('getContractorStripeAccountId: contractorId is required');
-    await logError({ req: null, error: err, source: 'getContractorStripeAccountId' });
+    await logError({ req: null, contractorId: PLATFORM_TENANT, error: err, source: 'getContractorStripeAccountId' }); // no contractor was supplied
     throw err;
   }
   const result = await pool.query(

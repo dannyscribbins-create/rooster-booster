@@ -440,6 +440,7 @@ async function runAttributionEngine(pool, {
   if (!readRequests) {
     await logError({
       req: null,
+      contractorId,
       error: new Error('runAttributionEngine: readRequests is required in production'),
       source: 'attributionEngine/provisional',
     });

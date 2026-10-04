@@ -320,7 +320,10 @@ async function resolveLanding(db, { host = null, slug = null, req = null } = {})
   try {
     await recordScanEvent(db, slug);
   } catch (scanErr) {
-    await logError({ req, error: scanErr, source: 'resolveLanding — scan event' });
+    // The TOKEN's contractor, which the mismatch check above has already verified against
+    // the host — never the host's own, for the same reason the branding read below is not.
+    await logError({ req, contractorId: token.contractor_id, error: scanErr,
+      source: 'resolveLanding — scan event' });
   }
 
   // Branding by the TOKEN's contractor, never the host's.

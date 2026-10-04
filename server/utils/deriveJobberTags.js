@@ -422,7 +422,12 @@ async function deriveAndSaveTags(pool, contractorId, jobberClientId, clientData,
     }
 
   } catch (err) {
-    await logError({ req: null, error: err, source: `deriveAndSaveTags(${jobberClientId})` });
+    // This swallow is the one trace of a defect that stops EVERY tag for EVERY client of a
+    // contractor, and until now it named no tenant — so the only evidence of a total tagging
+    // failure could not be found by asking about the affected contractor. Recorded as a
+    // finding in 7c-3 and filed; closed here.
+    await logError({ req: null, contractorId, error: err,
+      source: `deriveAndSaveTags(${jobberClientId})` });
   }
 }
 

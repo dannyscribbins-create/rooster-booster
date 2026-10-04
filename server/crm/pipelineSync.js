@@ -1,7 +1,7 @@
 const axios = require('axios');
 const { pool } = require('../db');
 const { refreshTokenIfNeeded } = require('./jobber');
-const { logError } = require('../middleware/errorLogger');
+const { logError, PLATFORM_TENANT } = require('../middleware/errorLogger');
 const { isInvoicePaid } = require('../utils/invoicePaid');
 const { refreshReferrerProgress } = require('../utils/referrerProgress');
 const { retryWithBackoff } = require('../utils/retryWithBackoff');
@@ -366,7 +366,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
         isFirstReferralForReferrer = parseInt(referrerRowCount.rows[0]?.cnt || '0') === 0;
       }
     } catch (preCheckErr) {
-      await logError({ req: null, error: preCheckErr });
+      await logError({ req: null, contractorId, error: preCheckErr });
       console.error('[pipelineSync] pre-upsert status check failed:', preCheckErr.message);
     }
   }
@@ -604,7 +604,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
       [contractorId, clientName]
     );
   } catch (cleanupErr) {
-    await logError({ req: null, error: cleanupErr });
+    await logError({ req: null, contractorId, error: cleanupErr });
     console.error('[pipelineSync] app_user_ placeholder cleanup failed:', cleanupErr.message);
   }
 
@@ -690,7 +690,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
           `
         );
       } catch (e25) {
-        await logError({ req: null, error: e25 });
+        await logError({ req: null, contractorId, error: e25 });
         console.error('[pipelineSync] #25 new referral admin alert failed:', e25.message);
       }
     })();
@@ -709,7 +709,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
           await applyTag(pool, contactRes.rows[0].id, contractorId, 'Paid Customer', 'jobber');
         }
       } catch (tagErr) {
-        await logError({ req: null, error: tagErr, source: 'pipelineSync — Paid Customer tag' });
+        await logError({ req: null, contractorId, error: tagErr, source: 'pipelineSync — Paid Customer tag' });
       }
     })();
   }
@@ -778,7 +778,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
               { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
             );
           } catch (e1) {
-            await logError({ req: null, error: e1 });
+            await logError({ req: null, contractorId, error: e1 });
             console.error('[pipelineSync] #1 first referral email failed:', e1.message);
           }
         }
@@ -806,7 +806,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
               { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
             );
           } catch (e2) {
-            await logError({ req: null, error: e2 });
+            await logError({ req: null, contractorId, error: e2 });
             console.error('[pipelineSync] #2 inspection email failed:', e2.message);
           }
         }
@@ -834,7 +834,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
               { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
             );
           } catch (e3) {
-            await logError({ req: null, error: e3 });
+            await logError({ req: null, contractorId, error: e3 });
             console.error('[pipelineSync] #3 sold email failed:', e3.message);
           }
         }
@@ -862,7 +862,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
               { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
             );
           } catch (e5) {
-            await logError({ req: null, error: e5 });
+            await logError({ req: null, contractorId, error: e5 });
             console.error('[pipelineSync] #5 not_sold email failed:', e5.message);
           }
         }
@@ -890,7 +890,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
               { retries: 2, initialDelayMs: 1000, shouldRetry: resendShouldRetry }
             );
           } catch (e6) {
-            await logError({ req: null, error: e6 });
+            await logError({ req: null, contractorId, error: e6 });
             console.error('[pipelineSync] #6 reactivation email failed:', e6.message);
           }
         }
@@ -945,13 +945,13 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
               } // end if (!suppressed33)
             }
           } catch (e33) {
-            await logError({ req: null, error: e33 });
+            await logError({ req: null, contractorId, error: e33 });
             console.error('[pipelineSync] #33 pending reward email failed:', e33.message);
           }
         }
 
       } catch (notifErr) {
-        await logError({ req: null, error: notifErr });
+        await logError({ req: null, contractorId, error: notifErr });
         console.error('[pipelineSync] notification trigger block failed:', notifErr.message);
       }
     }
@@ -966,7 +966,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
     const { checkAndCreatePendingReferral } = require('../utils/pendingReferral');
     await checkAndCreatePendingReferral(contractorId, client, referredBy, allClients);
   } catch (err) {
-    await logError({ req: null, error: err });
+    await logError({ req: null, contractorId, error: err });
     console.error('[pipelineSync] pending referral check failed:', err.message);
   }
 
@@ -1006,7 +1006,7 @@ async function syncSingleClient(contractorId, client, referralStartDate, allClie
       [client.id, clientName, contractorId]
     );
   } catch (brMatchErr) {
-    await logError({ req: null, error: brMatchErr });
+    await logError({ req: null, contractorId, error: brMatchErr });
     console.error('[pipelineSync] booking request match check failed:', brMatchErr.message);
   }
 
@@ -1382,13 +1382,16 @@ async function runScheduledSync() {
       try {
         await runIncrementalSync(row.contractor_id);
       } catch (err) {
-        await logError({ req: null, error: err });
+        await logError({ req: null, contractorId: row.contractor_id, error: err });
         console.error(`[scheduler] Sync failed for contractor ${row.contractor_id}:`, err.message);
       }
     }
     console.log('[scheduler] Sync cycle complete');
   } catch (err) {
-    await logError({ req: null, error: err });
+    // PLATFORM: the contractor-LISTING query failed, so no tenant is named yet — the
+    // per-contractor failures above are logged with theirs. Same split as repNamesBackfill's
+    // scan catch (cleanup D2).
+    await logError({ req: null, contractorId: PLATFORM_TENANT, error: err });
     console.error('[scheduler] Failed to query contractor list:', err.message);
   }
 }
